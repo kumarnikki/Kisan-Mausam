@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!--
+    If you are serving your web app in a path other than the root, change the
+    href value below to reflect the base path you are serving from.
+
+    The path provided below has to start and end with a slash "/" in order for
+    it to work correctly.
+
+    For more details:
+    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
+
+    This is a placeholder for base href that will be replaced by the value of
+    the `--base-href` argument provided to `flutter build`.
+  -->
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="A new Flutter project.">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="kisan_mausam">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <title>kisan_mausam</title>
+  <link rel="manifest" href="manifest.json">
+</head>
+<body>
+  <!--
+    You can customize the "flutter_bootstrap.js" script.
+    This is useful to provide a custom configuration to the Flutter loader
+    or to give the user feedback during the initialization process.
+
+    For more details:
+    * https://docs.flutter.dev/platform-integration/web/initialization
+  -->
+  <script>
+    // KisanMausam Global Web Speech TTS & STT Helper
+    window.kisanVoice = {
+      _currentUtterance: null,
+      _recognition: null,
+
+      speak: function(text, lang) {
+        if (!('speechSynthesis' in window)) {
+          console.warn('SpeechSynthesis not supported');
+          return;
+        }
+        try {
+          window.speechSynthesis.cancel();
+          var utterance = new SpeechSynthesisUtterance(text);
+          utterance.lang = lang || 'hi-IN';
+          utterance.rate = 0.95;
+          utterance.pitch = 1.0;
+
+          var voices = window.speechSynthesis.getVoices();
+          if (voices && voices.length > 0) {
+            var hiVoice = voices.find(function(v) { return v.lang && v.lang.startsWith('hi'); });
+            if (hiVoice) {
+              utterance.voice = hiVoice;
+            }
+          }
+
+          window.kisanVoice._currentUtterance = utterance;
+          window.speechSynthesis.speak(utterance);
+        } catch (e) {
+          console.error('Error speaking:', e);
+        }
+      },
+
+      stopSpeaking: function() {
+        if ('speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+        }
+      },
+
+      isSpeaking: function() {
+        return ('speechSynthesis' in window) && window.speechSynthesis.speaking;
+      },
+
+      startListening: function(lang, onResult, onError, onEnd) {
+        var SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRec) {
+          if (onError) onError('Speech recognition not supported in browser');
+          return false;
+        }
+        try {
+          if (window.kisanVoice._recognition) {
+            window.kisanVoice._recognition.abort();
+          }
+        } catch (_) {}
+
+        var rec = new SpeechRec();
+        rec.lang = lang || 'hi-IN';
+        rec.continuous = false;
+        rec.interimResults = false;
+        rec.maxAlternatives = 1;
+
+        rec.onresult = function(event) {
+          if (event.results && event.results[0] && event.results[0][0]) {
+            var transcript = event.results[0][0].transcript;
+            if (onResult) onResult(transcript);
+          }
+        };
+
+        rec.onerror = function(event) {
+          console.warn('Speech error:', event.error);
+          if (onError) onError(event.error || 'Speech error');
+        };
+
+        rec.onend = function() {
+          if (onEnd) onEnd();
+        };
+
+        window.kisanVoice._recognition = rec;
+        try {
+          rec.start();
+          return true;
+        } catch (e) {
+          console.error('Failed to start speech recognition:', e);
+          if (onError) onError(e.message);
+          return false;
+        }
+      },
+
+      stopListening: function() {
+        if (window.kisanVoice._recognition) {
+          try {
+            window.kisanVoice._recognition.stop();
+          } catch (_) {}
+        }
+      }
+    };
+  </script>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>

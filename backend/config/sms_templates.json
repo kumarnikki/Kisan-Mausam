@@ -1,0 +1,43 @@
+{
+  "dlt_info": {
+    "telecom_regulatory_body": "TRAI (Telecom Regulatory Authority of India)",
+    "dlt_compliance_note": "Every commercial / transactional SMS in India requires registered Principal Entity (PE ID), registered Sender Header (6 letters e.g. KISANW), and pre-approved Template ID on DLT portals (e.g. Jio/Vil/Airtel DLT). Variables must strictly follow registered placeholders {#var#}."
+  },
+  "templates": {
+    "otp_verification": {
+      "dlt_template_id": "1107161234567890123",
+      "sender_id": "KISANW",
+      "format_hi": "किसान मौसम: आपका सत्यापन कोड {#var#} है। यह 10 मिनट के लिए मान्य है। कृपया किसी से साझा न करें।",
+      "format_en": "KisanMausam: Your verification OTP is {#var#}. Valid for 10 minutes. Do not share with anyone.",
+      "variables": ["otp"]
+    },
+    "heavy_rain_alert": {
+      "dlt_template_id": "1107161234567890124",
+      "sender_id": "KISANW",
+      "format_hi": "किसान मौसम चेतावनी: गाँव {#var#} में अगले {#var#} घंटों में भारी बारिश ({#var#}%) का अनुमान है। सलाह: जल निकासी की व्यवस्था करें, सिंचाई स्थगित रखें।",
+      "format_en": "KisanMausam Alert: Heavy rain ({#var#}%) forecast in village {#var#} within next {#var#} hrs. Action: Ensure drainage, pause irrigation.",
+      "variables": ["village", "time_window", "probability"]
+    },
+    "frost_alert": {
+      "dlt_template_id": "1107161234567890125",
+      "sender_id": "KISANW",
+      "format_hi": "किसान मौसम चेतावनी: गाँव {#var#} में दिनांक {#var#} को पाला/शीतलहर ({#var#}%) की संभावना है (तापमान {#var#}C)। सलाह: शाम को हल्की सिंचाई या धुआं करें।",
+      "format_en": "KisanMausam Alert: Frost risk ({#var#}%) in village {#var#} on {#var#} (Min temp {#var#}C). Action: Apply evening irrigation or smoke.",
+      "variables": ["village", "date", "probability", "min_temp"]
+    },
+    "heat_wave_alert": {
+      "dlt_template_id": "1107161234567890126",
+      "sender_id": "KISANW",
+      "format_hi": "किसान मौसम चेतावनी: गाँव {#var#} में भीषण गर्मी/लू ({#var#}C) का प्रकोप। सलाह: शाम को मल्चिंग एवं हल्की सिंचाई करें।",
+      "format_en": "KisanMausam Alert: Heat wave ({#var#}C) in village {#var#}. Action: Evening light irrigation and soil mulching recommended.",
+      "variables": ["village", "max_temp"]
+    },
+    "weekly_digest": {
+      "dlt_template_id": "1107161234567890127",
+      "sender_id": "KISANW",
+      "format_hi": "किसान मौसम साप्ताहिक रिपोर्ट: आपके खेत ({#var#}) हेतु आगामी 14 दिनों में वर्षा {#var#} रहने की संभावना है। ENSO स्थिति: {#var#}। विस्तृत जानकारी ऐप में देखें।",
+      "format_en": "KisanMausam Weekly: Farm {#var#} 14-day rainfall outlook is {#var#}. ENSO Status: {#var#}. Check app for full forecast.",
+      "variables": ["farm_name", "rain_outlook", "enso_status"]
+    }
+  }
+}

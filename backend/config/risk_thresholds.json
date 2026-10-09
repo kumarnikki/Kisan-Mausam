@@ -1,0 +1,133 @@
+{
+  "version": "1.0",
+  "citation": "India Meteorological Department (IMD) Standard Operational Procedure for Weather Warnings & ICAR Crop Agronomy Guides",
+  "thresholds": {
+    "heavy_rain": {
+      "warning_name_hi": "भारी वर्षा चेतावनी",
+      "warning_name_en": "Heavy Rainfall Warning",
+      "criteria": {
+        "yellow": { "precip_mm_24h_min": 64.5, "precip_mm_24h_max": 115.5, "imd_category": "Heavy Rain" },
+        "orange": { "precip_mm_24h_min": 115.6, "precip_mm_24h_max": 204.4, "imd_category": "Very Heavy Rain" },
+        "red": { "precip_mm_24h_min": 204.5, "precip_mm_24h_max": 9999.0, "imd_category": "Extremely Heavy Rain" }
+      },
+      "crop_stage_weights": {
+        "sowing": 1.5,
+        "vegetative": 1.0,
+        "flowering": 2.2,
+        "grain_fill": 1.8,
+        "harvest": 2.5
+      },
+      "action_hi": "खेत में उचित जल निकासी (drainage) का प्रबंध करें। कीटनाशक छिड़काव व सिंचाई तुरंत रोक दें।",
+      "action_en": "Ensure proper drainage in fields. Immediately postpone pesticide spraying and irrigation."
+    },
+    "heat_wave": {
+      "warning_name_hi": "लू (हीटवेव) चेतावनी",
+      "warning_name_en": "Heat Wave Warning",
+      "criteria": {
+        "plains_temp_min_c": 40.0,
+        "hills_temp_min_c": 30.0,
+        "coastal_temp_min_c": 37.0,
+        "departure_normal_heat_wave_c": 4.5,
+        "departure_normal_severe_c": 6.5,
+        "absolute_severe_c": 45.0
+      },
+      "crop_stage_weights": {
+        "sowing": 1.4,
+        "vegetative": 1.1,
+        "flowering": 2.3,
+        "grain_fill": 2.1,
+        "harvest": 0.8
+      },
+      "action_hi": "शाम के समय हल्की सिंचाई करें। पौधों के पास नमी बनाए रखने हेतु पुआल या सूखी घास से मल्चिंग (Mulching) करें।",
+      "action_en": "Apply light evening irrigation. Use straw or organic mulching to conserve root zone moisture."
+    },
+    "cold_wave_frost": {
+      "warning_name_hi": "पाला एवं शीतलहर चेतावनी",
+      "warning_name_en": "Frost & Cold Wave Warning",
+      "criteria": {
+        "cold_wave_temp_max_c": 10.0,
+        "departure_below_normal_c": 4.5,
+        "ground_frost_risk_c": 2.0,
+        "severe_ground_frost_c": 0.0
+      },
+      "crop_stage_weights": {
+        "sowing": 1.3,
+        "vegetative": 1.4,
+        "flowering": 2.5,
+        "grain_fill": 2.2,
+        "harvest": 1.0
+      },
+      "action_hi": "खेत की मेड़ों पर शाम को धुआं करें। पाले से बचाव हेतु शाम को हल्की सिंचाई करें या थायोयूरिया/सल्फर का हल्का स्प्रे करें।",
+      "action_en": "Create boundary smoke in evening. Apply light evening irrigation or recommend sulfur spray to buffer temperature."
+    },
+    "strong_wind": {
+      "warning_name_hi": "तेज हवा / आंधी चेतावनी",
+      "warning_name_en": "Strong Wind & Gust Warning",
+      "criteria": {
+        "gust_speed_kmh_threshold": 50.0,
+        "severe_gust_kmh_threshold": 70.0
+      },
+      "crop_stage_weights": {
+        "sowing": 0.7,
+        "vegetative": 1.0,
+        "flowering": 2.0,
+        "grain_fill": 2.3,
+        "harvest": 2.4
+      },
+      "action_hi": "लंबी फसलों (मक्का, गन्ना, केला) को सहारा दें। खड़ी फसलों में सिंचाई न करें ताकि फसल गिरे (Lodging) नहीं।",
+      "action_en": "Stake tall crops (banana, maize, sugarcane). Avoid deep irrigation before high winds to prevent lodging."
+    },
+    "hail_thunderstorm": {
+      "warning_name_hi": "ओलावृष्टि एवं गरज-चमक चेतावनी",
+      "warning_name_en": "Hail & Thunderstorm Warning",
+      "criteria": {
+        "wmo_codes": [96, 99],
+        "precipitation_probability_min": 60
+      },
+      "crop_stage_weights": {
+        "sowing": 1.2,
+        "vegetative": 1.5,
+        "flowering": 2.5,
+        "grain_fill": 2.5,
+        "harvest": 2.5
+      },
+      "action_hi": "सब्जियों व नर्सरी पर एंटी-हेल नेट लगाएं। कटी हुई फसल को तिरपाल से ढककर सुरक्षित स्थान पर रखें।",
+      "action_en": "Deploy anti-hail nets over nurseries and fruit trees. Move harvested produce to covered shelters."
+    },
+    "dry_spell": {
+      "warning_name_hi": "सूखा / वर्षा अभाव चेतावनी",
+      "warning_name_en": "Dry Spell Warning",
+      "criteria": {
+        "days_without_rain_min": 7,
+        "daily_rain_max_mm": 2.5,
+        "soil_moisture_depletion_fraction": 0.5
+      },
+      "crop_stage_weights": {
+        "sowing": 2.0,
+        "vegetative": 1.4,
+        "flowering": 2.4,
+        "grain_fill": 2.0,
+        "harvest": 0.5
+      },
+      "action_hi": "ड्रिप/फव्वारा विधि से जीवन रक्षक सिंचाई करें। खरपतवार नियंत्रण करें ताकि मिट्टी की नमी केवल मुख्य फसल को मिले।",
+      "action_en": "Provide life-saving drip/sprinkler irrigation. Weed immediately to conserve soil moisture for crop."
+    },
+    "flood_risk": {
+      "warning_name_hi": "जलभराव / बाढ़ जोखिम",
+      "warning_name_en": "Waterlogging & Flood Risk",
+      "criteria": {
+        "rain_sum_24h_min": 115.6,
+        "soil_moisture_saturation_m3m3": 0.35
+      },
+      "crop_stage_weights": {
+        "sowing": 2.2,
+        "vegetative": 1.6,
+        "flowering": 2.3,
+        "grain_fill": 2.1,
+        "harvest": 2.5
+      },
+      "action_hi": "खेत के निचले हिस्सों से तुरंत पानी निकालने हेतु नालियां खोलें। जलभराव रुकने पर यूरिया/पोषक तत्वों का पूरक छिड़काव करें।",
+      "action_en": "Open farm drainage trenches immediately. Once water recedes, apply foliar nutrients to revive roots."
+    }
+  }
+}
