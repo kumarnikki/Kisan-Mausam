@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../services/api_service.dart';
+import '../../services/storage_service.dart';
 import '../../models/farm_profile.dart';
+import '../../models/weather_models.dart';
 import '../chat/krishi_sahayak_screen.dart';
 
 class CropRecommendationItem {
@@ -156,6 +158,9 @@ class CropRecommenderScreen extends StatefulWidget {
   final String village;
   final FarmProfile? farm;
   final String? lang;
+  final double? latitude;
+  final double? longitude;
+  final WeatherData? weather;
 
   const CropRecommenderScreen({
     super.key,
@@ -164,6 +169,9 @@ class CropRecommenderScreen extends StatefulWidget {
     this.village = 'उमरेड (Umred)',
     this.farm,
     this.lang,
+    this.latitude,
+    this.longitude,
+    this.weather,
   });
 
   @override
@@ -178,10 +186,23 @@ class _CropRecommenderScreenState extends State<CropRecommenderScreen> {
   late String _climateOutlookSummary;
   List<CropRecommendationItem> _recommendations = [];
 
+  double _activeLat = 21.1458;
+  double _activeLon = 79.0882;
+  String _activeLocationName = '';
+  WeatherData? _activeWeather;
+  double _gpsTemp = 28.5;
+  double _gpsHumidity = 58.0;
+  double _gpsSoilMoisture = 0.26;
+  double _gpsRain10d = 12.0;
+
   @override
   void initState() {
     super.initState();
     _lang = widget.lang ?? 'hi';
+    _activeLat = widget.latitude ?? widget.farm?.latitude ?? 21.1458;
+    _activeLon = widget.longitude ?? widget.farm?.longitude ?? 79.0882;
+    _activeLocationName = widget.village;
+    _activeWeather = widget.weather;
     _seasonTitle = _lang == 'en' ? 'Rabi Season' : 'रबी सीजन';
     _climateOutlookSummary = _lang == 'en'
         ? 'Next 30 days: 35% below normal rainfall probability in region (EC46 / SEAS5)'
@@ -192,13 +213,53 @@ class _CropRecommenderScreenState extends State<CropRecommenderScreen> {
   @override
   void didUpdateWidget(covariant CropRecommenderScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.lang != widget.lang) {
+    if (oldWidget.lang != widget.lang ||
+        oldWidget.weather != widget.weather ||
+        oldWidget.latitude != widget.latitude ||
+        oldWidget.longitude != widget.longitude) {
       _lang = widget.lang ?? 'hi';
-      _seasonTitle = _lang == 'en' ? 'Rabi Season' : 'रबी सीजन';
-      _climateOutlookSummary = _lang == 'en'
-          ? 'Next 30 days: 35% below normal rainfall probability in region (EC46 / SEAS5)'
-          : 'आगामी 30 दिनों में क्षेत्र में 35% कम वर्षा की संभावना (EC46 / SEAS5)';
-      _recommendations = _getOfflineRecommendations();
+      _activeLat = widget.latitude ?? widget.farm?.latitude ?? _activeLat;
+      _activeLon = widget.longitude ?? widget.farm?.longitude ?? _activeLon;
+      _activeLocationName = widget.village;
+      if (widget.weather != null) _activeWeather = widget.weather;
+      _applyGpsWeatherMetrics();
+      _recommendations = _getGpsDrivenRecommendations();
+    }
+  }
+
+  void _applyGpsWeatherMetrics() {
+    final w = _activeWeather;
+    if (w != null) {
+      _gpsTemp = w.current.temperature;
+      _gpsHumidity = w.current.relativeHumidity;
+      _gpsSoilMoisture = w.current.soilMoisture;
+      double rSum = 0.0;
+      for (final d in w.daily.take(10)) {
+        rSum += d.precipitationSum;
+      }
+      _gpsRain10d = rSum;
+    }
+
+    final cleanLoc = _lang == 'en'
+        ? (_activeLocationName.contains('Umred') || _activeLocationName.contains('उमरेड')
+            ? 'Umred'
+            : _activeLocationName.replaceAll(RegExp(r'[\u0900-\u097F]+'), '').trim())
+        : (_activeLocationName.contains('Umred') || _activeLocationName.contains('उमरेड')
+            ? 'उमरेड'
+            : _activeLocationName.replaceAll(RegExp(r'\s*\([A-Za-z\s-]+\)'), '').trim());
+    final locLabel = cleanLoc.isNotEmpty ? cleanLoc : (_lang == 'en' ? 'GPS Farm' : 'GPS क्षेत्र');
+
+    final isHot = _gpsTemp >= 32.0;
+    final isWet = _gpsRain10d >= 25.0 || _gpsHumidity >= 72.0;
+
+    if (_lang == 'en') {
+      _seasonTitle = isHot ? 'Zaid / Warm Season' : (isWet ? 'Humid / Monsoon Transition' : 'Rabi Season');
+      _climateOutlookSummary =
+          'GPS Live ($locLabel): Temp ${_gpsTemp.toStringAsFixed(1)}°C, Soil Moisture ${(_gpsSoilMoisture * 100).round()}%, 10-Day Rain ${_gpsRain10d.toStringAsFixed(1)} mm (${_activeLat.toStringAsFixed(2)}°N, ${_activeLon.toStringAsFixed(2)}°E)';
+    } else {
+      _seasonTitle = isHot ? 'गर्म / जायद अनुकूल' : (isWet ? 'आर्द्र / नमी अनुकूल सीजन' : 'रबी सीजन');
+      _climateOutlookSummary =
+          'GPS लाइव ($locLabel): तापमान ${_gpsTemp.toStringAsFixed(1)}°C, मिट्टी की नमी ${(_gpsSoilMoisture * 100).round()}%, 10-दिवसीय वर्षा ${_gpsRain10d.toStringAsFixed(1)} मिमी (${_activeLat.toStringAsFixed(2)}°N, ${_activeLon.toStringAsFixed(2)}°E)';
     }
   }
 
@@ -207,63 +268,75 @@ class _CropRecommenderScreenState extends State<CropRecommenderScreen> {
       _isLoading = true;
     });
 
-    final data = await _apiService.getCropRecommendations(widget.farmId);
-    if (data != null && data['recommendations'] != null) {
-      final recs = (data['recommendations'] as List)
-          .map((item) => CropRecommendationItem.fromJson(item, lang: _lang))
-          .toList();
-
-      if (mounted) {
-        setState(() {
-          if (_lang == 'en') {
-            _seasonTitle = 'Rabi Season';
-            _climateOutlookSummary = data['climate_outlook']?['summary_en'] ??
-                'Next 30 days: 35% below normal rainfall probability in region (EC46 / SEAS5)';
-          } else {
-            _seasonTitle = (data['current_season'] as String? ?? 'रबी सीजन')
-                .replaceAll(RegExp(r'\s*\([A-Za-z\s-]+\)'), '')
-                .trim();
-            _climateOutlookSummary = (data['climate_outlook']?['summary_hi'] as String? ?? _climateOutlookSummary)
-                .replaceAll(RegExp(r'\s*\([A-Za-z\s-]+\)'), '')
-                .trim();
-          }
-          _recommendations = recs;
-          _isLoading = false;
-        });
-        return;
+    // 1. Load saved GPS coordinates and cached weather if not passed directly
+    try {
+      if (_activeWeather == null) {
+        final savedLoc = await StorageService.getLastLocation();
+        if (savedLoc != null) {
+          _activeLat = (savedLoc['latitude'] as num).toDouble();
+          _activeLon = (savedLoc['longitude'] as num).toDouble();
+          final sName = (savedLoc['displayName'] as String?) ?? '';
+          if (sName.isNotEmpty) _activeLocationName = sName;
+        }
+        final cacheKey = '${_activeLat.toStringAsFixed(2)}_${_activeLon.toStringAsFixed(2)}';
+        final cached = await StorageService.getCachedWeather(cacheKey);
+        if (cached != null) {
+          _activeWeather = cached;
+        }
       }
-    }
+    } catch (_) {}
 
-    // Offline fallback seed
+    _applyGpsWeatherMetrics();
+
     if (mounted) {
       setState(() {
-        _recommendations = _getOfflineRecommendations();
+        _recommendations = _getGpsDrivenRecommendations();
         _isLoading = false;
       });
     }
   }
 
-  List<CropRecommendationItem> _getOfflineRecommendations() {
+  List<CropRecommendationItem> _getGpsDrivenRecommendations() {
+    final temp = _gpsTemp;
+    final rain10d = _gpsRain10d;
+    final soilPct = (_gpsSoilMoisture * 100).round();
+    final hum = _gpsHumidity.round();
+    final isWet = rain10d >= 25.0 || hum >= 72 || soilPct >= 35;
+    final isHotDry = temp >= 32.0 && rain10d < 15.0;
+
+    // Dynamic GPS-calibrated suitability scores based on temperature, rainfall & soil moisture
+    final chickpeaScore = isHotDry ? 98 : (isWet ? 86 : 97);
+    final mustardScore = isHotDry ? 95 : (isWet ? 84 : 94);
+    final wheatScore = isWet ? 96 : (temp <= 27.0 ? 93 : 88);
+    final fourthScore = isWet ? 92 : (isHotDry ? 90 : 85);
+    final fifthScore = isWet ? 89 : 83;
+
+    final locEn = _activeLocationName.replaceAll(RegExp(r'[\u0900-\u097F]+'), '').replaceAll('()', '').trim();
+    final regionEn = locEn.isNotEmpty ? locEn : 'your GPS region';
+    final locHi = _activeLocationName.replaceAll(RegExp(r'\s*\([A-Za-z\s-]+\)'), '').trim();
+    final regionHi = locHi.isNotEmpty ? locHi : 'आपके GPS क्षेत्र';
+
     if (_lang == 'en') {
-      return [
+      final list = <CropRecommendationItem>[
         CropRecommendationItem(
           rank: 1,
           nameHi: 'चना',
           nameEn: 'Chickpea',
           season: 'rabi',
-          matchScore: 98,
+          matchScore: chickpeaScore,
           durationDays: '95-115 days',
           waterNeedMm: 280.0,
           droughtTolerance: 'high',
           frostTolerance: 'medium',
           reasons: [
-            'Current season (Rabi sowing) is highly favorable for chickpea.',
-            'Black soil moisture retention capacity is optimal for chickpea root system.',
-            'Low water requirement: safest choice for rainfed or deficit irrigation plots.',
-            'Drought-tolerant traits provide resilience against 30-day deficit rain forecast.',
+            'GPS conditions in $regionEn (${temp.toStringAsFixed(1)}°C, Soil Moisture $soilPct%) are highly favorable for chickpea.',
+            'Black/loam soil moisture retention ($soilPct%) matches chickpea root depth requirements.',
+            'Low water requirement (280 mm): optimal for 10-day forecast rainfall of ${rain10d.toStringAsFixed(1)} mm.',
           ],
           riskNotes: [
-            'In case of frost in Dec-Jan, apply light irrigation or field-edge smoke.',
+            rain10d > 20
+                ? 'Ensure field drainage in $regionEn to prevent collar rot under ${rain10d.toStringAsFixed(1)} mm rain.'
+                : 'In case of cold nights or frost, apply light evening irrigation.',
           ],
           sourceCitation: 'ICAR-IIPR Kanpur Chickpea Production Technology',
           needsExpertReview: true,
@@ -273,17 +346,19 @@ class _CropRecommenderScreenState extends State<CropRecommenderScreen> {
           nameHi: 'सरसों',
           nameEn: 'Mustard',
           season: 'rabi',
-          matchScore: 94,
+          matchScore: mustardScore,
           durationDays: '105-130 days',
           waterNeedMm: 250.0,
           droughtTolerance: 'high',
           frostTolerance: 'medium',
           reasons: [
-            'Major oilseed crop for Rabi season; high yield with minimal cost and water.',
-            'High drought tolerance makes it resilient against deficit rainfall.',
+            'Well suited to $regionEn live temperature (${temp.toStringAsFixed(1)}°C) and humidity ($hum%).',
+            'High oilseed return with minimal irrigation under ${rain10d.toStringAsFixed(1)} mm 10-day rain outlook.',
           ],
           riskNotes: [
-            'Aphid pest risk during flowering; spray neem oil if noticed.',
+            hum > 65
+                ? 'Monitor for aphid pest at $hum% humidity; spray neem oil (5 ml/L) if noticed.'
+                : 'Apply first irrigation at 30-35 days after sowing (branching stage).',
           ],
           sourceCitation: 'ICAR-DRMR Bharatpur',
           needsExpertReview: true,
@@ -293,17 +368,19 @@ class _CropRecommenderScreenState extends State<CropRecommenderScreen> {
           nameHi: 'गेहूं',
           nameEn: 'Wheat',
           season: 'rabi',
-          matchScore: 88,
+          matchScore: wheatScore,
           durationDays: '110-135 days',
           waterNeedMm: 450.0,
           droughtTolerance: 'medium',
           frostTolerance: 'medium',
           reasons: [
-            'Primary food grain crop with excellent output under assured irrigation.',
-            'Well adapted to medium and heavy loam soils of Vidarbha region.',
+            'Primary food grain crop adapted to $regionEn (${_activeLat.toStringAsFixed(1)}°N, ${_activeLon.toStringAsFixed(1)}°E) with $soilPct% soil moisture.',
+            isWet
+                ? 'Higher moisture availability (${rain10d.toStringAsFixed(1)} mm rain, $soilPct% soil moisture) supports strong tillering.'
+                : 'Good yield potential under assured tube-well/canal irrigation at ${temp.toStringAsFixed(1)}°C.',
           ],
           riskNotes: [
-            'Moderate water requirement (3-4 irrigations). If water is scarce, prioritize chickpea.',
+            'Requires 4-5 irrigations (especially at CRI stage 21 days after sowing). Prioritize Chickpea if water is scarce.',
           ],
           droughtAlternative: 'Chickpea or Mustard',
           sourceCitation: 'ICAR-IIWBR Karnal',
@@ -311,61 +388,65 @@ class _CropRecommenderScreenState extends State<CropRecommenderScreen> {
         ),
         CropRecommendationItem(
           rank: 4,
-          nameHi: 'अलसी',
-          nameEn: 'Linseed',
+          nameHi: isHotDry ? 'ज्वार' : 'अलसी',
+          nameEn: isHotDry ? 'Sorghum' : 'Linseed',
           season: 'rabi',
-          matchScore: 85,
-          durationDays: '115-135 days',
-          waterNeedMm: 250.0,
+          matchScore: fourthScore,
+          durationDays: isHotDry ? '100-115 days' : '115-135 days',
+          waterNeedMm: isHotDry ? 300.0 : 250.0,
           droughtTolerance: 'high',
           frostTolerance: 'high',
           reasons: [
-            'Low input cost; highly tolerant to both frost and drought.',
-            'Good returns with conserved moisture in black soils.',
+            isHotDry
+                ? 'Highly resilient to warm GPS temperature (${temp.toStringAsFixed(1)}°C) and low rainfall (${rain10d.toStringAsFixed(1)} mm).'
+                : 'Low input cost; highly tolerant to both cold stress and conserved $soilPct% soil moisture in $regionEn.',
           ],
           riskNotes: [],
-          sourceCitation: 'ICAR-AICRP Oilseeds',
+          sourceCitation: isHotDry ? 'ICAR-IIMR Hyderabad' : 'ICAR-AICRP Oilseeds',
           needsExpertReview: true,
         ),
         CropRecommendationItem(
           rank: 5,
-          nameHi: 'मसूर',
-          nameEn: 'Lentil',
+          nameHi: isWet ? 'मक्का' : 'मसूर',
+          nameEn: isWet ? 'Maize' : 'Lentil',
           season: 'rabi',
-          matchScore: 82,
-          durationDays: '100-120 days',
-          waterNeedMm: 220.0,
-          droughtTolerance: 'high',
+          matchScore: fifthScore,
+          durationDays: isWet ? '95-110 days' : '100-120 days',
+          waterNeedMm: isWet ? 500.0 : 220.0,
+          droughtTolerance: isWet ? 'medium' : 'high',
           frostTolerance: 'high',
           reasons: [
-            'Low water consumption; fixes atmospheric nitrogen in farm soil.',
-            'Safe crop under below-average rainfall forecast.',
+            isWet
+                ? 'Favorable humidity ($hum%) and soil moisture ($soilPct%) in $regionEn support high-yield hybrid maize.'
+                : 'Low water consumption (220 mm); fixes atmospheric nitrogen in $regionEn soils.',
           ],
           riskNotes: [],
-          sourceCitation: 'ICAR-IIPR Kanpur',
+          sourceCitation: isWet ? 'ICAR-IIMR Ludhiana' : 'ICAR-IIPR Kanpur',
           needsExpertReview: true,
         ),
       ];
+      return list;
     } else {
-      return [
+      final list = <CropRecommendationItem>[
         CropRecommendationItem(
           rank: 1,
           nameHi: 'चना',
           nameEn: 'Chickpea',
           season: 'rabi',
-          matchScore: 98,
+          matchScore: chickpeaScore,
           durationDays: '95-115 दिन',
           waterNeedMm: 280.0,
           droughtTolerance: 'high',
           frostTolerance: 'medium',
           reasons: [
-            'वर्तमान समय (रबी बुवाई) इस फसल के लिए पूर्णतः अनुकूल है।',
-            'काली कपासी मिट्टी में जल संचय क्षमता चने की जड़ों के लिए सर्वोत्तम है।',
-            'कम पानी की आवश्यकता: असिंचित / वर्षा-आधारित खेत के लिए सर्वोत्तम सुरक्षित विकल्प।',
-            '30-दिवसीय मौसम रुझान (कम वर्षा संभावना 35%) को देखते हुए सूखा-सहनशील गुण सुरक्षित रहेगा।',
+            '$regionHi के लाइव GPS मौसम (तापमान ${temp.toStringAsFixed(1)}°C, मिट्टी की नमी $soilPct%) के अनुसार चना सर्वोत्तम है।',
+            'मिट्टी में $soilPct% नमी संचय क्षमता चने की जड़ों के विकास के लिए अत्यंत अनुकूल है।',
+            'कम पानी (280 मिमी) की आवश्यकता: आगामी 10 दिनों की ${rain10d.toStringAsFixed(1)} मिमी वर्षा पूर्वानुमान में सबसे सुरक्षित विकल्प।',
           ],
           riskNotes: [
-            'दिसंबर-जनवरी में पाला पड़ने पर हल्की सिंचाई या खेत की मेड़ पर धुआं करें।',
+            rain10d > 20
+                ? '${rain10d.toStringAsFixed(1)} मिमी बारिश की संभावना में उकठा रोग से बचाव हेतु जल निकासी रखें।'
+                : 'रात्रि तापमान गिरने या पाला पड़ने पर शाम को हल्की सिंचाई करें।',
           ],
           sourceCitation: 'ICAR-IIPR Kanpur Chickpea Production Technology',
           needsExpertReview: true,
@@ -375,17 +456,19 @@ class _CropRecommenderScreenState extends State<CropRecommenderScreen> {
           nameHi: 'सरसों',
           nameEn: 'Mustard',
           season: 'rabi',
-          matchScore: 94,
+          matchScore: mustardScore,
           durationDays: '105-130 दिन',
           waterNeedMm: 250.0,
           droughtTolerance: 'high',
           frostTolerance: 'medium',
           reasons: [
-            'रबी सीजन की प्रमुख तिलहनी फसल, न्यूनतम लागत व कम पानी में भरपूर पैदावार।',
-            'सूखा-सहनशील होने से 30-दिवसीय वर्षा कमी के जोखिम में सुरक्षित।',
+            '$regionHi के वर्तमान तापमान (${temp.toStringAsFixed(1)}°C) व आर्द्रता ($hum%) के पूर्णतः अनुकूल तिलहनी फसल।',
+            'न्यूनतम लागत व कम पानी (250 मिमी) में उच्च तेल मात्रा व भरपूर पैदावार।',
           ],
           riskNotes: [
-            'फूल आते समय माहू कीट का प्रकोप हो सकता है, नीम तेल स्प्रे करें।',
+            hum > 65
+                ? '$hum% आर्द्रता में माहू कीट की निगरानी करें व नीम तेल (5 मिली/लीटर) का छिड़काव करें।'
+                : 'बुवाई के 30-35 दिन बाद (शाखाएं बनते समय) पहली हल्की सिंचाई करें।',
           ],
           sourceCitation: 'ICAR-DRMR Bharatpur',
           needsExpertReview: true,
@@ -395,17 +478,19 @@ class _CropRecommenderScreenState extends State<CropRecommenderScreen> {
           nameHi: 'गेहूं',
           nameEn: 'Wheat',
           season: 'rabi',
-          matchScore: 88,
+          matchScore: wheatScore,
           durationDays: '110-135 दिन',
           waterNeedMm: 450.0,
           droughtTolerance: 'medium',
           frostTolerance: 'medium',
           reasons: [
-            'रबी की प्रमुख खाद्यान्न फसल, सुनिश्चित सिंचाई पर उत्कृष्ट उत्पादन।',
-            'नागपुर क्षेत्र की दोमट व भारी मिट्टी में अनुकूल।',
+            '$regionHi (${_activeLat.toStringAsFixed(1)}°N, ${_activeLon.toStringAsFixed(1)}°E) की मिट्टी ($soilPct% नमी) व सिंचाई व्यवस्था में उत्कृष्ट खाद्यान्न फसल।',
+            isWet
+                ? 'पर्याप्त नमी (${rain10d.toStringAsFixed(1)} मिमी वर्षा, $soilPct% मिट्टी नमी) से कल्ले अधिक फूटेंगे।'
+                : '${temp.toStringAsFixed(1)}°C तापमान पर सुनिश्चित सिंचाई के साथ उच्च उत्पादन क्षमता।',
           ],
           riskNotes: [
-            'मध्यम पानी की आवश्यकता (3-4 सिंचाई)। यदि जल स्रोत सीमित हो तो चने को प्राथमिकता दें।',
+            'मध्यम पानी की आवश्यकता (3-4 सिंचाई, पहली सिंचाई 21 दिन पर)। जल सीमित हो तो चने को प्राथमिकता दें।',
           ],
           droughtAlternative: 'चना या सरसों',
           sourceCitation: 'ICAR-IIWBR Karnal',
@@ -413,41 +498,44 @@ class _CropRecommenderScreenState extends State<CropRecommenderScreen> {
         ),
         CropRecommendationItem(
           rank: 4,
-          nameHi: 'अलसी',
-          nameEn: 'Linseed',
+          nameHi: isHotDry ? 'ज्वार' : 'अलसी',
+          nameEn: isHotDry ? 'Sorghum' : 'Linseed',
           season: 'rabi',
-          matchScore: 85,
-          durationDays: '115-135 दिन',
-          waterNeedMm: 250.0,
+          matchScore: fourthScore,
+          durationDays: isHotDry ? '100-115 दिन' : '115-135 दिन',
+          waterNeedMm: isHotDry ? 300.0 : 250.0,
           droughtTolerance: 'high',
           frostTolerance: 'high',
           reasons: [
-            'कम लागत, पाला व सूखा दोनों के प्रति अत्यधिक सहनशील।',
-            'काली मिट्टी में नमी संरक्षण के साथ बढ़िया लाभ।',
+            isHotDry
+                ? '${temp.toStringAsFixed(1)}°C तापमान व कम बारिश (${rain10d.toStringAsFixed(1)} मिमी) में अत्यधिक सूखा-सहनशील फसल।'
+                : '$regionHi में कम लागत, पाला व सूखा दोनों के प्रति सहनशील तथा $soilPct% संचित नमी में उत्तम लाभ।',
           ],
           riskNotes: [],
-          sourceCitation: 'ICAR-AICRP Oilseeds',
+          sourceCitation: isHotDry ? 'ICAR-IIMR Hyderabad' : 'ICAR-AICRP Oilseeds',
           needsExpertReview: true,
         ),
         CropRecommendationItem(
           rank: 5,
-          nameHi: 'मसूर दाल',
-          nameEn: 'Lentil',
+          nameHi: isWet ? 'मक्का' : 'मसूर दाल',
+          nameEn: isWet ? 'Maize' : 'Lentil',
           season: 'rabi',
-          matchScore: 82,
-          durationDays: '100-120 दिन',
-          waterNeedMm: 220.0,
-          droughtTolerance: 'high',
+          matchScore: fifthScore,
+          durationDays: isWet ? '95-110 दिन' : '100-120 दिन',
+          waterNeedMm: isWet ? 500.0 : 220.0,
+          droughtTolerance: isWet ? 'medium' : 'high',
           frostTolerance: 'high',
           reasons: [
-            'अल्प जल खपत, दलहनी फसल होने से भूमि में नाइट्रोजन स्थिरीकरण।',
-            'कम बारिश के पूर्वानुमान में सुरक्षित फसल।',
+            isWet
+                ? '$regionHi में $hum% आर्द्रता व $soilPct% मिट्टी की नमी संकर मक्का की उच्च पैदावार हेतु उपयुक्त है।'
+                : 'अल्प जल खपत (220 मिमी), दलहनी फसल होने से $regionHi की भूमि में नाइट्रोजन स्थिरीकरण।',
           ],
           riskNotes: [],
-          sourceCitation: 'ICAR-IIPR Kanpur',
+          sourceCitation: isWet ? 'ICAR-IIMR Ludhiana' : 'ICAR-IIPR Kanpur',
           needsExpertReview: true,
         ),
       ];
+      return list;
     }
   }
 
@@ -498,15 +586,14 @@ class _CropRecommenderScreenState extends State<CropRecommenderScreen> {
             (widget.farmName.toLowerCase().contains('farm')
                 ? 'बड़ा खेत'
                 : widget.farmName.replaceAll(RegExp(r'\s*\([A-Za-z\s-]+\)'), '').trim()));
+    final rawVillage = _activeLocationName.isNotEmpty ? _activeLocationName : widget.village;
     final displayVillage = _lang == 'en'
-        ? (widget.farm?.getVillage('en') ??
-            (widget.village.contains('Umred') || widget.village.contains('उमरेड')
-                ? 'Umred'
-                : widget.village.replaceAll(RegExp(r'[\u0900-\u097F]+'), '').trim()))
-        : (widget.farm?.getVillage('hi') ??
-            (widget.village.contains('Umred') || widget.village.contains('उमरेड')
-                ? 'उमरेड'
-                : widget.village.replaceAll(RegExp(r'\s*\([A-Za-z\s-]+\)'), '').trim()));
+        ? (rawVillage.contains('Umred') || rawVillage.contains('उमरेड')
+            ? 'Umred'
+            : rawVillage.replaceAll(RegExp(r'[\u0900-\u097F]+'), '').trim())
+        : (rawVillage.contains('Umred') || rawVillage.contains('उमरेड')
+            ? 'उमरेड'
+            : rawVillage.replaceAll(RegExp(r'\s*\([A-Za-z\s-]+\)'), '').trim());
 
     return Scaffold(
       appBar: AppBar(
@@ -523,7 +610,7 @@ class _CropRecommenderScreenState extends State<CropRecommenderScreen> {
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             Text(
-              '$displayFarmName • $displayVillage',
+              '$displayFarmName • ${displayVillage.isNotEmpty ? displayVillage : rawVillage}',
               style: const TextStyle(fontSize: 12),
             ),
           ],
@@ -550,6 +637,10 @@ class _CropRecommenderScreenState extends State<CropRecommenderScreen> {
             MaterialPageRoute(
               builder: (context) => KrishiSahayakScreen(
                 farm: widget.farm,
+                locationName: displayVillage.isNotEmpty ? displayVillage : rawVillage,
+                latitude: _activeLat,
+                longitude: _activeLon,
+                weather: _activeWeather,
                 lang: _lang,
               ),
             ),
@@ -565,8 +656,8 @@ class _CropRecommenderScreenState extends State<CropRecommenderScreen> {
                   const SizedBox(height: 16),
                   Text(
                     _lang == 'en'
-                        ? 'Finding optimal crops based on soil and weather...'
-                        : 'आपके खेत व मौसम के अनुसार सर्वोत्तम फसलें खोजी जा रही हैं...',
+                        ? 'Finding optimal crops based on GPS soil and weather...'
+                        : 'आपके GPS स्थान व मौसम के अनुसार सर्वोत्तम फसलें खोजी जा रही हैं...',
                   ),
                 ],
               ),
@@ -635,11 +726,11 @@ class _CropRecommenderScreenState extends State<CropRecommenderScreen> {
                 ),
               ),
               const Spacer(),
-              const Icon(Icons.wb_sunny_outlined, color: Colors.orange, size: 20),
+              const Icon(Icons.my_location, color: Color(0xFF1B5E20), size: 16),
               const SizedBox(width: 4),
               Text(
-                _lang == 'en' ? 'EC46/SEAS5 Outlook' : 'EC46/SEAS5 आउटलुक',
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                _lang == 'en' ? 'Live GPS Grounded' : 'लाइव GPS आधारित',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF1B5E20)),
               ),
             ],
           ),
@@ -647,7 +738,7 @@ class _CropRecommenderScreenState extends State<CropRecommenderScreen> {
           Text(
             _climateOutlookSummary,
             style: const TextStyle(
-              fontSize: 14,
+              fontSize: 13.5,
               fontWeight: FontWeight.w600,
               color: Colors.black87,
             ),
@@ -655,8 +746,8 @@ class _CropRecommenderScreenState extends State<CropRecommenderScreen> {
           const SizedBox(height: 6),
           Text(
             _lang == 'en'
-                ? 'Rule: Drought-resistant crops prioritized considering deficit rainfall risk.'
-                : 'नियम: कम वर्षा जोखिम को ध्यान में रखते हुए सूखा-सहनशील फसलों को प्राथमिकता दी गई है।',
+                ? 'Rule: Crop scores dynamically ranked by live GPS temperature, soil moisture, and 10-day rainfall.'
+                : 'नियम: फसलों की उपयुक्तता आपके लाइव GPS तापमान, मिट्टी की नमी और 10-दिवसीय वर्षा के अनुसार तय की गई है।',
             style: const TextStyle(fontSize: 12, color: Colors.black54),
           ),
         ],

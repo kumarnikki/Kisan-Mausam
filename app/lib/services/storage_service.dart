@@ -124,11 +124,19 @@ class StorageService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyUserEmail, email);
     await prefs.setBool(_keyIsLoggedIn, true);
+    final match = RegExp(r'[6-9]\d{9}').firstMatch(email);
+    if (match != null) {
+      await prefs.setString(_keyUserPhone, match.group(0)!);
+    }
   }
 
   static Future<void> saveUserPhone(String phone) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keyUserPhone, phone.trim());
+    final digits = phone.replaceAll(RegExp(r'\D'), '');
+    final clean = digits.length > 10 ? digits.substring(digits.length - 10) : digits;
+    if (clean.isNotEmpty) {
+      await prefs.setString(_keyUserPhone, clean);
+    }
     await prefs.setBool(_keyIsLoggedIn, true);
   }
 
@@ -144,7 +152,19 @@ class StorageService {
 
   static Future<String?> getUserPhone() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_keyUserPhone);
+    final direct = prefs.getString(_keyUserPhone);
+    if (direct != null && direct.trim().length >= 10) {
+      return direct.trim();
+    }
+    final email = prefs.getString(_keyUserEmail) ?? '';
+    final name = prefs.getString(_keyUserName) ?? '';
+    final match = RegExp(r'[6-9]\d{9}').firstMatch('$email $name');
+    if (match != null) {
+      final found = match.group(0)!;
+      await prefs.setString(_keyUserPhone, found);
+      return found;
+    }
+    return direct;
   }
 
   static Future<String?> getUserName() async {

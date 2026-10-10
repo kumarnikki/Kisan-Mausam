@@ -125,12 +125,13 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
       final cacheKey = '${lat.toStringAsFixed(2)}_${lon.toStringAsFixed(2)}';
       final cachedTs = await StorageService.getWeatherCachedTime(cacheKey);
 
-      // Fetch risks & ENSO in parallel with active location coordinates & name
+      // Fetch risks & ENSO in parallel with active location coordinates, name & live weather
       _apiService.getFarmRisks(
         _currentFarm?.id ?? 1,
         lat: lat,
         lon: lon,
         locationName: locName,
+        weather: data,
       ).then((r) {
         if (mounted && r != null) {
           setState(() => _riskData = r);
@@ -157,47 +158,36 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
     }
   }
 
-  /// Called when risk data loads — pops up an alert dialog and sends SMS for high-severity risks.
+  /// Called when risk data loads — pops up an alert dialog for red risks and sends SMS for weather/climate risks.
   void _checkAndShowAlertPopup(FarmRiskData risk) {
     final redRisks = risk.horizon1.risks.where((r) => r.severity == 'red').toList();
     final orangeRisks = risk.horizon1.risks.where((r) => r.severity == 'orange').toList();
+    final activeLoc = _gpsLocationName ?? _currentFarm?.village ?? (_lang == 'hi' ? 'आपके क्षेत्र' : 'your location');
 
     if (redRisks.isNotEmpty) {
       final r = redRisks.first;
       _autoSendRiskSms(r);
-      Future.delayed(const Duration(milliseconds: 800), () {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           AlertService.showHazardAlert(
             context,
             titleHi: r.titleHi,
             titleEn: r.titleEn,
-            bodyHi: '${_currentFarm?.village ?? "आपके क्षेत्र"} में ${r.expectedValue} की संभावना है। तुरंत सावधानी बरतें।',
-            bodyEn: 'Risk detected at ${_currentFarm?.village ?? "your location"}: ${r.expectedValue}.',
+            bodyHi: '$activeLoc में ${r.expectedValue} की संभावना है। तुरंत सावधानी बरतें।',
+            bodyEn: 'Risk detected at $activeLoc: ${r.expectedValue}.',
             severity: 'red',
-            actionHi: r.actionHi,
+            actionHi: _lang == 'hi' ? r.actionHi : (r.actionEn.isNotEmpty ? r.actionEn : r.actionHi),
             probability: r.probability,
             lang: _lang,
+            lat: _gpsLat ?? _currentFarm?.latitude,
+            lon: _gpsLon ?? _currentFarm?.longitude,
+            locationName: activeLoc,
           );
         }
       });
     } else if (orangeRisks.isNotEmpty) {
       final r = orangeRisks.first;
       _autoSendRiskSms(r);
-      Future.delayed(const Duration(milliseconds: 800), () {
-        if (mounted) {
-          AlertService.showHazardAlert(
-            context,
-            titleHi: r.titleHi,
-            titleEn: r.titleEn,
-            bodyHi: '${_currentFarm?.village ?? "आपके क्षेत्र"} में ${r.expectedValue} का जोखिम है।',
-            bodyEn: 'Warning at ${_currentFarm?.village ?? "your location"}: ${r.expectedValue}.',
-            severity: 'orange',
-            actionHi: r.actionHi,
-            probability: r.probability,
-            lang: _lang,
-          );
-        }
-      });
     }
   }
 
@@ -205,12 +195,25 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
     final savedPhone = await StorageService.getUserPhone();
     if (savedPhone == null || savedPhone.isEmpty) return;
     final loc = _gpsLocationName ?? _currentFarm?.village ?? 'Farm';
-    final msg = 'KisanMausam Alert ($loc): ${r.titleEn.isNotEmpty ? r.titleEn : r.titleHi} (${r.expectedValue}). ${r.actionEn.isNotEmpty ? r.actionEn : r.actionHi}';
-    await _apiService.sendWeatherOrSosSms(
+    final msg = 'KisanMausam Climate Alert ($loc): ${r.titleEn.isNotEmpty ? r.titleEn : r.titleHi} (${r.expectedValue}). ${r.actionEn.isNotEmpty ? r.actionEn : r.actionHi}';
+    final sent = await _apiService.sendWeatherOrSosSms(
       phone: savedPhone,
       alertType: r.alertType,
       message: msg,
     );
+    if (sent && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: const Color(0xFF1B5E20),
+          duration: const Duration(seconds: 3),
+          content: Text(
+            _lang == 'hi'
+                ? '📲 मौसम परिवर्तन SMS +91 $savedPhone पर भेजा गया'
+                : '📲 Weather & Climate SMS sent to +91 $savedPhone',
+          ),
+        ),
+      );
+    }
   }
 
   /// Fetch GPS location and reload weather for current GPS position.
@@ -1569,6 +1572,20 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
               ),
               ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red.shade800,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+                  minimumSize: const Size(52, 34),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                ),
+                onPressed: () => _triggerSimulation('sos'),
+                icon: const Icon(Icons.sos_rounded, size: 15, color: Colors.white),
+                label: const Text('SOS', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900)),
+              ),
+              const SizedBox(width: 6),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF1B5E20),
                   foregroundColor: Colors.white,
                   elevation: 0,
@@ -1658,7 +1675,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
     final isRed = risk.severity == 'red';
     final isHi = _lang == 'hi';
     final title = isHi ? risk.titleHi : (risk.titleEn.isNotEmpty ? risk.titleEn : risk.titleHi);
-    final action = isHi ? risk.actionHi : (risk.actionEn.isNotEmpty ? risk.actionEn : risk.actionHi);
+    final action = isHi ? risk.actionHi : (risk.actionEn.isNotEmpty ? rActionFallback(risk) : risk.actionHi);
     final badgeLabel = isHi ? (isRed ? 'गंभीर चेतावनी' : 'चेतावनी') : (isRed ? 'RED ALERT' : 'WARNING');
     final timePrefix = isHi ? 'समय' : 'Time';
     final timeValue = risk.expectedDate ?? (isHi ? 'अगले 24-48 घंटे' : 'Next 24-48 hours');
@@ -1741,6 +1758,8 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
       ),
     );
   }
+
+  String rActionFallback(DetectedRisk risk) => risk.actionEn.isNotEmpty ? risk.actionEn : risk.actionHi;
 
   Widget _buildEnsoStatusCard() {
     final enso = _ensoData;
@@ -1858,6 +1877,11 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
 
   Widget _buildCropRecommenderEntryCard() {
     final isHi = _lang == 'hi';
+    final liveTemp = _weather?.current.temperature.toStringAsFixed(1);
+    final liveSoilRaw = _weather?.current.soilMoisture ?? 0.24;
+    final liveSoilPct = (liveSoilRaw <= 1.0 ? liveSoilRaw * 100 : liveSoilRaw).round();
+    final activeLoc = _gpsLocationName ?? _currentFarm?.getVillage(_lang) ?? (isHi ? 'उमरेड' : 'Umred');
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       padding: const EdgeInsets.all(16),
@@ -1915,6 +1939,32 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
             AppStrings.get('crop_recommender_subtitle', _lang),
             style: const TextStyle(fontSize: 13.5, color: Colors.black87, height: 1.35),
           ),
+          if (liveTemp != null) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.my_location, size: 13, color: Colors.blue.shade800),
+                  const SizedBox(width: 5),
+                  Flexible(
+                    child: Text(
+                      isHi
+                          ? 'GPS स्थिति ($activeLoc): $liveTemp°C • मिट्टी नमी $liveSoilPct%'
+                          : 'GPS Conditions ($activeLoc): $liveTemp°C • Soil Moisture $liveSoilPct%',
+                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Colors.blue.shade900),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 10),
           // Suggested crop teaser badges
           Wrap(
@@ -1950,9 +2000,12 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                     builder: (context) => CropRecommenderScreen(
                       farmId: _currentFarm?.id ?? 1,
                       farmName: _currentFarm?.getName(_lang) ?? (isHi ? 'मेरा खेत' : 'My Farm'),
-                      village: _gpsLocationName ?? _currentFarm?.getVillage(_lang) ?? (isHi ? 'उमरेड' : 'Umred'),
+                      village: activeLoc,
                       farm: _currentFarm,
                       lang: _lang,
+                      latitude: _gpsLat ?? _currentFarm?.latitude,
+                      longitude: _gpsLon ?? _currentFarm?.longitude,
+                      weather: _weather,
                     ),
                   ),
                 );
@@ -2165,6 +2218,9 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
       actionHi: actionsHi[scenario] ?? 'सावधानी बरतें।',
       probability: scenario == 'sos' ? 100.0 : 88.0,
       lang: _lang,
+      lat: _gpsLat ?? _currentFarm?.latitude,
+      lon: _gpsLon ?? _currentFarm?.longitude,
+      locationName: loc,
     );
 
     if (res != null) {

@@ -1,31 +1,103 @@
+import 'dart:async';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_tts/flutter_tts.dart';
+import 'package:url_launcher/url_launcher.dart';
 
-/// Manages in-app alert sounds and pop-up dialogs.
+/// Manages constant loud emergency sirens, continuous Android TTS voice warnings,
+/// heavy vibration feedback, and Android Native SOS (112) dispatch.
 class AlertService {
   static final AudioPlayer _player = AudioPlayer();
+  static final FlutterTts _tts = FlutterTts();
   static bool _isSoundPlaying = false;
+  static Timer? _vibrationTimer;
+  static Timer? _voiceLoopTimer;
 
-  /// Play the alert beep sound.
-  static Future<void> playAlertSound() async {
-    if (_isSoundPlaying) return;
+  /// Play the constant high-volume emergency siren + repeating strong voice alarm + vibration.
+  static Future<void> playAlertSound({
+    String? voiceText,
+    String lang = 'hi',
+  }) async {
     _isSoundPlaying = true;
+
+    // 1. Continuous heavy vibration pulse
+    _vibrationTimer?.cancel();
+    _vibrationTimer = Timer.periodic(const Duration(milliseconds: 600), (_) {
+      if (_isSoundPlaying) {
+        HapticFeedback.heavyImpact();
+      }
+    });
+
+    // 2. Constant looping loud emergency siren at 100% volume
     try {
       await _player.stop();
-      await _player.play(AssetSource('sounds/alert.wav'));
-      _player.onPlayerComplete.listen((_) => _isSoundPlaying = false);
-    } catch (e) {
-      _isSoundPlaying = false;
+      await _player.setReleaseMode(ReleaseMode.loop);
+      await _player.setVolume(1.0);
+      await _player.play(AssetSource('sounds/alert.wav'), volume: 1.0);
+    } catch (_) {}
+
+    // 3. Strong, constant Android TTS voice announcement loop
+    if (voiceText != null && voiceText.trim().isNotEmpty) {
+      _startConstantVoiceLoop(voiceText, lang);
     }
   }
 
-  /// Stop the alert sound.
-  static Future<void> stopAlertSound() async {
-    _isSoundPlaying = false;
-    await _player.stop();
+  static Future<void> _startConstantVoiceLoop(String text, String lang) async {
+    try {
+      await _tts.setLanguage(lang == 'en' ? 'en-IN' : 'hi-IN');
+      await _tts.setVolume(1.0);
+      await _tts.setSpeechRate(0.54);
+      await _tts.setPitch(1.15);
+      await _tts.speak(text);
+
+      _voiceLoopTimer?.cancel();
+      _voiceLoopTimer = Timer.periodic(const Duration(seconds: 7), (timer) async {
+        if (!_isSoundPlaying) {
+          timer.cancel();
+          return;
+        }
+        try {
+          await _tts.setVolume(1.0);
+          await _tts.speak(text);
+        } catch (_) {}
+      });
+    } catch (_) {}
   }
 
-  /// Show an in-app hazard alert dialog with SFX.
+  /// Stop the constant siren, voice loop, and vibration.
+  static Future<void> stopAlertSound() async {
+    _isSoundPlaying = false;
+    _vibrationTimer?.cancel();
+    _vibrationTimer = null;
+    _voiceLoopTimer?.cancel();
+    _voiceLoopTimer = null;
+    try {
+      await _player.setReleaseMode(ReleaseMode.stop);
+      await _player.stop();
+    } catch (_) {}
+    try {
+      await _tts.stop();
+    } catch (_) {}
+  }
+
+  /// Triggers Android Native Emergency SOS Dialer (112 National Emergency) or SMS with live GPS coordinates.
+  static Future<void> triggerAndroidSos({
+    String? locationName,
+    double? lat,
+    double? lon,
+  }) async {
+    final emergencyUri = Uri.parse('tel:112');
+    try {
+      await launchUrl(emergencyUri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      try {
+        await launchUrl(emergencyUri);
+      } catch (_) {}
+    }
+  }
+
+  /// Show an in-app hazard / SOS alert dialog with constant loud siren, strong voice, and Android SOS button.
   static Future<void> showHazardAlert(
     BuildContext context, {
     required String titleHi,
@@ -34,11 +106,21 @@ class AlertService {
     required String bodyEn,
     required String severity, // 'red' | 'orange' | 'yellow'
     required String actionHi,
+    String? actionEn,
     required double probability,
     required String lang,
+    double? lat,
+    double? lon,
+    String? locationName,
   }) async {
-    // Play sound in background without blocking dialog
-    playAlertSound().catchError((_) {});
+    final isHi = lang == 'hi';
+    final spokenAction = isHi ? actionHi : (actionEn ?? actionHi);
+    final spokenWarning = isHi
+        ? 'आपातकालीन मौसम चेतावनी! $titleHi। $bodyHi। $spokenAction'
+        : 'Emergency Weather SOS Alert! $titleEn. $bodyEn. $spokenAction';
+
+    // Start constant loud siren + constant strong voice + vibration in background
+    playAlertSound(voiceText: spokenWarning, lang: lang).catchError((_) {});
 
     if (!context.mounted) return;
 
@@ -52,7 +134,7 @@ class AlertService {
             : const Color(0xFFF57F17);
 
     final IconData alertIcon = isRed
-        ? Icons.warning_rounded
+        ? Icons.sos_rounded
         : isOrange
             ? Icons.warning_amber_rounded
             : Icons.info_outline;
@@ -83,7 +165,7 @@ class AlertService {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          lang == 'hi' ? titleHi : titleEn,
+                          isHi ? titleHi : titleEn,
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 18,
@@ -107,7 +189,7 @@ class AlertService {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    lang == 'hi' ? bodyHi : bodyEn,
+                    isHi ? bodyHi : bodyEn,
                     style: const TextStyle(fontSize: 14, height: 1.4),
                   ),
                   const SizedBox(height: 14),
@@ -125,14 +207,39 @@ class AlertService {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            actionHi,
+                            spokenAction,
                             style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                           ),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 12),
+                  // Native Android Emergency SOS button (112)
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFFB71C1C),
+                        side: const BorderSide(color: Color(0xFFB71C1C), width: 1.5),
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      icon: const Icon(Icons.emergency_share, size: 20),
+                      label: Text(
+                        isHi ? '🚨 Android आपातकालीन SOS (112 कॉल)' : '🚨 Android Emergency SOS (Call 112)',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                      onPressed: () {
+                        triggerAndroidSos(
+                          locationName: locationName,
+                          lat: lat,
+                          lon: lon,
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 6),
                   Text(
                     'स्रोत: Open-Meteo / IMD • ${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}',
                     style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
@@ -149,7 +256,7 @@ class AlertService {
               Navigator.pop(ctx);
             },
             child: Text(
-              lang == 'hi' ? 'ध्वनि बंद करें' : 'Stop Sound',
+              isHi ? 'ध्वनि बंद करें' : 'Stop Sound',
               style: const TextStyle(color: Colors.grey),
             ),
           ),
@@ -163,7 +270,7 @@ class AlertService {
               stopAlertSound();
               Navigator.pop(ctx);
             },
-            child: Text(lang == 'hi' ? 'समझ गया' : 'Got it'),
+            child: Text(isHi ? 'समझ गया' : 'Got it'),
           ),
         ],
       ),

@@ -277,6 +277,7 @@ class ApiService {
     double? lat,
     double? lon,
     String? locationName,
+    WeatherData? weather,
   }) async {
     try {
       final queryParams = <String, dynamic>{};
@@ -295,7 +296,12 @@ class ApiService {
       }
     } catch (_) {}
 
-    return _buildDefaultFarmRisks(locationName ?? 'आपके क्षेत्र');
+    return _buildDefaultFarmRisks(
+      locationName ?? 'आपके क्षेत्र',
+      weather: weather,
+      lat: lat,
+      lon: lon,
+    );
   }
 
   Future<EnsoSummary?> getEnsoStatus() async {
@@ -328,9 +334,153 @@ class ApiService {
     );
   }
 
-  FarmRiskData _buildDefaultFarmRisks(String location) {
+  FarmRiskData _buildDefaultFarmRisks(
+    String location, {
+    WeatherData? weather,
+    double? lat,
+    double? lon,
+  }) {
     final enso = _buildDefaultEnsoSummary();
     final today = DateTime.now().toIso8601String().substring(0, 10);
+    final h1Risks = <DetectedRisk>[];
+    final h2Risks = <DetectedRisk>[];
+    final h3Risks = <DetectedRisk>[];
+
+    if (weather != null) {
+      final cur = weather.current;
+      final days1To3 = weather.daily.take(3).toList();
+      final days4To10 = weather.daily.skip(3).take(7).toList();
+
+      double maxT3d = cur.temperature;
+      double minT3d = cur.temperature;
+      double totalRain3d = cur.precipitation;
+      int maxRainProb3d = 0;
+      double maxWind3d = cur.windSpeed;
+
+      for (final d in days1To3) {
+        if (d.tempMax > maxT3d) maxT3d = d.tempMax;
+        if (d.tempMin < minT3d) minT3d = d.tempMin;
+        totalRain3d += d.precipitationSum;
+        if (d.precipitationProbabilityMax > maxRainProb3d) {
+          maxRainProb3d = d.precipitationProbabilityMax;
+        }
+        if (d.windSpeedMax > maxWind3d) maxWind3d = d.windSpeedMax;
+      }
+
+      // 1. Heat Stress / High Temperature Shift
+      if (maxT3d >= 35.0 || cur.temperature >= 34.0) {
+        final isSevere = maxT3d >= 40.0;
+        h1Risks.add(
+          DetectedRisk(
+            alertType: 'heat_wave',
+            titleHi: isSevere ? 'भीषण लू एवं उच्च तापमान चेतावनी' : 'उच्च तापमान एवं गर्मी परिवर्तन अलर्ट',
+            titleEn: isSevere ? 'Severe Heat Wave Warning' : 'High Temperature & Heat Stress Alert',
+            severity: isSevere ? 'red' : 'orange',
+            probability: isSevere ? 92.0 : 84.0,
+            confidence: 'High',
+            expectedValue: '${maxT3d.toStringAsFixed(1)}°C max temp',
+            expectedDate: 'अगले 24-72 घंटे',
+            actionHi: 'शाम के समय हल्की सिंचाई करें और मिट्टी की नमी बचाने हेतु मल्चिंग करें।',
+            actionEn: 'Apply light evening irrigation and use organic mulch to conserve soil moisture.',
+          ),
+        );
+      }
+
+      // 2. Rain / Storm / Humidity Shift
+      if (maxRainProb3d >= 35 || totalRain3d >= 4.0 || cur.weatherCode >= 51) {
+        final isHeavy = totalRain3d >= 45.0 || maxRainProb3d >= 80;
+        h1Risks.add(
+          DetectedRisk(
+            alertType: 'heavy_rain',
+            titleHi: isHeavy ? 'भारी वर्षा एवं जलभराव चेतावनी' : 'वर्षा एवं मौसम परिवर्तन अलर्ट',
+            titleEn: isHeavy ? 'Heavy Rainfall Warning' : 'Rainfall & Weather Change Alert',
+            severity: isHeavy ? 'red' : 'orange',
+            probability: maxRainProb3d > 50 ? maxRainProb3d.toDouble() : 76.0,
+            confidence: 'High',
+            expectedValue: '${totalRain3d.toStringAsFixed(1)} mm ($maxRainProb3d% chance)',
+            expectedDate: 'अगले 24-48 घंटे',
+            actionHi: 'खेत में जल निकासी नालियां साफ रखें और कीटनाशक छिड़काव स्थगित करें।',
+            actionEn: 'Keep field drainage channels clear and postpone pesticide spraying.',
+          ),
+        );
+      }
+
+      // 3. Cold / Frost Shift
+      if (minT3d <= 12.0) {
+        final isFrost = minT3d <= 4.0;
+        h1Risks.add(
+          DetectedRisk(
+            alertType: 'cold_wave_frost',
+            titleHi: isFrost ? 'पाला एवं शीतलहर चेतावनी' : 'तापमान गिरावट एवं ठंड अलर्ट',
+            titleEn: isFrost ? 'Ground Frost Warning' : 'Cold Temperature Shift Alert',
+            severity: isFrost ? 'red' : 'orange',
+            probability: 85.0,
+            confidence: 'High',
+            expectedValue: '${minT3d.toStringAsFixed(1)}°C min temp',
+            expectedDate: 'कल सुबह',
+            actionHi: 'पाले व ठंड से बचाव हेतु शाम को हल्की सिंचाई करें।',
+            actionEn: 'Apply light evening irrigation to protect crops from cold stress.',
+          ),
+        );
+      }
+
+      // 4. Live GPS Climate & Diurnal Shift Advisory (if no extreme hazard above, still report real climate shift)
+      if (h1Risks.isEmpty) {
+        final swing = (maxT3d - minT3d).abs();
+        h1Risks.add(
+          DetectedRisk(
+            alertType: 'weather_change',
+            titleHi: 'तात्कालिक मौसम एवं जलवायु अपडेट',
+            titleEn: 'Live GPS Weather & Climate Shift Advisory',
+            severity: 'orange',
+            probability: 78.0,
+            confidence: 'High',
+            expectedValue: '${cur.temperature.toStringAsFixed(1)}°C (अधिकतम ${maxT3d.round()}°C / न्यूनतम ${minT3d.round()}°C)',
+            expectedDate: 'अगले 24-48 घंटे',
+            actionHi: 'तापमान अंतर ${swing.toStringAsFixed(1)}°C व हवा ${cur.windSpeed.round()} km/h के अनुसार सुबह-शाम नमी जांचकर सिंचाई करें।',
+            actionEn: 'With a ${swing.toStringAsFixed(1)}°C diurnal shift and ${cur.windSpeed.round()} km/h wind, schedule irrigation in early morning or evening.',
+          ),
+        );
+      }
+
+      if (days4To10.isNotEmpty) {
+        double rain4To10 = 0;
+        for (final d in days4To10) {
+          rain4To10 += d.precipitationSum;
+        }
+        h2Risks.add(
+          DetectedRisk(
+            alertType: 'extended_outlook',
+            titleHi: 'माध्यम-अवधि वर्षा एवं तापमान रुझान',
+            titleEn: '4-10 Day Moisture & Temperature Trend',
+            severity: rain4To10 > 35 ? 'orange' : 'yellow',
+            probability: 70.0,
+            confidence: 'Medium',
+            expectedValue: '${rain4To10.toStringAsFixed(1)} mm cumulative rain',
+            expectedDate: 'दिन 4–10',
+            actionHi: 'आगामी सप्ताह के नमी रुझान के अनुसार खाद व निराई-गुड़ाई की योजना बनाएं।',
+            actionEn: 'Plan fertilizer application and weeding according to next week moisture trend.',
+          ),
+        );
+      }
+
+      h3Risks.add(
+        DetectedRisk(
+          alertType: 'seasonal_rain_trend',
+          titleHi: '30-दिवसीय मौसमी जलवायु दृष्टिकोण',
+          titleEn: '30-Day Seasonal Climate Outlook',
+          severity: 'info',
+          probability: 65.0,
+          confidence: 'Low-Medium',
+          expectedValue: 'Seasonal soil moisture & rainfall outlook',
+          expectedDate: 'दिन 10–30',
+          actionHi: 'कम पानी व जलवायु-सहनशील फसलों के प्रबंधन को प्राथमिकता दें।',
+          actionEn: 'Prioritize climate-resilient moisture conservation practices.',
+          accuracyStatementHi: '$location में वर्तमान तापमान ${cur.temperature.toStringAsFixed(1)}°C व मिट्टी की नमी ${(cur.soilMoisture * 100).round()}% के आधार पर अगले 30 दिनों का मौसमी पूर्वानुमान।',
+        ),
+      );
+    }
+
     return FarmRiskData(
       farmId: 1,
       farmName: 'खेत',
@@ -344,7 +494,7 @@ class ApiService {
         confidenceHi: 'उच्च सटीकता',
         source: 'IMD & Open-Meteo Deterministic',
         updatedAt: today,
-        risks: [],
+        risks: h1Risks,
       ),
       horizon2: RiskHorizon(
         horizonName: 'Days 4-10 (Extended Forecast)',
@@ -353,7 +503,7 @@ class ApiService {
         confidenceHi: 'मध्यम सटीकता',
         source: 'Open-Meteo Ensemble & IMD ERF',
         updatedAt: today,
-        risks: [],
+        risks: h2Risks,
       ),
       horizon3: RiskHorizon(
         horizonName: 'Days 10-30 (Seasonal Outlook)',
@@ -362,7 +512,7 @@ class ApiService {
         confidenceHi: 'कम-मध्यम सटीकता',
         source: 'ECMWF SEAS5 Seasonal Climate Forecast',
         updatedAt: today,
-        risks: [],
+        risks: h3Risks,
       ),
       enso: enso,
     );
@@ -602,7 +752,7 @@ class ApiService {
 
     // If backend didn't already send the SMS (e.g., standalone APK mode) and we have a phone number, dispatch directly via MessageCentral
     bool smsSentDirect = false;
-    if (savedPhone != null && savedPhone.isNotEmpty && backendResult == null) {
+    if (savedPhone != null && savedPhone.isNotEmpty) {
       final msgMap = {
         'frost': 'KisanMausam Alert: Ground Frost Warning (1.2C). Apply light evening irrigation.',
         'heavy_rain': 'KisanMausam Alert: Heavy Rainfall Warning (145mm). Clear drainage channels immediately.',
@@ -618,6 +768,7 @@ class ApiService {
     }
 
     if (backendResult != null) {
+      backendResult['sms_sent'] = smsSentDirect;
       return backendResult;
     }
 

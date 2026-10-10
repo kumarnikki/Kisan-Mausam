@@ -164,7 +164,14 @@ class _OtpScreenState extends State<OtpScreen> {
         title: Text(AppStrings.get('phone_title', _lang)),
         actions: [
           TextButton(
-            onPressed: () => widget.onOtpVerified(),
+            onPressed: () {
+              final raw = _phoneController.text.replaceAll(RegExp(r'\D'), '');
+              if (raw.length >= 10) {
+                final mobile = raw.substring(raw.length - 10);
+                StorageService.saveUserPhone(mobile);
+              }
+              widget.onOtpVerified();
+            },
             child: Text(
               AppStrings.get('skip', _lang),
               style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),

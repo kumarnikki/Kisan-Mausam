@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import '../../services/api_service.dart';
 import '../../services/storage_service.dart';
 import 'otp_screen.dart';
 
@@ -14,7 +15,9 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
+  final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
+  final ApiService _apiService = ApiService();
   String _lang = 'hi';
   bool _isLoading = false;
   bool _showPassword = false;
@@ -30,11 +33,17 @@ class _LoginScreenState extends State<LoginScreen> {
     StorageService.getLanguage().then((l) {
       if (mounted) setState(() => _lang = l);
     });
+    StorageService.getUserPhone().then((p) {
+      if (p != null && p.isNotEmpty && mounted) {
+        _phoneController.text = p;
+      }
+    });
   }
 
   @override
   void dispose() {
     _emailController.dispose();
+    _phoneController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
@@ -48,6 +57,11 @@ class _LoginScreenState extends State<LoginScreen> {
         realSuccess = true;
         await StorageService.saveUserEmail(account.email);
         await StorageService.saveUserName(account.displayName ?? account.email);
+        final rawPhone = _phoneController.text.replaceAll(RegExp(r'\D'), '');
+        if (rawPhone.length >= 10) {
+          final mobile = rawPhone.substring(rawPhone.length - 10);
+          await StorageService.saveUserPhone(mobile);
+        }
         await StorageService.setOnboardingComplete(true);
         widget.onLoginSuccess();
         return;
@@ -72,6 +86,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final nameCtrl = TextEditingController(
       text: prefilledEmail.contains('@') ? prefilledEmail.split('@').first : 'किसान भाई',
     );
+    final phoneCtrl = TextEditingController(text: _phoneController.text.trim());
 
     await showDialog(
       context: context,
@@ -96,36 +111,51 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ],
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              _lang == 'hi'
-                  ? 'अपना Google / Gmail खाता विवरण दर्ज करें:'
-                  : 'Enter your Google / Gmail account details:',
-              style: const TextStyle(fontSize: 13, color: Colors.black87),
-            ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: emailCtrl,
-              keyboardType: TextInputType.emailAddress,
-              decoration: InputDecoration(
-                labelText: _lang == 'hi' ? 'Google ईमेल' : 'Google Email',
-                prefixIcon: const Icon(Icons.email_outlined, color: Colors.blue),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _lang == 'hi'
+                    ? 'अपना Google / Gmail खाता विवरण दर्ज करें:'
+                    : 'Enter your Google / Gmail account details:',
+                style: const TextStyle(fontSize: 13, color: Colors.black87),
               ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: nameCtrl,
-              decoration: InputDecoration(
-                labelText: _lang == 'hi' ? 'आपका नाम' : 'Your Name',
-                prefixIcon: const Icon(Icons.person_outline, color: Colors.blue),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              const SizedBox(height: 14),
+              TextField(
+                controller: emailCtrl,
+                keyboardType: TextInputType.emailAddress,
+                decoration: InputDecoration(
+                  labelText: _lang == 'hi' ? 'Google ईमेल' : 'Google Email',
+                  prefixIcon: const Icon(Icons.email_outlined, color: Colors.blue),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 12),
+              TextField(
+                controller: nameCtrl,
+                decoration: InputDecoration(
+                  labelText: _lang == 'hi' ? 'आपका नाम' : 'Your Name',
+                  prefixIcon: const Icon(Icons.person_outline, color: Colors.blue),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: phoneCtrl,
+                keyboardType: TextInputType.phone,
+                maxLength: 10,
+                decoration: InputDecoration(
+                  labelText: _lang == 'hi' ? 'मोबाइल नंबर (SMS अलर्ट हेतु)' : 'Mobile Number (for SMS Alerts)',
+                  prefixText: '+91 ',
+                  counterText: '',
+                  prefixIcon: const Icon(Icons.phone_android, color: Colors.blue),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -143,6 +173,7 @@ class _LoginScreenState extends State<LoginScreen> {
             onPressed: () async {
               final email = emailCtrl.text.trim();
               final name = nameCtrl.text.trim();
+              final rawPhone = phoneCtrl.text.replaceAll(RegExp(r'\D'), '');
               if (email.isEmpty || !email.contains('@')) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
@@ -155,6 +186,10 @@ class _LoginScreenState extends State<LoginScreen> {
               Navigator.pop(ctx);
               await StorageService.saveUserEmail(email);
               await StorageService.saveUserName(name.isNotEmpty ? name : email.split('@').first);
+              if (rawPhone.length >= 10) {
+                final mobile = rawPhone.substring(rawPhone.length - 10);
+                await StorageService.saveUserPhone(mobile);
+              }
               await StorageService.setOnboardingComplete(true);
               if (mounted) widget.onLoginSuccess();
             },
@@ -165,13 +200,23 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _handleEmailAuth() async {
-    final email = _emailController.text.trim();
+    final emailOrPhone = _emailController.text.trim();
+    final rawPhoneField = _phoneController.text.replaceAll(RegExp(r'\D'), '');
+    final rawInputDigits = emailOrPhone.replaceAll(RegExp(r'\D'), '');
     final password = _passwordController.text.trim();
 
-    if (email.isEmpty || !email.contains('@')) {
+    final isPhoneInFirstBox = !emailOrPhone.contains('@') && rawInputDigits.length >= 10;
+    final hasValidEmail = emailOrPhone.contains('@');
+    final hasValidPhone = isPhoneInFirstBox || rawPhoneField.length >= 10;
+
+    if (!hasValidEmail && !hasValidPhone) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(_lang == 'hi' ? 'कृपया सही ईमेल दर्ज करें' : 'Enter a valid email'),
+          content: Text(
+            _lang == 'hi'
+                ? 'कृपया सही ईमेल या 10 अंकों का मोबाइल नंबर दर्ज करें'
+                : 'Enter a valid email or 10-digit mobile number',
+          ),
           backgroundColor: Colors.red.shade700,
         ),
       );
@@ -189,10 +234,30 @@ class _LoginScreenState extends State<LoginScreen> {
 
     setState(() => _isLoading = true);
     try {
-      // In dev mode: accept any email+password with length >= 6
-      await Future.delayed(const Duration(milliseconds: 600));
-      await StorageService.saveUserEmail(email);
-      await StorageService.saveUserName(email.split('@').first);
+      String? mobileToSave;
+      if (rawPhoneField.length >= 10) {
+        mobileToSave = rawPhoneField.substring(rawPhoneField.length - 10);
+      } else if (isPhoneInFirstBox) {
+        mobileToSave = rawInputDigits.substring(rawInputDigits.length - 10);
+      }
+
+      final effectiveEmail = hasValidEmail
+          ? emailOrPhone
+          : '${mobileToSave ?? "farmer"}@kisanmausam.app';
+
+      await StorageService.saveUserEmail(effectiveEmail);
+      await StorageService.saveUserName(
+        hasValidEmail ? emailOrPhone.split('@').first : (_lang == 'hi' ? 'किसान (+91 $mobileToSave)' : 'Farmer (+91 $mobileToSave)'),
+      );
+      if (mobileToSave != null && mobileToSave.length == 10) {
+        await StorageService.saveUserPhone(mobileToSave);
+        // Immediately dispatch welcome & climate monitoring SMS to the registered number
+        _apiService.sendWeatherOrSosSms(
+          phone: mobileToSave,
+          alertType: 'account_weather_active',
+          message: 'KisanMausam: Your mobile +91$mobileToSave is now active for real-time GPS Weather, Climate Change & SOS SMS alerts.',
+        );
+      }
       await StorageService.setOnboardingComplete(true);
       if (mounted) widget.onLoginSuccess();
     } catch (e) {
@@ -318,13 +383,35 @@ class _LoginScreenState extends State<LoginScreen> {
 
               const SizedBox(height: 28),
 
-              // Email field
+              // Email or Mobile field
               TextField(
                 controller: _emailController,
                 keyboardType: TextInputType.emailAddress,
                 decoration: InputDecoration(
                   prefixIcon: const Icon(Icons.email_outlined, color: Color(0xFF1B5E20)),
-                  labelText: _lang == 'hi' ? 'ईमेल पता' : 'Email address',
+                  labelText: _lang == 'hi' ? 'ईमेल पता (या मोबाइल नंबर)' : 'Email address (or Mobile Number)',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(color: Color(0xFF1B5E20), width: 2),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // Mobile Number field (for Weather & Climate Change SMS Alerts)
+              TextField(
+                controller: _phoneController,
+                keyboardType: TextInputType.phone,
+                maxLength: 10,
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.phone_android, color: Color(0xFF1B5E20)),
+                  prefixText: '+91 ',
+                  counterText: '',
+                  labelText: _lang == 'hi'
+                      ? 'मोबाइल नंबर (मौसम व जलवायु SMS हेतु)'
+                      : 'Mobile Number (for Weather & Climate SMS)',
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
