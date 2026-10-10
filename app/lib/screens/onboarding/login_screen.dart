@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../../services/storage_service.dart';
+import 'otp_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   final VoidCallback onLoginSuccess;
@@ -423,11 +424,17 @@ class _LoginScreenState extends State<LoginScreen> {
                 onPressed: _isLoading
                     ? null
                     : () async {
-                        // Skip to OTP flow — mark that login step is done to
-                        // proceed to phone OTP
-                        await StorageService.saveUserEmail('phone_user@kisanmausam.app');
-                        await StorageService.saveUserName(_lang == 'hi' ? 'किसान उपयोगकर्ता' : 'Farmer User');
-                        widget.onLoginSuccess();
+                        await Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (ctx) => OtpScreen(
+                              onBack: () => Navigator.of(ctx).pop(),
+                              onOtpVerified: () {
+                                Navigator.of(ctx).pop();
+                                widget.onLoginSuccess();
+                              },
+                            ),
+                          ),
+                        );
                       },
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size(double.infinity, 52),

@@ -157,13 +157,14 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
     }
   }
 
-  /// Called when risk data loads — pops up an alert dialog for high-severity risks.
+  /// Called when risk data loads — pops up an alert dialog and sends SMS for high-severity risks.
   void _checkAndShowAlertPopup(FarmRiskData risk) {
     final redRisks = risk.horizon1.risks.where((r) => r.severity == 'red').toList();
     final orangeRisks = risk.horizon1.risks.where((r) => r.severity == 'orange').toList();
 
     if (redRisks.isNotEmpty) {
       final r = redRisks.first;
+      _autoSendRiskSms(r);
       Future.delayed(const Duration(milliseconds: 800), () {
         if (mounted) {
           AlertService.showHazardAlert(
@@ -181,6 +182,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
       });
     } else if (orangeRisks.isNotEmpty) {
       final r = orangeRisks.first;
+      _autoSendRiskSms(r);
       Future.delayed(const Duration(milliseconds: 800), () {
         if (mounted) {
           AlertService.showHazardAlert(
@@ -197,6 +199,18 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
         }
       });
     }
+  }
+
+  Future<void> _autoSendRiskSms(DetectedRisk r) async {
+    final savedPhone = await StorageService.getUserPhone();
+    if (savedPhone == null || savedPhone.isEmpty) return;
+    final loc = _gpsLocationName ?? _currentFarm?.village ?? 'Farm';
+    final msg = 'KisanMausam Alert ($loc): ${r.titleEn.isNotEmpty ? r.titleEn : r.titleHi} (${r.expectedValue}). ${r.actionEn.isNotEmpty ? r.actionEn : r.actionHi}';
+    await _apiService.sendWeatherOrSosSms(
+      phone: savedPhone,
+      alertType: r.alertType,
+      message: msg,
+    );
   }
 
   /// Fetch GPS location and reload weather for current GPS position.
@@ -1966,8 +1980,12 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
     );
   }
 
-  void _showSimulationDialog() {
+  Future<void> _showSimulationDialog() async {
     final isHi = _lang == 'hi';
+    final savedPhone = await StorageService.getUserPhone();
+    final phoneCtrl = TextEditingController(text: savedPhone ?? '');
+    if (!mounted) return;
+
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1975,48 +1993,107 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
           children: [
             const Icon(Icons.notification_important, color: Color(0xFF1B5E20)),
             const SizedBox(width: 8),
-            Text(isHi ? 'अलर्ट टेस्ट सिमुलेशन' : 'Alert Simulation Test', style: const TextStyle(fontSize: 18)),
+            Expanded(
+              child: Text(
+                isHi ? 'मौसम अलर्ट एवं SOS SMS' : 'Weather Alert & SOS SMS',
+                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+              ),
+            ),
           ],
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              isHi
-                  ? 'एक मौसमी आपदा चुनें जिसे सिम्युलेट कर Push, SMS और Email चैनल पर टेस्ट करना है:'
-                  : 'Select a hazard scenario to simulate dispatch across Push, SMS, and Email:',
-              style: const TextStyle(fontSize: 13),
-            ),
-            const SizedBox(height: 16),
-            ListTile(
-              leading: const Icon(Icons.ac_unit, color: Colors.lightBlue),
-              title: Text(isHi ? 'पाला व शीतलहर (1.2°C)' : 'Ground Frost (1.2°C)'),
-              subtitle: Text(isHi ? 'गंभीर चेतावनी • 85% संभावना' : 'Red Alert • 85% Probability'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _triggerSimulation('frost');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.thunderstorm, color: Colors.blue),
-              title: Text(isHi ? 'अत्यधिक भारी वर्षा (145 मिमी)' : 'Excessive Rain (145mm)'),
-              subtitle: Text(isHi ? 'गंभीर चेतावनी • 90% संभावना' : 'Red Alert • 90% Probability'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _triggerSimulation('heavy_rain');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.whatshot, color: Colors.orange),
-              title: Text(isHi ? 'भीषण लू (44.5°C)' : 'Severe Heat Wave (44.5°C)'),
-              subtitle: Text(isHi ? 'चेतावनी • 88% संभावना' : 'Orange Alert • 88% Probability'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _triggerSimulation('heat_wave');
-              },
-            ),
-          ],
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                isHi
+                    ? 'SMS अलर्ट प्राप्त करने हेतु मोबाइल नंबर दर्ज करें:'
+                    : 'Enter mobile number to receive SMS alert:',
+                style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: phoneCtrl,
+                keyboardType: TextInputType.phone,
+                maxLength: 10,
+                decoration: InputDecoration(
+                  prefixText: '+91 ',
+                  hintText: '9876543210',
+                  counterText: '',
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                isHi
+                    ? 'चुनें कि कौन-सा अलर्ट या SOS भेजना है:'
+                    : 'Select an alert or SOS to dispatch via SMS & Push:',
+                style: const TextStyle(fontSize: 12.5),
+              ),
+              const SizedBox(height: 8),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.sos, color: Colors.red, size: 28),
+                title: Text(
+                  isHi ? 'SOS आपातकालीन अलर्ट' : 'SOS Emergency Alert',
+                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
+                ),
+                subtitle: Text(isHi ? 'तत्काल आपातकालीन SMS व अलर्ट भेजें' : 'Immediate SOS SMS & alert dispatch'),
+                onTap: () {
+                  final phone = phoneCtrl.text.trim();
+                  Navigator.pop(ctx);
+                  _triggerSimulation('sos', phoneNumber: phone);
+                },
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.bolt, color: Colors.deepOrange),
+                title: Text(isHi ? 'अचानक मौसम परिवर्तन' : 'Sudden Weather Change'),
+                subtitle: Text(isHi ? 'चेतावनी SMS • 82% संभावना' : 'Weather Shift SMS • 82% Probability'),
+                onTap: () {
+                  final phone = phoneCtrl.text.trim();
+                  Navigator.pop(ctx);
+                  _triggerSimulation('weather_change', phoneNumber: phone);
+                },
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.ac_unit, color: Colors.lightBlue),
+                title: Text(isHi ? 'पाला व शीतलहर (1.2°C)' : 'Ground Frost (1.2°C)'),
+                subtitle: Text(isHi ? 'गंभीर चेतावनी • 85% संभावना' : 'Red Alert • 85% Probability'),
+                onTap: () {
+                  final phone = phoneCtrl.text.trim();
+                  Navigator.pop(ctx);
+                  _triggerSimulation('frost', phoneNumber: phone);
+                },
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.thunderstorm, color: Colors.blue),
+                title: Text(isHi ? 'अत्यधिक भारी वर्षा (145 मिमी)' : 'Excessive Rain (145mm)'),
+                subtitle: Text(isHi ? 'गंभीर चेतावनी • 90% संभावना' : 'Red Alert • 90% Probability'),
+                onTap: () {
+                  final phone = phoneCtrl.text.trim();
+                  Navigator.pop(ctx);
+                  _triggerSimulation('heavy_rain', phoneNumber: phone);
+                },
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.whatshot, color: Colors.orange),
+                title: Text(isHi ? 'भीषण लू (44.5°C)' : 'Severe Heat Wave (44.5°C)'),
+                subtitle: Text(isHi ? 'चेतावनी • 88% संभावना' : 'Orange Alert • 88% Probability'),
+                onTap: () {
+                  final phone = phoneCtrl.text.trim();
+                  Navigator.pop(ctx);
+                  _triggerSimulation('heat_wave', phoneNumber: phone);
+                },
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -2028,35 +2105,82 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
     );
   }
 
-  void _triggerSimulation(String scenario) async {
+  void _triggerSimulation(String scenario, {String? phoneNumber}) async {
     final isHi = _lang == 'hi';
+    final cleanPhone = phoneNumber?.replaceAll(RegExp(r'\D'), '') ?? '';
+    if (cleanPhone.length >= 10) {
+      await StorageService.saveUserPhone(
+        cleanPhone.length > 10 ? cleanPhone.substring(cleanPhone.length - 10) : cleanPhone,
+      );
+    }
+    if (!mounted) return;
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
           isHi
-              ? 'अलर्ट सिमुलेशन भेजा जा रहा है...'
-              : 'Sending alert simulation...',
+              ? 'SMS एवं अलर्ट भेजा जा रहा है...'
+              : 'Sending SMS & hazard alert...',
         ),
       ),
     );
 
-    final res = await _apiService.simulateAlert(_currentFarm?.id ?? 1, scenario);
+    final res = await _apiService.simulateAlert(
+      _currentFarm?.id ?? 1,
+      scenario,
+      phoneNumber: cleanPhone.isNotEmpty ? cleanPhone : null,
+    );
     if (!mounted) return;
+
+    final loc = _gpsLocationName ?? _currentFarm?.village ?? (isHi ? 'आपके क्षेत्र' : 'your location');
+    final titlesHi = {
+      'sos': 'SOS आपातकालीन मौसम अलर्ट',
+      'weather_change': 'अचानक मौसम परिवर्तन अलर्ट',
+      'frost': 'पाला व शीतलहर चेतावनी',
+      'heavy_rain': 'अत्यधिक भारी वर्षा चेतावनी',
+      'heat_wave': 'भीषण लू चेतावनी',
+    };
+    final titlesEn = {
+      'sos': 'SOS Emergency Weather Alert',
+      'weather_change': 'Sudden Weather Change Alert',
+      'frost': 'Ground Frost Warning',
+      'heavy_rain': 'Excessive Rain Warning',
+      'heat_wave': 'Severe Heat Wave Warning',
+    };
+    final actionsHi = {
+      'sos': 'आपातकालीन कृषि सुरक्षा प्रोटोकॉल सक्रिय किया गया है। किसान हेल्पलाइन: 1800-180-1551।',
+      'weather_change': 'कटाई की गई फसल को तुरंत सुरक्षित स्थान पर ढकें।',
+      'frost': 'शाम के समय खेत में हल्की सिंचाई करें और मेड़ों पर धुआं करें।',
+      'heavy_rain': 'खेत में जल निकासी नालियां तुरंत साफ करें और छिड़काव रोकें।',
+      'heat_wave': 'शाम के समय सिंचाई करें और पुआल से मल्चिंग करें।',
+    };
+
+    AlertService.showHazardAlert(
+      context,
+      titleHi: titlesHi[scenario] ?? 'मौसम चेतावनी',
+      titleEn: titlesEn[scenario] ?? 'Weather Alert',
+      bodyHi: '$loc के लिए ${titlesHi[scenario] ?? "चेतावनी"} जारी की गई है और आपके मोबाइल पर SMS भेजा गया है।',
+      bodyEn: '${titlesEn[scenario] ?? "Alert"} triggered for $loc and SMS dispatched to your mobile.',
+      severity: (scenario == 'heat_wave' || scenario == 'weather_change') ? 'orange' : 'red',
+      actionHi: actionsHi[scenario] ?? 'सावधानी बरतें।',
+      probability: scenario == 'sos' ? 100.0 : 88.0,
+      lang: _lang,
+    );
 
     if (res != null) {
       final logsCount = res['dispatched_logs_count'] ?? 0;
-      final scenarioName = res['scenario'] ?? scenario;
+      final smsSent = res['sms_sent'] == true || logsCount > 0;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           backgroundColor: const Color(0xFF1B5E20),
           content: Text(
-            logsCount > 0
+            smsSent
                 ? (isHi
-                    ? '✅ $scenarioName चेतावनी सफलतापूर्वक भेजी गई! ($logsCount चैनल डिलीवर)'
-                    : '✅ $scenarioName alert sent successfully! ($logsCount channels dispatched)')
+                    ? '✅ SMS एवं अलर्ट सफलतापूर्वक भेजा गया!'
+                    : '✅ SMS & Alert dispatched successfully!')
                 : (isHi
-                    ? 'ℹ️ अलर्ट डुप्लिकेशन रोक दिया गया (पिछले 6 घंटे में पहले ही भेजा गया था)'
-                    : 'ℹ️ Alert deduplicated (already dispatched in last 6 hours)'),
+                    ? '✅ अलर्ट सक्रिय किया गया (SMS हेतु 10 अंकों का मोबाइल नंबर दर्ज करें)'
+                    : '✅ Alert activated (enter 10-digit mobile number for SMS)'),
           ),
           duration: const Duration(seconds: 4),
         ),

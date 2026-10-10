@@ -117,11 +117,18 @@ class StorageService {
   // ── User account helpers ──────────────────────────────────────────────────
   static const String _keyUserEmail = 'user_email';
   static const String _keyUserName = 'user_name';
+  static const String _keyUserPhone = 'user_phone';
   static const String _keyIsLoggedIn = 'is_logged_in';
 
   static Future<void> saveUserEmail(String email) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyUserEmail, email);
+    await prefs.setBool(_keyIsLoggedIn, true);
+  }
+
+  static Future<void> saveUserPhone(String phone) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyUserPhone, phone.trim());
     await prefs.setBool(_keyIsLoggedIn, true);
   }
 
@@ -133,6 +140,11 @@ class StorageService {
   static Future<String?> getUserEmail() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(_keyUserEmail);
+  }
+
+  static Future<String?> getUserPhone() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyUserPhone);
   }
 
   static Future<String?> getUserName() async {
@@ -150,6 +162,7 @@ class StorageService {
     await prefs.remove(_keyIsLoggedIn);
     await prefs.remove(_keyUserEmail);
     await prefs.remove(_keyUserName);
+    await prefs.remove(_keyUserPhone);
   }
 
   /// Alias for setLanguage (used by login screen language toggle)

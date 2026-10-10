@@ -257,6 +257,18 @@ sequenceDiagram
     App->>Farmer: Renders Chat Bubble + Optional TTS Voice Output
 ```
 
+### 4.3 MessageCentral SMS & OTP Gateway (`backend/app/services/sms_service.py` & `app/lib/services/api_service.dart`)
+
+Real-time SMS delivery is powered by **MessageCentral VerifyNow (`https://cpaas.messagecentral.com/verification/v3`)** configured with Customer ID `C-188F16201F834F4`:
+1. **Phone Login & OTP Verification**:
+   - Tapping **Continue with Phone OTP** on `LoginScreen` opens `OtpScreen`.
+   - `sendOtpSms()` dispatches a live SMS OTP via `POST /verification/v3/send?countryCode=91&customerId=C-188F16201F834F4&flowType=SMS&mobileNumber=<10_digits>` and stores the `verificationId`.
+   - `verifyOtpSms()` validates the code via `GET /verification/v3/validateOtp` and persists the farmer's verified phone number in `StorageService.saveUserPhone()`.
+2. **Weather Change & Hazard Alert SMS**:
+   - Whenever `_checkAndShowAlertPopup()` detects a `red` or `orange` weather hazard in Horizon 1 (Days 1–3), it automatically dispatches an alert SMS to the farmer's saved mobile number via `sendWeatherOrSosSms()`.
+3. **SOS Emergency & Alert Simulation SMS**:
+   - Farmers can trigger an immediate **SOS Emergency Alert** (`sos`), **Sudden Weather Change** (`weather_change`), **Ground Frost** (`frost`), **Excessive Rain** (`heavy_rain`), or **Severe Heat Wave** (`heat_wave`) from the Weather Hazards card, dispatching a real SMS to their mobile handset alongside the in-app audio-visual alert.
+
 ---
 
 ## 5. Deployment & DevOps Architecture

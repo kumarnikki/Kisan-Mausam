@@ -21,8 +21,14 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
     
-    # SMS & Verification
-    SMS_PROVIDER: str = "mock"  # mock or msg91
+    # SMS & Verification (MessageCentral VerifyNow & Messaging)
+    SMS_PROVIDER: str = "messagecentral"  # messagecentral, msg91, or mock
+    MESSAGECENTRAL_CUSTOMER_ID: str = "C-188F16201F834F4"
+    MESSAGECENTRAL_AUTH_TOKEN: str = (
+        "eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJDLTE4OEYxNjIwMUY4MzRGNCIsImlhdCI6MTc5MTYwMTUyOSwiZXhwIjoxOTQ5MjgxNTI5fQ."
+        "1nLdw8qzfweZKwcXUGAtinaek7FaQLZ8424b9ohyNEZFFp4AwvcfBvkW_lNIcYPeug1tZrraw5UbgZRJaeZpog"
+    )
+    MESSAGECENTRAL_SENDER_ID: str = "UTOMOB"
     MSG91_AUTH_KEY: Optional[str] = None
     MSG91_SENDER_ID: str = "KISANW"
     DLT_ENTITY_ID: Optional[str] = None

@@ -25,18 +25,21 @@ async def send_otp(req: OTPRequest):
     phone = req.phone_number.strip()
     otp = AuthService.generate_otp(phone)
     sms_provider = get_sms_provider()
-    await sms_provider.send_otp(phone, otp)
+    verification_id = await sms_provider.send_otp(phone, otp)
     return {
         "status": "success",
-        "message": "OTP sent successfully",
+        "message": "OTP sent successfully via MessageCentral SMS",
         "phone_number": phone,
-        "dev_hint": f"In mock dev mode, OTP {otp} or 123456 is valid"
+        "verification_id": verification_id if isinstance(verification_id, str) else None,
+        "dev_hint": f"OTP sent via MessageCentral (fallback test OTP: {otp} or 123456)"
     }
 
 @router.post("/otp/verify", response_model=TokenResponse)
 async def verify_otp(req: OTPVerify, db: AsyncSession = Depends(get_db)):
     phone = req.phone_number.strip()
-    if not AuthService.verify_otp(phone, req.otp):
+    sms_provider = get_sms_provider()
+    verified_via_gateway = await sms_provider.validate_otp(phone, req.otp)
+    if not verified_via_gateway and not AuthService.verify_otp(phone, req.otp):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired OTP"

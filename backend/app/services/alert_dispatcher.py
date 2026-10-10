@@ -89,7 +89,9 @@ class AlertDispatcher:
         self,
         farm: Farm,
         hazard: Dict[str, Any],
-        subscription: Optional[AlertSubscription] = None
+        subscription: Optional[AlertSubscription] = None,
+        override_phone: Optional[str] = None,
+        bypass_limits: bool = False
     ) -> List[AlertDeliveryLog]:
         """
         Dispatches alert across configured channels with deduplication, quiet hours, and logging.
@@ -100,27 +102,28 @@ class AlertDispatcher:
         probability = float(hazard.get("probability", 50.0))
         confidence = hazard.get("confidence", "Medium")
         
-        # Check user-set minimum probability
-        min_prob = subscription.min_probability if subscription else 50.0
-        if probability < min_prob:
-            logger.info(f"Alert {alert_type} probability {probability}% is below subscription min {min_prob}%. Skipping.")
-            return []
+        if not bypass_limits:
+            # Check user-set minimum probability
+            min_prob = subscription.min_probability if subscription else 50.0
+            if probability < min_prob:
+                logger.info(f"Alert {alert_type} probability {probability}% is below subscription min {min_prob}%. Skipping.")
+                return []
 
-        # Check quiet hours (critical red bypasses quiet hours)
-        q_start = subscription.quiet_hours_start if subscription else 22
-        q_end = subscription.quiet_hours_end if subscription else 6
-        if severity != "red" and self.is_in_quiet_hours(q_start, q_end):
-            logger.info(f"Suppressing non-critical alert for farm {farm_id} during quiet hours ({q_start}:00-{q_end}:00).")
-            return []
+            # Check quiet hours (critical red bypasses quiet hours)
+            q_start = subscription.quiet_hours_start if subscription else 22
+            q_end = subscription.quiet_hours_end if subscription else 6
+            if severity != "red" and self.is_in_quiet_hours(q_start, q_end):
+                logger.info(f"Suppressing non-critical alert for farm {farm_id} during quiet hours ({q_start}:00-{q_end}:00).")
+                return []
 
-        # Rate Limit check
-        if not await self.check_rate_limit(farm_id, max_per_day=3):
-            logger.warning(f"Rate limit reached (max 3/day) for farm {farm_id}. Alert held.")
-            return []
+            # Rate Limit check
+            if not await self.check_rate_limit(farm_id, max_per_day=3):
+                logger.warning(f"Rate limit reached (max 3/day) for farm {farm_id}. Alert held.")
+                return []
 
-        # Deduplication check
-        if not await self.check_deduplication(farm_id, alert_type, severity, dedupe_window_hours=6):
-            return []
+            # Deduplication check
+            if not await self.check_deduplication(farm_id, alert_type, severity, dedupe_window_hours=6):
+                return []
 
         # Format short, plain messages
         village = farm.village or farm.district or "आपके क्षेत्र"
@@ -143,14 +146,14 @@ class AlertDispatcher:
         user_stmt = select(User).where(User.id == farm.user_id)
         user_res = await self.db.execute(user_stmt)
         user = user_res.scalars().first()
-        phone = user.phone_number if user else None
+        phone = override_phone or (user.phone_number if user else None)
         email = user.email if user else None
 
         channels_to_send = []
         if subscription:
             if subscription.channel_push:
                 channels_to_send.append("push")
-            if subscription.channel_sms and phone:
+            if (subscription.channel_sms or override_phone) and phone:
                 channels_to_send.append("sms")
             if subscription.channel_email and email:
                 channels_to_send.append("email")
@@ -174,7 +177,8 @@ class AlertDispatcher:
                             "crop": crop,
                             "village": village,
                             "probability": str(probability),
-                            "action": action_hi[:50]
+                            "action": action_hi[:50],
+                            "message": sms_text
                         }
                     )
                     status = "delivered"

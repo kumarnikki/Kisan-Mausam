@@ -170,12 +170,13 @@ async def get_delivery_logs(farm_id: int, limit: int = 50, db: AsyncSession = De
 @router.post("/simulate")
 async def simulate_hazard_alert(
     farm_id: int,
-    hazard_scenario: str = Query("frost", description="frost, heavy_rain, heat_wave, strong_wind"),
+    hazard_scenario: str = Query("frost", description="frost, heavy_rain, heat_wave, strong_wind, sos, weather_change"),
+    phone_number: Optional[str] = Query(None, description="Farmer phone number for SMS delivery"),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Simulates a dangerous weather scenario (e.g. frost or heavy rain)
-    and executes the full AlertDispatcher pipeline across Push, SMS, and Email.
+    Simulates a dangerous weather scenario (e.g. frost, heavy rain, or SOS emergency)
+    and executes the full AlertDispatcher pipeline across Push, SMS (MessageCentral), and Email.
     """
     stmt = select(Farm).where(Farm.id == farm_id)
     res = await db.execute(stmt)
@@ -240,6 +241,30 @@ async def simulate_hazard_alert(
             "expected_date": "आगामी 48 घंटे",
             "action_hi": "शाम के समय हल्की सिंचाई करें। पुआल या सूखी घास से मल्चिंग (Mulching) करें।",
             "action_en": "Apply light evening irrigation and cover soil with organic mulch."
+        },
+        "sos": {
+            "alert_type": "sos_emergency",
+            "title_hi": "SOS आपातकालीन कृषि मौसम अलर्ट",
+            "title_en": "SOS Emergency Agri-Weather Alert",
+            "severity": "red",
+            "probability": 100.0,
+            "confidence": "High",
+            "expected_value": "Emergency SOS Dispatch",
+            "expected_date": "तत्काल (Immediate)",
+            "action_hi": "आपातकालीन कृषि सहायता एवं मौसम सुरक्षा प्रोटोकॉल सक्रिय किया गया है। हेल्पलाइन: 1800-180-1551।",
+            "action_en": "Emergency agricultural support and weather safety protocol activated. Kisan Call Center: 1800-180-1551."
+        },
+        "weather_change": {
+            "alert_type": "weather_change",
+            "title_hi": "अचानक मौसम परिवर्तन अलर्ट",
+            "title_en": "Sudden Weather Change Alert",
+            "severity": "orange",
+            "probability": 82.0,
+            "confidence": "High",
+            "expected_value": "Sudden shift in wind & precipitation",
+            "expected_date": "आगामी 6-12 घंटे",
+            "action_hi": "कटाई की गई फसल को सुरक्षित स्थान पर ढकें और खुले में रखे कृषि उत्पादों को बचाएं।",
+            "action_en": "Cover harvested produce immediately and secure exposed farm equipment."
         }
     }
 
@@ -256,7 +281,9 @@ async def simulate_hazard_alert(
     logs = await dispatcher.dispatch_hazard_alert(
         farm=farm,
         hazard=selected_hazard,
-        subscription=sub
+        subscription=sub,
+        override_phone=phone_number,
+        bypass_limits=True
     )
 
     return {
