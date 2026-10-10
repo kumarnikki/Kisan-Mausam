@@ -230,40 +230,41 @@ class AmbientBackground extends StatelessWidget {
 
     switch (state) {
       case AmbientWeatherState.clearDay:
-        top = isDark ? const Color(0xFF1C1A10) : const Color(0xFFFFF4D6);
-        bottom = isDark ? const Color(0xFF12110B) : const Color(0xFFFFFBF0);
+        top = isDark ? const Color(0xFF231845) : const Color(0xFFA796FF);
+        bottom = isDark ? const Color(0xFF140D2B) : const Color(0xFF7B5DF9);
         break;
       case AmbientWeatherState.dawnDusk:
-        top = isDark ? const Color(0xFF241710) : const Color(0xFFFFE6CC);
-        bottom = isDark ? const Color(0xFF140E0A) : const Color(0xFFFFF6EC);
+        top = isDark ? const Color(0xFF281948) : const Color(0xFFB399FF);
+        bottom = isDark ? const Color(0xFF160E2E) : const Color(0xFF835FF8);
         break;
       case AmbientWeatherState.clearNight:
-        top = isDark ? const Color(0xFF0B1220) : const Color(0xFFE6ECF8);
-        bottom = isDark ? const Color(0xFF111A2E) : const Color(0xFFF5F7FC);
+        top = isDark ? const Color(0xFF171033) : const Color(0xFF7E68F2);
+        bottom = isDark ? const Color(0xFF0E0921) : const Color(0xFF5A3FE0);
         break;
       case AmbientWeatherState.cloudy:
-        top = isDark ? const Color(0xFF14181C) : const Color(0xFFECEFF1);
-        bottom = isDark ? const Color(0xFF0E1114) : const Color(0xFFF6F7F8);
+        top = isDark ? const Color(0xFF211740) : const Color(0xFFA292FF);
+        bottom = isDark ? const Color(0xFF130D28) : const Color(0xFF775AF7);
         break;
       case AmbientWeatherState.rain:
-        top = isDark ? const Color(0xFF0C1A24) : const Color(0xFFE1EEF6);
-        bottom = isDark ? const Color(0xFF08121A) : const Color(0xFFF3F8FB);
+        top = isDark ? const Color(0xFF1D163D) : const Color(0xFF968AFF);
+        bottom = isDark ? const Color(0xFF110C26) : const Color(0xFF6B52F2);
         break;
       case AmbientWeatherState.storm:
-        top = isDark ? const Color(0xFF151126) : const Color(0xFFE9E5F3);
-        bottom = isDark ? const Color(0xFF0D0A19) : const Color(0xFFF6F4FA);
+        top = isDark ? const Color(0xFF1B123A) : const Color(0xFF8976FA);
+        bottom = isDark ? const Color(0xFF0F0A24) : const Color(0xFF5D3FE8);
         break;
       case AmbientWeatherState.severeHeat:
-        top = isDark ? const Color(0xFF241109) : const Color(0xFFFDE6D6);
-        bottom = isDark ? const Color(0xFF150A05) : const Color(0xFFFFF6EE);
+        top = isDark ? const Color(0xFF2A1846) : const Color(0xFFB094FF);
+        bottom = isDark ? const Color(0xFF170D2B) : const Color(0xFF8156F6);
         break;
     }
 
     if (quiet) {
-      final neutral = isDark ? const Color(0xFF121512) : const Color(0xFFF8F9F8);
+      final neutralTop = isDark ? const Color(0xFF1C1436) : const Color(0xFFF6F3FF);
+      final neutralBottom = isDark ? const Color(0xFF130E26) : const Color(0xFFE7E0FF);
       return [
-        Color.lerp(top, neutral, 0.55)!,
-        Color.lerp(bottom, neutral, 0.65)!,
+        Color.lerp(top, neutralTop, 0.72)!,
+        Color.lerp(bottom, neutralBottom, 0.75)!,
       ];
     }
     return [top, bottom];
@@ -701,7 +702,7 @@ class ChoiceChipGroup<T> extends StatelessWidget {
   }
 }
 
-/// 56dp height Primary Button.
+/// 56dp height Pill Primary Button (matching 3D "Get Start" pill button in reference UI).
 class PrimaryButton extends StatelessWidget {
   final String label;
   final VoidCallback? onPressed;
@@ -719,19 +720,43 @@ class PrimaryButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bg = AppTheme.primaryButtonFill(context);
-    return SizedBox(
+    final isHc = AppTheme.isHighContrast(context);
+    return Container(
       width: double.infinity,
       height: 56,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppTheme.rPill),
+        gradient: isHc || onPressed == null
+            ? null
+            : const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFF6E3BFF),
+                  Color(0xFF521CE0),
+                ],
+              ),
+        boxShadow: isHc || onPressed == null
+            ? null
+            : [
+                BoxShadow(
+                  color: const Color(0xFF4B18D6).withValues(alpha: 0.38),
+                  blurRadius: 18,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+      ),
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(
-          backgroundColor: bg,
+          backgroundColor: isHc ? bg : Colors.transparent,
+          shadowColor: Colors.transparent,
           foregroundColor: Colors.white,
           disabledBackgroundColor: bg.withValues(alpha: 0.4),
           disabledForegroundColor: Colors.white70,
           elevation: 0,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppTheme.rInput),
-            side: AppTheme.isHighContrast(context)
+            borderRadius: BorderRadius.circular(AppTheme.rPill),
+            side: isHc
                 ? const BorderSide(color: Colors.black, width: 2)
                 : BorderSide.none,
           ),
@@ -772,7 +797,7 @@ class PrimaryButton extends StatelessWidget {
   }
 }
 
-/// 56dp height Secondary Outlined Button.
+/// 56dp height Secondary Outlined Pill Button.
 class SecondaryButton extends StatelessWidget {
   final String label;
   final VoidCallback? onPressed;
@@ -796,11 +821,11 @@ class SecondaryButton extends StatelessWidget {
           foregroundColor: fg,
           backgroundColor: AppTheme.surfaceFill(context),
           side: BorderSide(
-            color: fg,
-            width: AppTheme.isHighContrast(context) ? 2.0 : 1.2,
+            color: fg.withValues(alpha: 0.45),
+            width: AppTheme.isHighContrast(context) ? 2.0 : 1.4,
           ),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppTheme.rInput),
+            borderRadius: BorderRadius.circular(AppTheme.rPill),
           ),
         ),
         onPressed: onPressed,

@@ -1,21 +1,30 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
-  // Primary & Action Colors (WCAG AA verified >= 4.5:1 for body, >= 3:1 for large/UI)
-  static const Color primaryGreen = Color(0xFF1B5E20); // 7.85:1 on white
-  static const Color darkActionTint = Color(0xFF66BB6A); // 8.12:1 on dark bg
-  static const Color darkButtonFill = Color(0xFF2E7D32); // 5.13:1 with white text
+  // Primary 3D Lavender-Violet Brand Palette (matching reference UI)
+  static const Color primaryViolet = Color(0xFF622CFD);
+  static const Color primaryVioletDeep = Color(0xFF4B18D6);
+  static const Color periwinkleTop = Color(0xFFA594FF);
+  static const Color periwinkleMid = Color(0xFF8C75FF);
+  static const Color periwinkleBottom = Color(0xFF7559F6);
+  static const Color heroCardTop = Color(0xFFFBF9FF);
+  static const Color heroCardBottom = Color(0xFFEDE7FF);
+
+  // Kept as primaryGreen alias so all existing call sites use the new vibrant violet seamlessly
+  static const Color primaryGreen = primaryViolet;
+  static const Color darkActionTint = Color(0xFFA78BFA);
+  static const Color darkButtonFill = Color(0xFF622CFD);
 
   // Semantic Colors
-  static const Color danger = Color(0xFFC62828); // 5.62:1 on white
-  static const Color dangerDark = Color(0xFFFF8A80); // 8.40:1 on dark surface
-  static const Color warningText = Color(0xFFBF360C); // 5.32:1 on white
-  static const Color warningDark = Color(0xFFFFAB91); // 9.10:1 on dark surface
-  static const Color cautionAmber = Color(0xFFF9A825); // Fill only, dark text #141A14 (9.38:1)
-  static const Color success = Color(0xFF2E7D32); // 5.13:1 on white
-  static const Color successDark = Color(0xFF81C784); // 8.60:1 on dark surface
-  static const Color info = Color(0xFF0277BD); // 4.86:1 on white
-  static const Color infoDark = Color(0xFF4FC3F7); // 8.90:1 on dark surface
+  static const Color danger = Color(0xFFD32F2F);
+  static const Color dangerDark = Color(0xFFFF8A80);
+  static const Color warningText = Color(0xFFC2410C);
+  static const Color warningDark = Color(0xFFFFAB91);
+  static const Color cautionAmber = Color(0xFFFFB800);
+  static const Color success = Color(0xFF16A34A);
+  static const Color successDark = Color(0xFF86EFAC);
+  static const Color info = Color(0xFF4F46E5);
+  static const Color infoDark = Color(0xFFA5B4FC);
 
   // Legacy and semantic aliases kept for clean call sites
   static const Color secondaryTerracotta = warningText;
@@ -28,21 +37,21 @@ class AppTheme {
   static const Color cautionAmberText = textPrimaryLight;
   static const Color primaryGreenDarkFill = darkButtonFill;
 
-  // Neutrals — Light
-  static const Color textPrimaryLight = Color(0xFF141A14);
-  static const Color textSecondaryLight = Color(0xFF424B43);
-  static const Color surfaceLight = Color(0xEBFFFFFF);
+  // Neutrals — Light (Deep Indigo-Violet typography on Frosted Lavender-White surfaces)
+  static const Color textPrimaryLight = Color(0xFF23154F);
+  static const Color textSecondaryLight = Color(0xFF6E6295);
+  static const Color surfaceLight = Color(0xF2F9F7FF);
   static const Color surfaceSolidLight = Color(0xFFFFFFFF);
-  static const Color outlineLight = Color(0x1F141A14);
-  static const Color bgLight = Color(0xFFF6F7F8);
+  static const Color outlineLight = Color(0x28622CFD);
+  static const Color bgLight = Color(0xFFEAE4FF);
 
-  // Neutrals — Dark
-  static const Color darkBg = Color(0xFF12110B);
-  static const Color surfaceCard = Color(0xFF1A201C);
-  static const Color surfaceDark = Color(0xE01A201C);
-  static const Color textPrimaryDark = Color(0xFFF2F5F2);
-  static const Color textSecondaryDark = Color(0xFFB8C4B9);
-  static const Color outlineDark = Color(0x26FFFFFF);
+  // Neutrals — Dark (Midnight Violet)
+  static const Color darkBg = Color(0xFF120D24);
+  static const Color surfaceCard = Color(0xFF1E1638);
+  static const Color surfaceDark = Color(0xEB21183D);
+  static const Color textPrimaryDark = Color(0xFFF6F4FF);
+  static const Color textSecondaryDark = Color(0xFFC4B8E8);
+  static const Color outlineDark = Color(0x33A78BFA);
 
   // Spacing Scale: 4 / 8 / 12 / 16 / 24 / 32
   static const double s4 = 4.0;
@@ -53,19 +62,19 @@ class AppTheme {
   static const double s32 = 32.0;
   static const double screenPadding = 16.0;
 
-  // Radii: 12 (inputs, chips), 20 (cards, sheets), 999 (pills)
-  static const double rInput = 12.0;
-  static const double rChip = 12.0;
-  static const double rCard = 20.0;
-  static const double rSheet = 20.0;
+  // Radii: 16 (inputs, chips), 24 (cards, sheets), 999 (pills)
+  static const double rInput = 16.0;
+  static const double rChip = 16.0;
+  static const double rCard = 24.0;
+  static const double rSheet = 28.0;
   static const double rPill = 999.0;
 
-  // Typography Scale (line-height >= 1.4 for Devanagari legibility)
+  // Typography Scale
   static const TextStyle heroTempStyle = TextStyle(
-    fontSize: 64,
+    fontSize: 80,
     fontWeight: FontWeight.w800,
-    height: 1.05,
-    letterSpacing: -1.5,
+    height: 1.0,
+    letterSpacing: -2.5,
   );
 
   static const TextStyle titleStyle = TextStyle(
@@ -82,7 +91,7 @@ class AppTheme {
 
   static const TextStyle bodyStyle = TextStyle(
     fontSize: 16,
-    fontWeight: FontWeight.w400,
+    fontWeight: FontWeight.w500,
     height: 1.45,
   );
 
@@ -103,46 +112,62 @@ class AppTheme {
   static bool isHighContrast(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return cs.primary == const Color(0xFF004D20) ||
-        Theme.of(context).cardTheme.shape is RoundedRectangleBorder &&
-            ((Theme.of(context).cardTheme.shape as RoundedRectangleBorder).side.width >= 2.0);
+        cs.primary == const Color(0xFF310096) ||
+        (Theme.of(context).cardTheme.shape is RoundedRectangleBorder &&
+            ((Theme.of(context).cardTheme.shape as RoundedRectangleBorder)
+                    .side
+                    .width >=
+                2.0));
   }
 
   static Color primaryActionColor(BuildContext context) {
-    if (isHighContrast(context)) return const Color(0xFF004D20);
-    return Theme.of(context).brightness == Brightness.dark ? darkActionTint : primaryGreen;
+    if (isHighContrast(context)) return const Color(0xFF310096);
+    return Theme.of(context).brightness == Brightness.dark
+        ? darkActionTint
+        : primaryViolet;
   }
 
   static Color accentTint(BuildContext context) => primaryActionColor(context);
 
   static Color primaryButtonFill(BuildContext context) {
-    if (isHighContrast(context)) return const Color(0xFF004D20);
-    return Theme.of(context).brightness == Brightness.dark ? darkButtonFill : primaryGreen;
+    if (isHighContrast(context)) return const Color(0xFF310096);
+    return Theme.of(context).brightness == Brightness.dark
+        ? darkButtonFill
+        : primaryViolet;
   }
 
   static Color textPrimary(BuildContext context) {
     if (isHighContrast(context)) return Colors.black;
-    return Theme.of(context).brightness == Brightness.dark ? textPrimaryDark : textPrimaryLight;
+    return Theme.of(context).brightness == Brightness.dark
+        ? textPrimaryDark
+        : textPrimaryLight;
   }
 
   static Color textSecondary(BuildContext context) {
     if (isHighContrast(context)) return const Color(0xFF1F1F1F);
-    return Theme.of(context).brightness == Brightness.dark ? textSecondaryDark : textSecondaryLight;
+    return Theme.of(context).brightness == Brightness.dark
+        ? textSecondaryDark
+        : textSecondaryLight;
   }
 
   static Color surfaceFill(BuildContext context) {
     if (isHighContrast(context)) return Colors.white;
-    return Theme.of(context).brightness == Brightness.dark ? surfaceDark : surfaceLight;
+    return Theme.of(context).brightness == Brightness.dark
+        ? surfaceDark
+        : surfaceLight;
   }
 
   static Color borderColor(BuildContext context) {
     if (isHighContrast(context)) return Colors.black;
-    return Theme.of(context).brightness == Brightness.dark ? outlineDark : outlineLight;
+    return Theme.of(context).brightness == Brightness.dark
+        ? outlineDark
+        : outlineLight;
   }
 
   static Color borderSubtle(BuildContext context) => borderColor(context);
 
   static double borderWidth(BuildContext context) {
-    return isHighContrast(context) ? 2.0 : 1.0;
+    return isHighContrast(context) ? 2.0 : 1.2;
   }
 
   static Color semanticDangerText(BuildContext context) {
@@ -152,17 +177,35 @@ class AppTheme {
 
   static Color semanticWarningText(BuildContext context) {
     if (isHighContrast(context)) return const Color(0xFF870000);
-    return Theme.of(context).brightness == Brightness.dark ? warningDark : warningText;
+    return Theme.of(context).brightness == Brightness.dark
+        ? warningDark
+        : warningText;
   }
 
   static Color semanticSuccessText(BuildContext context) {
     if (isHighContrast(context)) return const Color(0xFF004D20);
-    return Theme.of(context).brightness == Brightness.dark ? successDark : success;
+    return Theme.of(context).brightness == Brightness.dark
+        ? successDark
+        : success;
   }
 
   static Color semanticInfoText(BuildContext context) {
-    if (isHighContrast(context)) return const Color(0xFF01579B);
+    if (isHighContrast(context)) return const Color(0xFF310096);
     return Theme.of(context).brightness == Brightness.dark ? infoDark : info;
+  }
+
+  static List<BoxShadow> softShadow(BuildContext context) {
+    if (isHighContrast(context)) return const [];
+    final dark = isDark(context);
+    return [
+      BoxShadow(
+        color: dark
+            ? Colors.black.withValues(alpha: 0.35)
+            : const Color(0xFF622CFD).withValues(alpha: 0.10),
+        blurRadius: 24,
+        offset: const Offset(0, 10),
+      ),
+    ];
   }
 
   static TextTheme _buildTextTheme(Color primary, Color secondary) {
@@ -185,9 +228,9 @@ class AppTheme {
       brightness: Brightness.light,
       colorScheme: const ColorScheme(
         brightness: Brightness.light,
-        primary: primaryGreen,
+        primary: primaryViolet,
         onPrimary: Colors.white,
-        secondary: success,
+        secondary: primaryVioletDeep,
         onSecondary: Colors.white,
         error: danger,
         onError: Colors.white,
@@ -203,7 +246,7 @@ class AppTheme {
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(rCard),
-          side: const BorderSide(color: outlineLight, width: 1),
+          side: const BorderSide(color: outlineLight, width: 1.2),
         ),
         color: surfaceLight,
       ),
@@ -211,7 +254,7 @@ class AppTheme {
         backgroundColor: Colors.transparent,
         foregroundColor: textPrimaryLight,
         surfaceTintColor: Colors.transparent,
-        centerTitle: false,
+        centerTitle: true,
         elevation: 0,
       ),
       inputDecorationTheme: InputDecorationTheme(
@@ -220,15 +263,15 @@ class AppTheme {
         contentPadding: const EdgeInsets.symmetric(horizontal: s16, vertical: 14),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(rInput),
-          borderSide: const BorderSide(color: outlineLight, width: 1),
+          borderSide: const BorderSide(color: outlineLight, width: 1.2),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(rInput),
-          borderSide: const BorderSide(color: outlineLight, width: 1),
+          borderSide: const BorderSide(color: outlineLight, width: 1.2),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(rInput),
-          borderSide: const BorderSide(color: primaryGreen, width: 1.5),
+          borderSide: const BorderSide(color: primaryViolet, width: 1.8),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(rInput),
@@ -237,27 +280,28 @@ class AppTheme {
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          elevation: 0,
+          elevation: 4,
+          shadowColor: primaryViolet.withValues(alpha: 0.35),
           minimumSize: const Size(double.infinity, 56),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(rInput)),
-          backgroundColor: primaryGreen,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(rPill)),
+          backgroundColor: primaryViolet,
           foregroundColor: Colors.white,
           textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, height: 1.4),
         ),
       ),
       navigationBarTheme: NavigationBarThemeData(
-        height: 68,
-        elevation: 6,
-        shadowColor: Colors.black26,
-        backgroundColor: surfaceSolidLight,
+        height: 70,
+        elevation: 12,
+        shadowColor: const Color(0xFF4B18D6).withValues(alpha: 0.18),
+        backgroundColor: const Color(0xF6F7F5FF),
         surfaceTintColor: Colors.transparent,
-        indicatorColor: primaryGreen.withValues(alpha: 0.14),
+        indicatorColor: primaryViolet.withValues(alpha: 0.15),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
           return TextStyle(
             fontSize: 13,
             fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
-            color: selected ? primaryGreen : textSecondaryLight,
+            color: selected ? primaryViolet : textSecondaryLight,
             height: 1.3,
           );
         }),
@@ -273,15 +317,15 @@ class AppTheme {
         brightness: Brightness.dark,
         primary: darkActionTint,
         onPrimary: Colors.white,
-        secondary: successDark,
-        onSecondary: Colors.black,
+        secondary: primaryViolet,
+        onSecondary: Colors.white,
         error: dangerDark,
         onError: Colors.black,
         surface: surfaceCard,
         onSurface: textPrimaryDark,
         onSurfaceVariant: textSecondaryDark,
         outline: outlineDark,
-        surfaceContainerHighest: Color(0xFF242C26),
+        surfaceContainerHighest: Color(0xFF2B2050),
       ),
       scaffoldBackgroundColor: darkBg,
       textTheme: _buildTextTheme(textPrimaryDark, textSecondaryDark),
@@ -289,7 +333,7 @@ class AppTheme {
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(rCard),
-          side: const BorderSide(color: outlineDark, width: 1),
+          side: const BorderSide(color: outlineDark, width: 1.2),
         ),
         color: surfaceDark,
       ),
@@ -297,7 +341,7 @@ class AppTheme {
         backgroundColor: Colors.transparent,
         foregroundColor: textPrimaryDark,
         surfaceTintColor: Colors.transparent,
-        centerTitle: false,
+        centerTitle: true,
         elevation: 0,
       ),
       inputDecorationTheme: InputDecorationTheme(
@@ -306,15 +350,15 @@ class AppTheme {
         contentPadding: const EdgeInsets.symmetric(horizontal: s16, vertical: 14),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(rInput),
-          borderSide: const BorderSide(color: outlineDark, width: 1),
+          borderSide: const BorderSide(color: outlineDark, width: 1.2),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(rInput),
-          borderSide: const BorderSide(color: outlineDark, width: 1),
+          borderSide: const BorderSide(color: outlineDark, width: 1.2),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(rInput),
-          borderSide: const BorderSide(color: darkActionTint, width: 1.5),
+          borderSide: const BorderSide(color: darkActionTint, width: 1.8),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(rInput),
@@ -323,21 +367,22 @@ class AppTheme {
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          elevation: 0,
+          elevation: 4,
+          shadowColor: primaryViolet.withValues(alpha: 0.4),
           minimumSize: const Size(double.infinity, 56),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(rInput)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(rPill)),
           backgroundColor: darkButtonFill,
           foregroundColor: Colors.white,
           textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, height: 1.4),
         ),
       ),
       navigationBarTheme: NavigationBarThemeData(
-        height: 68,
-        elevation: 8,
+        height: 70,
+        elevation: 10,
         shadowColor: Colors.black54,
         backgroundColor: surfaceCard,
         surfaceTintColor: Colors.transparent,
-        indicatorColor: darkActionTint.withValues(alpha: 0.2),
+        indicatorColor: darkActionTint.withValues(alpha: 0.22),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
           return TextStyle(
@@ -358,7 +403,7 @@ class AppTheme {
       brightness: Brightness.light,
       colorScheme: const ColorScheme(
         brightness: Brightness.light,
-        primary: Color(0xFF004D20),
+        primary: Color(0xFF310096),
         onPrimary: Colors.white,
         secondary: Color(0xFFB71C1C),
         onSecondary: Colors.white,
@@ -384,7 +429,7 @@ class AppTheme {
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
         surfaceTintColor: Colors.transparent,
-        centerTitle: false,
+        centerTitle: true,
         elevation: 0,
       ),
       inputDecorationTheme: InputDecorationTheme(
@@ -401,7 +446,7 @@ class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(rInput),
-          borderSide: const BorderSide(color: Color(0xFF004D20), width: 2.5),
+          borderSide: const BorderSide(color: Color(0xFF310096), width: 2.5),
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
@@ -409,20 +454,20 @@ class AppTheme {
           elevation: 0,
           minimumSize: const Size(double.infinity, 56),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(rInput),
+            borderRadius: BorderRadius.circular(rPill),
             side: const BorderSide(color: Colors.black, width: 2),
           ),
-          backgroundColor: const Color(0xFF004D20),
+          backgroundColor: const Color(0xFF310096),
           foregroundColor: Colors.white,
           textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900, height: 1.4),
         ),
       ),
       navigationBarTheme: NavigationBarThemeData(
-        height: 68,
+        height: 70,
         elevation: 0,
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
-        indicatorColor: const Color(0xFF004D20),
+        indicatorColor: const Color(0xFF310096),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           return const TextStyle(
             fontSize: 13.5,
