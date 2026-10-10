@@ -39,7 +39,7 @@ Hindi-first hyper-local weather, multi-horizon IMD risk early warnings, GPS-cali
 - Aligned with India's **Digital Personal Data Protection (DPDP) Act 2023**.
 - Transactional SMS templates registered under **TRAI DLT** guidelines.
 """,
-    version="1.1.5",
+    version="1.2.0",
     lifespan=lifespan
 )
 
@@ -65,7 +65,7 @@ app.include_router(aws_cloud.router)
 async def root():
     return {
         "app_name": "KisanMausam Backend",
-        "version": "1.1.5",
+        "version": "1.2.0",
         "status": "online",
         "cloud_provider": "AWS (ap-south-1 Mumbai)",
         "environment": settings.ENVIRONMENT,
@@ -77,13 +77,13 @@ async def root():
 @app.get("/api/v1/app/version", tags=["App Updates"])
 async def get_app_version():
     return {
-        "version": "1.0.0",
-        "versionCode": 1,
-        "releaseName": "Kisan Mausam v1.0.0",
-        "apkUrl": "https://github.com/kumarnikki/Kisan-Mausam/releases/download/v1.0.0/kisan-mausam-release.apk",
+        "version": "1.2.0",
+        "versionCode": 16,
+        "releaseName": "Kisan Mausam v1.2.0 - Full UI/UX Redesign Edition",
+        "apkUrl": "https://github.com/kumarnikki/Kisan-Mausam/releases/download/v1.2.0/kisan-mausam-release.apk",
         "githubReleaseUrl": "https://github.com/kumarnikki/Kisan-Mausam/releases/latest",
-        "changelog": "• Real-time Gemini 3.5 Flash-lite AI Krishi Sahayak\n• Live GPS & hyper-local weather grounding\n• Direct KVK 1800-180-1551 phone dialer\n• One-click AWS EC2 cloud backend config\n• In-app seamless updates",
+        "changelog": "• Full Material 3 UI/UX Redesign with 7 dynamic Ambient Weather backgrounds\n• Persistent 3-tab bottom Navigation Bar (Weather, Ask AI Mic, Crops)\n• Above-the-fold IMD Hazard Status Rows & 30-day seasonal outlook\n• Protected Hold-to-Confirm SOS button with Siren, 112 & KVK 1800-180-1551\n• Redesigned Krishi Sahayak, Crop Recommender & Settings (System/Light/Dark + High Contrast)",
         "minRequiredVersion": "1.0.0",
-        "publishedAt": "2026-10-10T08:30:00Z"
+        "publishedAt": "2026-10-10T18:40:00Z"
     }
 

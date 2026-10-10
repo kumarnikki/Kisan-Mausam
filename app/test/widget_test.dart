@@ -11,6 +11,8 @@ import 'package:kisan_mausam/screens/chat/krishi_sahayak_screen.dart';
 import 'package:kisan_mausam/screens/crops/crop_recommender_screen.dart';
 import 'package:kisan_mausam/screens/settings/settings_screen.dart';
 import 'package:kisan_mausam/services/alert_service.dart';
+import 'package:kisan_mausam/theme/app_theme.dart';
+import 'package:kisan_mausam/widgets/glass_card.dart';
 
 void main() {
   setUp(() {
@@ -43,13 +45,11 @@ void main() {
     expect(find.textContaining('English'), findsWidgets);
     expect(find.text('आगे बढ़ें'), findsOneWidget);
 
-    // Verify back button is present and triggers callback
-    expect(find.byIcon(Icons.arrow_back), findsOneWidget);
-    await tester.tap(find.byIcon(Icons.arrow_back));
+    expect(find.byIcon(Icons.arrow_back_rounded), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.arrow_back_rounded));
     await tester.pumpAndSettle();
     expect(wentBack, isTrue);
 
-    // Tap proceed button
     final proceedBtn = find.text('आगे बढ़ें');
     await tester.ensureVisible(proceedBtn);
     await tester.tap(proceedBtn);
@@ -71,14 +71,12 @@ void main() {
     expect(find.textContaining('मोबाइल नंबर दर्ज करें'), findsWidgets);
     expect(find.text('छोड़ें'), findsOneWidget);
     expect(find.text('OTP प्राप्त करें'), findsOneWidget);
-    expect(find.byIcon(Icons.arrow_back), findsOneWidget);
+    expect(find.byIcon(Icons.arrow_back_rounded), findsOneWidget);
 
-    // Tap back button
-    await tester.tap(find.byIcon(Icons.arrow_back));
+    await tester.tap(find.byIcon(Icons.arrow_back_rounded));
     await tester.pumpAndSettle();
     expect(wentBack, isTrue);
 
-    // Tap skip
     await tester.tap(find.text('छोड़ें'));
     await tester.pumpAndSettle();
     expect(verified, isTrue);
@@ -99,9 +97,9 @@ void main() {
     expect(find.textContaining('स्थान अनुमति'), findsOneWidget);
     expect(find.textContaining('SMS चेतावनी'), findsOneWidget);
     expect(find.textContaining('पुश नोटिफिकेशन'), findsOneWidget);
-    expect(find.byIcon(Icons.arrow_back), findsOneWidget);
+    expect(find.byIcon(Icons.arrow_back_rounded), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.arrow_back));
+    await tester.tap(find.byIcon(Icons.arrow_back_rounded));
     await tester.pumpAndSettle();
     expect(wentBack, isTrue);
 
@@ -110,7 +108,7 @@ void main() {
     expect(accepted, isTrue);
   });
 
-  testWidgets('Test 5: FarmSetupScreen displays pickers & back button', (WidgetTester tester) async {
+  testWidgets('Test 5: FarmSetupScreen displays single-column ChoiceChipGroups & sticky Save button', (WidgetTester tester) async {
     bool created = false;
     bool wentBack = false;
     await tester.pumpWidget(MaterialApp(
@@ -125,9 +123,9 @@ void main() {
     expect(find.text('मिट्टी का प्रकार'), findsOneWidget);
     expect(find.text('सिंचाई व्यवस्था'), findsOneWidget);
     expect(find.text('फसल की अवस्था'), findsOneWidget);
-    expect(find.byIcon(Icons.arrow_back), findsOneWidget);
+    expect(find.byIcon(Icons.arrow_back_rounded), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.arrow_back));
+    await tester.tap(find.byIcon(Icons.arrow_back_rounded));
     await tester.pumpAndSettle();
     expect(wentBack, isTrue);
 
@@ -139,43 +137,37 @@ void main() {
     expect(created, isTrue);
   });
 
-  testWidgets('Test 6: WeatherHomeScreen displays top crop advisory button, bottom-right mic FAB, GPS & search buttons', (WidgetTester tester) async {
+  testWidgets('Test 6: WeatherHomeScreen displays top farm chip, HoldToConfirm SOS, Settings gear, and 3-tab NavigationBar', (WidgetTester tester) async {
     await tester.pumpWidget(MaterialApp(
       home: WeatherHomeScreen(onOpenSettings: () {}),
     ));
-    await tester.pump(const Duration(milliseconds: 200));
-
-    // Verify bottom-right Mic FAB and Top Crop Advisory button are visible
-    expect(find.byIcon(Icons.mic), findsOneWidget);
-    expect(find.text('फसल सुझाव'), findsOneWidget);
-
-    // Verify Top Bar elements: Settings button and Location button
-    expect(find.byIcon(Icons.settings), findsOneWidget);
-    expect(find.byIcon(Icons.location_on), findsOneWidget);
-
-    // Tap location selector to reveal GPS auto-locate and Search
-    await tester.tap(find.byIcon(Icons.location_on));
     await tester.pump(const Duration(milliseconds: 300));
-    expect(find.byIcon(Icons.my_location), findsOneWidget);
-    expect(find.byIcon(Icons.search), findsOneWidget);
+
+    // Verify persistent 3-tab NavigationBar (Weather, Ask mic, Crops)
+    expect(find.byType(NavigationBar), findsOneWidget);
+    expect(find.byType(HoldToConfirmButton), findsOneWidget);
+    expect(find.byIcon(Icons.settings_rounded), findsOneWidget);
+
+    // Tap farm switcher chip in top bar to open Location & farm bottom sheet
+    await tester.tap(find.byIcon(Icons.keyboard_arrow_down_rounded).first);
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byIcon(Icons.my_location_rounded), findsWidgets);
+    expect(find.byIcon(Icons.search_rounded), findsWidgets);
   });
 
-  testWidgets('Test 7: KrishiSahayakScreen renders AI chat, quick chips, back button and KVK helpline', (WidgetTester tester) async {
+  testWidgets('Test 7: KrishiSahayakScreen renders slim header, single KVK compliance line, centered mic, and 4 starter chips', (WidgetTester tester) async {
     await tester.pumpWidget(const MaterialApp(
       home: KrishiSahayakScreen(),
     ));
     await tester.pumpAndSettle();
 
-    expect(find.text('किसान मौसम कृषि सहायक'), findsOneWidget);
-    expect(find.textContaining('ICAR मानक:'), findsOneWidget);
-    expect(find.text('क्या आज पानी दूं? 💧'), findsOneWidget);
-    expect(find.text('पाले से कैसे बचाएं? ❄️'), findsOneWidget);
-    expect(find.byIcon(Icons.phone_in_talk), findsOneWidget);
-    expect(find.byIcon(Icons.arrow_back), findsOneWidget);
-    expect(find.byIcon(Icons.mic_none), findsOneWidget);
+    expect(find.textContaining('कृषि सहायक'), findsOneWidget);
+    expect(find.textContaining('KVK'), findsOneWidget);
+    expect(find.byIcon(Icons.call_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.mic_rounded), findsWidgets);
   });
 
-  testWidgets('Test 8: CropRecommenderScreen renders top 5 ranked crops & back button', (WidgetTester tester) async {
+  testWidgets('Test 8: CropRecommenderScreen renders #1 expanded crop card & expandable #2-#5 rows', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(1080, 2400);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(() => tester.view.resetPhysicalSize());
@@ -186,16 +178,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('फसल चयन व सिफारिशें'), findsOneWidget);
-    expect(find.byIcon(Icons.arrow_back), findsOneWidget);
-    expect(find.textContaining('विशेषज्ञ समीक्षा आवश्यक'), findsOneWidget);
-    expect(find.textContaining('शीर्ष 5 अनुशंसित फसलें'), findsOneWidget);
     expect(find.text('चना'), findsOneWidget);
     expect(find.text('सरसों'), findsOneWidget);
     expect(find.text('गेहूं'), findsOneWidget);
-    expect(find.text('फसल पर सवाल पूछें'), findsOneWidget);
   });
 
-  testWidgets('Test 9: SettingsScreen renders with back button and close callback', (WidgetTester tester) async {
+  testWidgets('Test 9: SettingsScreen renders segmented language/theme controls, Send test alert, and close callback', (WidgetTester tester) async {
     bool closed = false;
     await tester.pumpWidget(MaterialApp(
       home: SettingsScreen(
@@ -207,13 +195,15 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    expect(find.byIcon(Icons.arrow_back), findsOneWidget);
-    await tester.tap(find.byIcon(Icons.arrow_back));
+    expect(find.text('हिंदी'), findsOneWidget);
+    expect(find.text('English'), findsOneWidget);
+    expect(find.byIcon(Icons.arrow_back_rounded), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.arrow_back_rounded));
     await tester.pumpAndSettle();
     expect(closed, isTrue);
   });
 
-  testWidgets('Test 10: AlertService displays hazard dialog with sound effect action', (WidgetTester tester) async {
+  testWidgets('Test 10: AlertService displays restyled hazard dialog with severity strip and action', (WidgetTester tester) async {
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
         body: Builder(
@@ -251,28 +241,116 @@ void main() {
     expect(find.text('पाला व शीतलहर चेतावनी'), findsNothing);
   });
 
-  testWidgets('Test 11: CropRecommenderScreen renders pure English in English mode and pure Hindi in Hindi mode', (WidgetTester tester) async {
-    // English mode
+  testWidgets('Test 11: CropRecommenderScreen renders English in en mode and Hindi in hi mode', (WidgetTester tester) async {
     await tester.pumpWidget(const MaterialApp(
       home: CropRecommenderScreen(lang: 'en'),
     ));
     await tester.pumpAndSettle();
 
     expect(find.text('Crop Advisory & Recommendations'), findsOneWidget);
-    expect(find.text('Top 5 Recommended Crops'), findsOneWidget);
     expect(find.text('Chickpea'), findsOneWidget);
-    expect(find.text('Call Now'), findsOneWidget);
     expect(find.text('फसल चयन व सिफारिशें'), findsNothing);
 
-    // Hindi mode
     await tester.pumpWidget(const MaterialApp(
       home: CropRecommenderScreen(lang: 'hi'),
     ));
     await tester.pumpAndSettle();
 
     expect(find.text('फसल चयन व सिफारिशें'), findsOneWidget);
-    expect(find.text('शीर्ष 5 अनुशंसित फसलें'), findsOneWidget);
-    expect(find.text('कॉल करें'), findsOneWidget);
-    expect(find.text('Top 5 Recommended Crops'), findsNothing);
+    expect(find.text('चना'), findsOneWidget);
+  });
+
+  testWidgets('Test 12: Zero overflow at 360dp and textScaler 1.3 across light, dark, high-contrast, hi/en, and all 7 ambient states', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(360, 780);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      debugWeatherNotifier.value = null;
+    });
+
+    final themes = [
+      AppTheme.lightTheme(),
+      AppTheme.darkTheme(),
+      AppTheme.highContrastTheme(),
+    ];
+
+    for (final theme in themes) {
+      for (final lang in ['hi', 'en']) {
+        SharedPreferences.setMockInitialValues({'language': lang});
+
+        // 1. WeatherHomeScreen across all 7 ambient weather states + simulated hazards
+        for (final state in AmbientWeatherState.values) {
+          debugWeatherNotifier.value = DebugWeatherOverride(
+            ambientState: state,
+            forceActiveHazards: state == AmbientWeatherState.storm || state == AmbientWeatherState.severeHeat,
+            forceAllClear: state == AmbientWeatherState.clearDay,
+          );
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: theme,
+              builder: (ctx, child) => MediaQuery(
+                data: MediaQuery.of(ctx).copyWith(
+                  textScaler: const TextScaler.linear(1.3),
+                ),
+                child: child!,
+              ),
+              home: WeatherHomeScreen(onOpenSettings: () {}),
+            ),
+          );
+          await tester.pump(const Duration(milliseconds: 300));
+        }
+
+        // 2. KrishiSahayakScreen at 360dp & textScaler 1.3
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: theme,
+            builder: (ctx, child) => MediaQuery(
+              data: MediaQuery.of(ctx).copyWith(
+                textScaler: const TextScaler.linear(1.3),
+              ),
+              child: child!,
+            ),
+            home: KrishiSahayakScreen(lang: lang),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // 3. CropRecommenderScreen at 360dp & textScaler 1.3
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: theme,
+            builder: (ctx, child) => MediaQuery(
+              data: MediaQuery.of(ctx).copyWith(
+                textScaler: const TextScaler.linear(1.3),
+              ),
+              child: child!,
+            ),
+            home: CropRecommenderScreen(lang: lang),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // 4. SettingsScreen at 360dp & textScaler 1.3
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: theme,
+            builder: (ctx, child) => MediaQuery(
+              data: MediaQuery.of(ctx).copyWith(
+                textScaler: const TextScaler.linear(1.3),
+              ),
+              child: child!,
+            ),
+            home: SettingsScreen(
+              onClose: () {},
+              onLanguageChanged: () {},
+              onThemeChanged: () {},
+              onResetOnboarding: () {},
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+      }
+    }
   });
 }
+

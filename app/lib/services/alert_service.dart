@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../l10n/app_strings.dart';
+import '../theme/app_theme.dart';
+import '../widgets/glass_card.dart';
 
 /// Manages constant loud emergency sirens, continuous Android TTS voice warnings,
 /// heavy vibration feedback, and Android Native SOS (112) dispatch.
@@ -15,6 +18,8 @@ class AlertService {
   static bool _isSoundPlaying = false;
   static Timer? _vibrationTimer;
   static Timer? _voiceLoopTimer;
+
+  static bool get isSoundPlaying => _isSoundPlaying;
 
   /// Requests Android SEND_SMS, READ_PHONE_STATE & POST_NOTIFICATIONS permissions so weather change SMS dispatches automatically.
   static Future<void> requestSmsPermission() async {
@@ -143,7 +148,7 @@ class AlertService {
     } catch (_) {}
   }
 
-  /// Triggers Android Native Emergency SOS Dialer (112 National Emergency) or SMS with live GPS coordinates.
+  /// Triggers Android Native Emergency SOS Dialer (112 National Emergency).
   static Future<void> triggerAndroidSos({
     String? locationName,
     double? lat,
@@ -159,7 +164,273 @@ class AlertService {
     }
   }
 
-  /// Show an in-app hazard / SOS alert dialog with constant loud siren, strong voice, and Android SOS button.
+  /// Triggers Kisan Call Center Helpline Dialer (1800-180-1551).
+  static Future<void> callKisanHelpline() async {
+    final uri = Uri.parse('tel:18001801551');
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      try {
+        await launchUrl(uri);
+      } catch (_) {}
+    }
+  }
+
+  /// Full-screen / modal SOS-active surface (Step 4.3):
+  /// - Red header with "SOS active"
+  /// - Status line "SMS sent to +91 XXXXX XXXXX" with failure/retry state
+  /// - "Stop siren" as dominant primary button at top of actions
+  /// - "Call 112" and "Call Kisan helpline 1800-180-1551" as secondary buttons
+  /// - No fake "100% probability / RED ALERT" or weather source/date text
+  /// - Dismissing this surface automatically stops the siren
+  static Future<void> showSosActiveSurface(
+    BuildContext context, {
+    required String lang,
+    required String? phoneNumber,
+    required String locationName,
+    double? lat,
+    double? lon,
+    required Future<bool> Function() onSendSms,
+  }) async {
+    final isHi = lang == 'hi';
+    final spokenWarning = isHi
+        ? 'आपातकालीन एसओएस सक्रिय है! सायरन बज रहा है और आपातकालीन एसएमएस भेजा जा रहा है।'
+        : 'Emergency SOS active! Siren is sounding and emergency SMS is being dispatched.';
+
+    playAlertSound(voiceText: spokenWarning, lang: lang).catchError((_) {});
+
+    if (!context.mounted) return;
+
+    bool sirenActive = true;
+    bool smsSending = true;
+    bool smsSent = false;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      isDismissible: false,
+      enableDrag: false,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            // Trigger initial SMS send once
+            if (smsSending && !smsSent) {
+              Future.microtask(() async {
+                final ok = await onSendSms();
+                if (ctx.mounted) {
+                  setSheetState(() {
+                    smsSending = false;
+                    smsSent = ok;
+                  });
+                }
+              });
+            }
+
+            final displayPhone = (phoneNumber != null && phoneNumber.trim().isNotEmpty)
+                ? '+91 ${phoneNumber.trim()}'
+                : (isHi ? 'पंजीकृत मोबाइल नंबर' : 'registered mobile number');
+
+            String smsStatusText;
+            if (smsSending) {
+              smsStatusText = isHi
+                  ? '$displayPhone पर स्थान ($locationName) सहित SMS भेजा जा रहा है...'
+                  : 'Sending SMS with location ($locationName) to $displayPhone...';
+            } else if (smsSent) {
+              smsStatusText = isHi
+                  ? '$displayPhone पर आपातकालीन SMS भेज दिया गया है ($locationName)'
+                  : 'SMS sent to $displayPhone ($locationName)';
+            } else {
+              smsStatusText = isHi
+                  ? '$displayPhone पर SMS लंबित है (पुनः प्रयास करें या SMS अनुमति दें)'
+                  : 'SMS to $displayPhone could not be confirmed';
+            }
+
+            return PopScope(
+              canPop: true,
+              onPopInvokedWithResult: (didPop, _) {
+                stopAlertSound();
+              },
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Theme.of(ctx).scaffoldBackgroundColor,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(AppTheme.rSheet),
+                  ),
+                ),
+                child: SafeArea(
+                  top: false,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Red header with "SOS active"
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppTheme.s24,
+                          vertical: AppTheme.s24,
+                        ),
+                        decoration: const BoxDecoration(
+                          color: AppTheme.danger,
+                          borderRadius: BorderRadius.vertical(
+                            top: Radius.circular(AppTheme.rSheet),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.shield_rounded,
+                              color: Colors.white,
+                              size: 32,
+                            ),
+                            const SizedBox(width: AppTheme.s12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    AppStrings.get('sos_active_title', lang),
+                                    style: AppTheme.titleStyle.copyWith(
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    locationName,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(AppTheme.s24),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // SMS Status Surface
+                            AppSurface(
+                              padding: const EdgeInsets.all(AppTheme.s16),
+                              borderRadius: AppTheme.rInput,
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    smsSending
+                                        ? Icons.schedule_send_rounded
+                                        : (smsSent
+                                            ? Icons.check_circle_rounded
+                                            : Icons.error_outline_rounded),
+                                    color: smsSent
+                                        ? AppTheme.semanticSuccessText(ctx)
+                                        : AppTheme.semanticWarningText(ctx),
+                                    size: 24,
+                                  ),
+                                  const SizedBox(width: AppTheme.s12),
+                                  Expanded(
+                                    child: Text(
+                                      smsStatusText,
+                                      style: TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppTheme.textPrimary(ctx),
+                                        height: 1.4,
+                                      ),
+                                    ),
+                                  ),
+                                  if (!smsSending && !smsSent)
+                                    TextButton(
+                                      onPressed: () {
+                                        setSheetState(() {
+                                          smsSending = true;
+                                        });
+                                      },
+                                      child: Text(isHi ? 'पुनः भेजें' : 'Retry'),
+                                    ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: AppTheme.s24),
+
+                            // 1. Dominant Primary Action at top: Stop Siren
+                            DangerButton(
+                              icon: sirenActive
+                                  ? Icons.volume_off_rounded
+                                  : Icons.check_rounded,
+                              label: sirenActive
+                                  ? AppStrings.get('sos_stop_siren', lang)
+                                  : (isHi
+                                      ? 'सायरन बंद है • बंद करें'
+                                      : 'Siren stopped • Close'),
+                              onPressed: () {
+                                stopAlertSound();
+                                if (sirenActive) {
+                                  setSheetState(() => sirenActive = false);
+                                } else {
+                                  Navigator.pop(sheetCtx);
+                                }
+                              },
+                            ),
+                            const SizedBox(height: AppTheme.s12),
+
+                            // 2. Secondary Action: Call 112
+                            SecondaryButton(
+                              icon: Icons.call_rounded,
+                              label: AppStrings.get('sos_call_112', lang),
+                              onPressed: () => triggerAndroidSos(
+                                locationName: locationName,
+                                lat: lat,
+                                lon: lon,
+                              ),
+                            ),
+                            const SizedBox(height: AppTheme.s12),
+
+                            // 3. Secondary Action: Call Kisan Helpline 1800-180-1551
+                            SecondaryButton(
+                              icon: Icons.support_agent_rounded,
+                              label: AppStrings.get('sos_call_kvk', lang),
+                              onPressed: callKisanHelpline,
+                            ),
+                            if (!sirenActive) ...[
+                              const SizedBox(height: AppTheme.s12),
+                              TextButton(
+                                onPressed: () {
+                                  stopAlertSound();
+                                  Navigator.pop(sheetCtx);
+                                },
+                                child: Text(
+                                  isHi ? 'बंद करें' : 'Dismiss',
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppTheme.textSecondary(ctx),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    ).whenComplete(() {
+      stopAlertSound();
+    });
+  }
+
+  /// Show an in-app weather hazard popup dialog restyled to match the StatusRow / AppSurface design system.
   static Future<void> showHazardAlert(
     BuildContext context, {
     required String titleHi,
@@ -174,142 +445,144 @@ class AlertService {
     double? lat,
     double? lon,
     String? locationName,
+    bool isSos = false,
   }) async {
     final isHi = lang == 'hi';
     final spokenAction = isHi ? actionHi : (actionEn ?? actionHi);
     final spokenWarning = isHi
-        ? 'आपातकालीन मौसम चेतावनी! $titleHi। $bodyHi। $spokenAction'
-        : 'Emergency Weather SOS Alert! $titleEn. $bodyEn. $spokenAction';
+        ? 'मौसम चेतावनी! $titleHi। $bodyHi। $spokenAction'
+        : 'Weather Alert! $titleEn. $bodyEn. $spokenAction';
 
-    // Start constant loud siren + constant strong voice + vibration in background
     playAlertSound(voiceText: spokenWarning, lang: lang).catchError((_) {});
 
     if (!context.mounted) return;
 
     final isRed = severity == 'red';
     final isOrange = severity == 'orange';
-
-    final Color headerColor = isRed
-        ? const Color(0xFFB71C1C)
+    final Color stripColor = isRed
+        ? AppTheme.danger
         : isOrange
-            ? const Color(0xFFE65100)
-            : const Color(0xFFF57F17);
-
+            ? AppTheme.warningText
+            : AppTheme.cautionAmber;
     final IconData alertIcon = isRed
-        ? Icons.sos_rounded
+        ? Icons.warning_rounded
         : isOrange
-            ? Icons.warning_amber_rounded
-            : Icons.info_outline;
+            ? Icons.error_outline_rounded
+            : Icons.info_outline_rounded;
+    final String badgeText = isRed ? 'RED ALERT' : (isOrange ? 'WARNING' : 'WATCH');
 
-    await showDialog(
+    await showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppTheme.rCard),
+        ),
         contentPadding: EdgeInsets.zero,
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Colored header
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              decoration: BoxDecoration(
-                color: headerColor,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-              ),
-              child: Row(
-                children: [
-                  Icon(alertIcon, color: Colors.white, size: 32),
-                  const SizedBox(width: 12),
-                  Expanded(
+        content: ClipRRect(
+          borderRadius: BorderRadius.circular(AppTheme.rCard),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(width: 6, color: stripColor),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppTheme.s24),
                     child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(alertIcon, color: stripColor, size: 28),
+                            const SizedBox(width: AppTheme.s12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    isHi ? titleHi : titleEn,
+                                    style: AppTheme.sectionStyle.copyWith(
+                                      color: AppTheme.textPrimary(ctx),
+                                    ),
+                                  ),
+                                  if (!isSos) ...[
+                                    const SizedBox(height: AppTheme.s4),
+                                    Text(
+                                      '${probability.round()}% ${AppStrings.get('likelihood_suffix', lang)} • $badgeText',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w700,
+                                        color: stripColor,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: AppTheme.s12),
                         Text(
-                          isHi ? titleHi : titleEn,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
+                          isHi ? bodyHi : bodyEn,
+                          style: TextStyle(
+                            fontSize: 15,
+                            color: AppTheme.textPrimary(ctx),
+                            height: 1.45,
                           ),
                         ),
-                        Text(
-                          '${probability.round()}% संभावना • ${isRed ? "RED ALERT" : isOrange ? "WARNING" : "WATCH"}',
-                          style: const TextStyle(color: Colors.white70, fontSize: 12),
+                        const SizedBox(height: AppTheme.s12),
+                        Container(
+                          padding: const EdgeInsets.all(AppTheme.s12),
+                          decoration: BoxDecoration(
+                            color: AppTheme.cautionAmber.withValues(alpha: 0.16),
+                            borderRadius: BorderRadius.circular(AppTheme.rInput),
+                            border: Border.all(
+                              color: AppTheme.borderColor(ctx),
+                            ),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                Icons.check_circle_outline_rounded,
+                                color: AppTheme.primaryActionColor(ctx),
+                                size: 20,
+                              ),
+                              const SizedBox(width: AppTheme.s8),
+                              Expanded(
+                                child: Text(
+                                  spokenAction,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppTheme.textPrimary(ctx),
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
+                        if (!isSos) ...[
+                          const SizedBox(height: AppTheme.s12),
+                          Text(
+                            '${isHi ? "स्रोत" : "Source"}: Open-Meteo / IMD • ${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: AppTheme.textSecondary(ctx),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-            // Body
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    isHi ? bodyHi : bodyEn,
-                    style: const TextStyle(fontSize: 14, height: 1.4),
-                  ),
-                  const SizedBox(height: 14),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.amber.shade50,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.amber.shade300),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Icon(Icons.lightbulb, color: Colors.amber, size: 18),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            spokenAction,
-                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  // Native Android Emergency SOS button (112)
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFFB71C1C),
-                        side: const BorderSide(color: Color(0xFFB71C1C), width: 1.5),
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
-                      icon: const Icon(Icons.emergency_share, size: 20),
-                      label: Text(
-                        isHi ? '🚨 Android आपातकालीन SOS (112 कॉल)' : '🚨 Android Emergency SOS (Call 112)',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                      ),
-                      onPressed: () {
-                        triggerAndroidSos(
-                          locationName: locationName,
-                          lat: lat,
-                          lon: lon,
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'स्रोत: Open-Meteo / IMD • ${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}',
-                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                  ),
-                ],
-              ),
-            ),
-          ],
+          ),
         ),
         actions: [
           TextButton(
@@ -319,14 +592,14 @@ class AlertService {
             },
             child: Text(
               isHi ? 'ध्वनि बंद करें' : 'Stop Sound',
-              style: const TextStyle(color: Colors.grey),
+              style: TextStyle(color: AppTheme.textSecondary(ctx)),
             ),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: headerColor,
+              backgroundColor: stripColor,
               foregroundColor: Colors.white,
-              minimumSize: const Size(80, 36),
+              minimumSize: const Size(96, 48),
             ),
             onPressed: () {
               stopAlertSound();
@@ -336,6 +609,8 @@ class AlertService {
           ),
         ],
       ),
-    );
+    ).whenComplete(() {
+      stopAlertSound();
+    });
   }
 }

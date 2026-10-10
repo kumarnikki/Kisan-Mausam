@@ -6,6 +6,7 @@ import '../models/weather_models.dart';
 class StorageService {
   static const String _keyLanguage = 'selected_language';
   static const String _keyHighContrast = 'high_contrast_mode';
+  static const String _keyThemeMode = 'theme_mode';
   static const String _keyOnboardingDone = 'onboarding_done';
   static const String _keyProfileConfigured = 'profile_configured';
   static const String _keyFarms = 'saved_farms';
@@ -31,6 +32,16 @@ class StorageService {
   static Future<void> setHighContrast(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyHighContrast, value);
+  }
+
+  static Future<String> getThemeMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyThemeMode) ?? 'light';
+  }
+
+  static Future<void> setThemeMode(String mode) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyThemeMode, mode);
   }
 
   static Future<bool> isOnboardingComplete() async {

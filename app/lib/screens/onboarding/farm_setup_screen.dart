@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import '../../l10n/app_strings.dart';
 import '../../models/farm_profile.dart';
+import '../../services/location_service.dart';
 import '../../services/storage_service.dart';
+import '../../theme/app_theme.dart';
+import '../../widgets/glass_card.dart';
 
 class FarmSetupScreen extends StatefulWidget {
   final VoidCallback onFarmCreated;
@@ -26,8 +29,10 @@ class _FarmSetupScreenState extends State<FarmSetupScreen> {
   final _districtController = TextEditingController();
   final _stateController = TextEditingController();
   final _acresController = TextEditingController(text: '2.5');
-  final _cropController = TextEditingController();
+  final _customCropController = TextEditingController();
 
+  String _selectedCropKey = 'Wheat';
+  bool _isOtherCrop = false;
   String _terrain = 'plain';
   String _soilType = 'loamy';
   String _irrigationType = 'tube-well';
@@ -35,24 +40,36 @@ class _FarmSetupScreenState extends State<FarmSetupScreen> {
   String _lang = 'hi';
   double _lat = 21.1458;
   double _lon = 79.0882;
+  bool _detectingGps = false;
+  bool _touchedValidation = false;
 
   static const List<Map<String, String>> _popularCrops = [
-    {'hi': 'गेहूं', 'en': 'Wheat'},
-    {'hi': 'धान', 'en': 'Paddy'},
-    {'hi': 'चना', 'en': 'Chickpea'},
-    {'hi': 'सरसों', 'en': 'Mustard'},
-    {'hi': 'मक्का', 'en': 'Maize'},
-    {'hi': 'गन्ना', 'en': 'Sugarcane'},
-    {'hi': 'कपास', 'en': 'Cotton'},
-    {'hi': 'आलू', 'en': 'Potato'},
-    {'hi': 'सोयाबीन', 'en': 'Soybean'},
-    {'hi': 'सब्जियां', 'en': 'Vegetables'},
+    {'key': 'Wheat', 'hi': 'गेहूं', 'en': 'Wheat'},
+    {'key': 'Paddy', 'hi': 'धान', 'en': 'Paddy'},
+    {'key': 'Chickpea', 'hi': 'चना', 'en': 'Chickpea'},
+    {'key': 'Mustard', 'hi': 'सरसों', 'en': 'Mustard'},
+    {'key': 'Maize', 'hi': 'मक्का', 'en': 'Maize'},
+    {'key': 'Sugarcane', 'hi': 'गन्ना', 'en': 'Sugarcane'},
+    {'key': 'Cotton', 'hi': 'कपास', 'en': 'Cotton'},
+    {'key': 'Potato', 'hi': 'आलू', 'en': 'Potato'},
+    {'key': 'Soybean', 'hi': 'सोयाबीन', 'en': 'Soybean'},
+    {'key': 'Vegetables', 'hi': 'सब्जियां', 'en': 'Vegetables'},
   ];
 
   @override
   void initState() {
     super.initState();
     _loadExistingProfile();
+  }
+
+  bool _isPlaceholderLocation(String val) {
+    final lower = val.trim().toLowerCase();
+    return lower.isEmpty ||
+        lower == 'villae' ||
+        lower == 'village' ||
+        lower == 'district' ||
+        lower == 'my village' ||
+        lower == 'मेरा गांव';
   }
 
   Future<void> _loadExistingProfile() async {
@@ -74,25 +91,37 @@ class _FarmSetupScreenState extends State<FarmSetupScreen> {
       if (profileConfigured && farms.isNotEmpty) {
         final f = farms.first;
         _nameController.text = f.name;
-        _villageController.text = f.village;
-        _districtController.text = f.district;
+        _villageController.text = _isPlaceholderLocation(f.village) ? '' : f.village;
+        _districtController.text = _isPlaceholderLocation(f.district) ? '' : f.district;
         _stateController.text = f.state;
         _acresController.text = f.landSizeAcres.toString();
-        _cropController.text = f.currentCrop;
         _terrain = f.terrain;
         _soilType = f.soilType;
         _irrigationType = f.irrigationType;
         _cropStage = f.cropStage;
         _lat = f.latitude;
         _lon = f.longitude;
+
+        final existingCrop = f.currentCrop.trim();
+        final matched = _popularCrops.where((c) =>
+            existingCrop.toLowerCase().contains(c['en']!.toLowerCase()) ||
+            existingCrop.contains(c['hi']!));
+        if (matched.isNotEmpty) {
+          _selectedCropKey = matched.first['key']!;
+          _isOtherCrop = false;
+        } else if (existingCrop.isNotEmpty) {
+          _selectedCropKey = '__other__';
+          _isOtherCrop = true;
+          _customCropController.text = existingCrop;
+        }
       } else {
-        // Clean defaults for new account setup (not forcing Soybean)
-        _nameController.text = _lang == 'en' ? 'My Farm' : 'मेरा खेत';
+        _nameController.text = '';
         _villageController.text = '';
         _districtController.text = '';
         _stateController.text = '';
         _acresController.text = '2.5';
-        _cropController.text = _lang == 'en' ? 'Wheat' : 'गेहूं';
+        _selectedCropKey = 'Wheat';
+        _isOtherCrop = false;
       }
     });
   }
@@ -105,28 +134,97 @@ class _FarmSetupScreenState extends State<FarmSetupScreen> {
     _districtController.dispose();
     _stateController.dispose();
     _acresController.dispose();
-    _cropController.dispose();
+    _customCropController.dispose();
     super.dispose();
   }
 
-  void _saveFarm() async {
+  String _resolvedCropText() {
+    final isEn = _lang == 'en';
+    if (_isOtherCrop) {
+      return _customCropController.text.trim();
+    }
+    final match = _popularCrops.firstWhere(
+      (c) => c['key'] == _selectedCropKey,
+      orElse: () => _popularCrops.first,
+    );
+    return isEn ? match['en']! : match['hi']!;
+  }
+
+  bool get _isCropValid => _resolvedCropText().isNotEmpty;
+
+  bool get _isAcresValid {
+    final val = double.tryParse(_acresController.text.trim());
+    return val != null && val > 0 && val <= 10000;
+  }
+
+  bool get _isLocationValid {
+    final v = _villageController.text.trim();
+    final d = _districtController.text.trim();
+    if (v.isEmpty && d.isEmpty) return true;
+    return !_isPlaceholderLocation(v) && (d.isEmpty || !_isPlaceholderLocation(d));
+  }
+
+  bool get _isFormValid => _isCropValid && _isAcresValid && _isLocationValid;
+
+  Future<void> _detectGps() async {
+    setState(() => _detectingGps = true);
+    final res = await LocationService.getCurrentLocation(lang: _lang);
+    if (!mounted) return;
+    setState(() => _detectingGps = false);
+    if (res != null) {
+      final parts = res.displayName.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+      final detectedVillage = parts.isNotEmpty ? parts.first : '';
+      final detectedDistrict = parts.length > 1 ? parts[1] : detectedVillage;
+      setState(() {
+        _lat = res.latitude;
+        _lon = res.longitude;
+        if (!_isPlaceholderLocation(detectedVillage)) {
+          _villageController.text = detectedVillage;
+        }
+        if (!_isPlaceholderLocation(detectedDistrict)) {
+          _districtController.text = detectedDistrict;
+        }
+      });
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Text(
+            _lang == 'en'
+                ? 'Could not detect GPS location. Enter your village or district below.'
+                : 'GPS स्थान नहीं मिल सका। कृपया नीचे अपना गाँव या जिला लिखें।',
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _saveFarm() async {
+    setState(() => _touchedValidation = true);
+    if (!_isFormValid) return;
+
     final isEn = _lang == 'en';
     final farmerName = _farmerNameController.text.trim();
     if (farmerName.isNotEmpty) {
       await StorageService.saveUserName(farmerName);
     }
 
-    final cropText = _cropController.text.trim().isEmpty
+    final cropText = _resolvedCropText().isEmpty
         ? (isEn ? 'Wheat' : 'गेहूं')
-        : _cropController.text.trim();
+        : _resolvedCropText();
 
-    final villageText = _villageController.text.trim().isEmpty
-        ? (isEn ? 'My Village' : 'मेरा गांव')
-        : _villageController.text.trim();
+    final rawVillage = _villageController.text.trim();
+    final rawDistrict = _districtController.text.trim();
 
-    final districtText = _districtController.text.trim().isEmpty
-        ? villageText
-        : _districtController.text.trim();
+    final cleanVillage = _isPlaceholderLocation(rawVillage)
+        ? (rawDistrict.isNotEmpty && !_isPlaceholderLocation(rawDistrict)
+            ? rawDistrict
+            : (isEn ? 'Nagpur' : 'नागपुर'))
+        : rawVillage;
+
+    final cleanDistrict = _isPlaceholderLocation(rawDistrict)
+        ? cleanVillage
+        : rawDistrict;
 
     final farm = FarmProfile(
       id: 1,
@@ -137,8 +235,8 @@ class _FarmSetupScreenState extends State<FarmSetupScreen> {
           : _nameController.text.trim(),
       latitude: _lat,
       longitude: _lon,
-      village: villageText,
-      district: districtText,
+      village: cleanVillage,
+      district: cleanDistrict,
       state: _stateController.text.trim().isEmpty
           ? (isEn ? 'India' : 'भारत')
           : _stateController.text.trim(),
@@ -161,402 +259,357 @@ class _FarmSetupScreenState extends State<FarmSetupScreen> {
   @override
   Widget build(BuildContext context) {
     final isEn = _lang == 'en';
-    return Scaffold(
-      appBar: AppBar(
-        leading: widget.onBack != null
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back),
-                tooltip: _lang == 'hi' ? 'वापस जाएं' : 'Back',
-                onPressed: widget.onBack,
-              )
-            : null,
-        title: Text(
-          widget.isEditing
-              ? (isEn ? 'Edit Farmer & Crop Profile' : 'किसान व फसल प्रोफाइल संपादित करें')
-              : AppStrings.get('farm_setup_title', _lang),
-        ),
+    final textPrimary = AppTheme.textPrimary(context);
+
+    final cropOptions = <ChoiceChipOption<String>>[
+      ..._popularCrops.map(
+        (c) => ChoiceChipOption(value: c['key']!, label: isEn ? c['en']! : c['hi']!),
       ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
+      ChoiceChipOption(
+        value: '__other__',
+        label: AppStrings.get('crop_other', _lang),
+      ),
+    ];
+
+    final stageOptions = <ChoiceChipOption<String>>[
+      ChoiceChipOption(value: 'sowing', label: AppStrings.get('stage_sowing', _lang)),
+      ChoiceChipOption(value: 'vegetative', label: AppStrings.get('stage_vegetative', _lang)),
+      ChoiceChipOption(value: 'flowering', label: AppStrings.get('stage_flowering', _lang)),
+      ChoiceChipOption(value: 'grain_fill', label: AppStrings.get('stage_grain_fill', _lang)),
+      ChoiceChipOption(value: 'harvest', label: AppStrings.get('stage_harvest', _lang)),
+    ];
+
+    final terrainOptions = <ChoiceChipOption<String>>[
+      ChoiceChipOption(value: 'plain', label: AppStrings.get('terrain_plain', _lang)),
+      ChoiceChipOption(value: 'hilly', label: AppStrings.get('terrain_hilly', _lang)),
+      ChoiceChipOption(value: 'plateau', label: AppStrings.get('terrain_plateau', _lang)),
+      ChoiceChipOption(value: 'coastal', label: AppStrings.get('terrain_coastal', _lang)),
+      ChoiceChipOption(value: 'barren-dry', label: AppStrings.get('terrain_barren', _lang)),
+    ];
+
+    final soilOptions = <ChoiceChipOption<String>>[
+      ChoiceChipOption(value: 'alluvial', label: AppStrings.get('soil_alluvial', _lang)),
+      ChoiceChipOption(value: 'black', label: AppStrings.get('soil_black', _lang)),
+      ChoiceChipOption(value: 'red', label: AppStrings.get('soil_red', _lang)),
+      ChoiceChipOption(value: 'sandy', label: AppStrings.get('soil_sandy', _lang)),
+      ChoiceChipOption(value: 'loamy', label: AppStrings.get('soil_loamy', _lang)),
+    ];
+
+    final irrigationOptions = <ChoiceChipOption<String>>[
+      ChoiceChipOption(value: 'rain-fed', label: AppStrings.get('irrigation_rainfed', _lang)),
+      ChoiceChipOption(value: 'tube-well', label: AppStrings.get('irrigation_tubewell', _lang)),
+      ChoiceChipOption(value: 'canal', label: AppStrings.get('irrigation_canal', _lang)),
+    ];
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: AmbientBackground(
+        quiet: true,
+        child: SafeArea(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                widget.isEditing
-                    ? (isEn
-                        ? 'Update your name, crops, land area, and soil details anytime.'
-                        : 'अपना नाम, वर्तमान फसल, भूमि क्षेत्र और मिट्टी का विवरण यहाँ अपडेट करें।')
-                    : AppStrings.get('farm_setup_subtitle', _lang),
-                style: TextStyle(fontSize: 14.5, color: Colors.grey.shade700),
-              ),
-              const SizedBox(height: 20),
-
-              // 1. Farmer Name & Farm Name
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _farmerNameController,
-                      decoration: InputDecoration(
-                        labelText: isEn ? 'Farmer Name' : 'किसान का नाम',
-                        hintText: isEn ? 'Your Name' : 'आपका नाम',
-                        prefixIcon: const Icon(Icons.person_outline, color: Color(0xFF1B5E20)),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              // Header (with onboarding step indicator if not editing)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 6, 16, 4),
+                child: Row(
+                  children: [
+                    if (widget.onBack != null)
+                      IconAction(
+                        icon: Icons.arrow_back_rounded,
+                        semanticLabel: isEn ? 'Back' : 'वापस जाएं',
+                        onPressed: widget.onBack!,
+                      )
+                    else
+                      const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (!widget.isEditing)
+                            Text(
+                              isEn ? 'Step 4 of 4' : 'चरण 4 / 4',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.primaryActionColor(context),
+                              ),
+                            ),
+                          Text(
+                            widget.isEditing
+                                ? (isEn ? 'Edit Profile & Farm' : 'प्रोफाइल व खेत संपादित करें')
+                                : AppStrings.get('farm_setup_title', _lang),
+                            style: AppTheme.titleStyle.copyWith(color: textPrimary),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: TextField(
-                      controller: _nameController,
-                      decoration: InputDecoration(
-                        labelText: AppStrings.get('farm_name', _lang),
-                        prefixIcon: const Icon(Icons.agriculture, color: Color(0xFF1B5E20)),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-
-              // 2. Village & District
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _villageController,
-                      decoration: InputDecoration(
-                        labelText: AppStrings.get('village', _lang),
-                        hintText: isEn ? 'e.g. Rampur' : 'जैसे: रामपुर',
-                        prefixIcon: const Icon(Icons.home_work_outlined, color: Color(0xFF1B5E20)),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: TextField(
-                      controller: _districtController,
-                      decoration: InputDecoration(
-                        labelText: AppStrings.get('district', _lang),
-                        hintText: isEn ? 'e.g. Karnal' : 'जैसे: करनाल',
-                        prefixIcon: const Icon(Icons.location_city, color: Color(0xFF1B5E20)),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 22),
-
-              // 3. Current Crop Selection (Quick Chips + Custom Input)
-              Text(
-                isEn ? 'Select Your Crop(s)' : 'अपनी वर्तमान फसल चुनें',
-                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _popularCrops.map((cropMap) {
-                  final label = isEn ? cropMap['en']! : cropMap['hi']!;
-                  final isSelected = _cropController.text.trim().toLowerCase() == label.toLowerCase();
-                  return ChoiceChip(
-                    label: Text(
-                      label,
-                      style: TextStyle(
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                        color: isSelected ? const Color(0xFF1B5E20) : Colors.black87,
-                      ),
-                    ),
-                    selected: isSelected,
-                    selectedColor: const Color(0xFFE8F5E9),
-                    onSelected: (_) => setState(() => _cropController.text = label),
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _cropController,
-                      onChanged: (_) => setState(() {}),
-                      decoration: InputDecoration(
-                        labelText: AppStrings.get('current_crop', _lang),
-                        hintText: isEn ? 'Type or pick crop above' : 'ऊपर से चुनें या फसल लिखें',
-                        prefixIcon: const Icon(Icons.eco, color: Color(0xFF1B5E20)),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: TextField(
-                      controller: _acresController,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      decoration: InputDecoration(
-                        labelText: AppStrings.get('land_size', _lang),
-                        hintText: isEn ? 'Acres (e.g. 3.5)' : 'एकड़ (जैसे 3.5)',
-                        prefixIcon: const Icon(Icons.square_foot, color: Color(0xFF1B5E20)),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-
-              // 4. Crop Stage Picker
-              Text(
-                AppStrings.get('crop_stage', _lang),
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  _StageChip(
-                    label: AppStrings.get('stage_sowing', _lang),
-                    isSelected: _cropStage == 'sowing',
-                    onTap: () => setState(() => _cropStage = 'sowing'),
-                  ),
-                  _StageChip(
-                    label: AppStrings.get('stage_vegetative', _lang),
-                    isSelected: _cropStage == 'vegetative',
-                    onTap: () => setState(() => _cropStage = 'vegetative'),
-                  ),
-                  _StageChip(
-                    label: AppStrings.get('stage_flowering', _lang),
-                    isSelected: _cropStage == 'flowering',
-                    onTap: () => setState(() => _cropStage = 'flowering'),
-                  ),
-                  _StageChip(
-                    label: AppStrings.get('stage_grain_fill', _lang),
-                    isSelected: _cropStage == 'grain_fill',
-                    onTap: () => setState(() => _cropStage = 'grain_fill'),
-                  ),
-                  _StageChip(
-                    label: AppStrings.get('stage_harvest', _lang),
-                    isSelected: _cropStage == 'harvest',
-                    onTap: () => setState(() => _cropStage = 'harvest'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-
-              // 5. Terrain Picker (Big Icons)
-              Text(
-                AppStrings.get('terrain_title', _lang),
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [
-                  _BigIconPicker(
-                    icon: Icons.landscape_outlined,
-                    label: AppStrings.get('terrain_plain', _lang),
-                    isSelected: _terrain == 'plain',
-                    onTap: () => setState(() => _terrain = 'plain'),
-                  ),
-                  _BigIconPicker(
-                    icon: Icons.terrain,
-                    label: AppStrings.get('terrain_hilly', _lang),
-                    isSelected: _terrain == 'hilly',
-                    onTap: () => setState(() => _terrain = 'hilly'),
-                  ),
-                  _BigIconPicker(
-                    icon: Icons.filter_hdr,
-                    label: AppStrings.get('terrain_plateau', _lang),
-                    isSelected: _terrain == 'plateau',
-                    onTap: () => setState(() => _terrain = 'plateau'),
-                  ),
-                  _BigIconPicker(
-                    icon: Icons.waves,
-                    label: AppStrings.get('terrain_coastal', _lang),
-                    isSelected: _terrain == 'coastal',
-                    onTap: () => setState(() => _terrain = 'coastal'),
-                  ),
-                  _BigIconPicker(
-                    icon: Icons.wb_sunny_outlined,
-                    label: AppStrings.get('terrain_barren', _lang),
-                    isSelected: _terrain == 'barren-dry',
-                    onTap: () => setState(() => _terrain = 'barren-dry'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-
-              // 6. Soil Picker (Big Icons)
-              Text(
-                AppStrings.get('soil_title', _lang),
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [
-                  _BigIconPicker(
-                    icon: Icons.grass,
-                    label: AppStrings.get('soil_alluvial', _lang),
-                    isSelected: _soilType == 'alluvial',
-                    onTap: () => setState(() => _soilType = 'alluvial'),
-                  ),
-                  _BigIconPicker(
-                    icon: Icons.circle,
-                    label: AppStrings.get('soil_black', _lang),
-                    isSelected: _soilType == 'black',
-                    onTap: () => setState(() => _soilType = 'black'),
-                  ),
-                  _BigIconPicker(
-                    icon: Icons.grain,
-                    label: AppStrings.get('soil_red', _lang),
-                    isSelected: _soilType == 'red',
-                    onTap: () => setState(() => _soilType = 'red'),
-                  ),
-                  _BigIconPicker(
-                    icon: Icons.beach_access,
-                    label: AppStrings.get('soil_sandy', _lang),
-                    isSelected: _soilType == 'sandy',
-                    onTap: () => setState(() => _soilType = 'sandy'),
-                  ),
-                  _BigIconPicker(
-                    icon: Icons.spa,
-                    label: AppStrings.get('soil_loamy', _lang),
-                    isSelected: _soilType == 'loamy',
-                    onTap: () => setState(() => _soilType = 'loamy'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-
-              // 7. Irrigation Picker
-              Text(
-                AppStrings.get('irrigation_title', _lang),
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [
-                  _BigIconPicker(
-                    icon: Icons.cloudy_snowing,
-                    label: AppStrings.get('irrigation_rainfed', _lang),
-                    isSelected: _irrigationType == 'rain-fed',
-                    onTap: () => setState(() => _irrigationType = 'rain-fed'),
-                  ),
-                  _BigIconPicker(
-                    icon: Icons.water_drop,
-                    label: AppStrings.get('irrigation_tubewell', _lang),
-                    isSelected: _irrigationType == 'tube-well',
-                    onTap: () => setState(() => _irrigationType = 'tube-well'),
-                  ),
-                  _BigIconPicker(
-                    icon: Icons.alt_route,
-                    label: AppStrings.get('irrigation_canal', _lang),
-                    isSelected: _irrigationType == 'canal',
-                    onTap: () => setState(() => _irrigationType = 'canal'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 32),
-
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1B5E20),
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size(double.infinity, 52),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ],
                 ),
-                onPressed: _saveFarm,
-                icon: const Icon(Icons.check_circle_outline),
-                label: Text(
-                  widget.isEditing
-                      ? (isEn ? 'Save Profile & Crop Changes' : 'प्रोफाइल व फसल विवरण सहेजें')
+              ),
+
+              // Scrollable Single-Column Form
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppTheme.screenPadding,
+                    8,
+                    AppTheme.screenPadding,
+                    AppTheme.s24,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Section 1: Farm
+                      SectionHeader(title: AppStrings.get('profile_section_farm', _lang)),
+                      AppSurface(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            TextField(
+                              controller: _farmerNameController,
+                              textInputAction: TextInputAction.next,
+                              decoration: InputDecoration(
+                                labelText: AppStrings.get('farmer_name_label', _lang),
+                                hintText: isEn ? 'Enter your name' : 'अपना नाम लिखें',
+                                prefixIcon: const Icon(Icons.person_outline_rounded),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: _nameController,
+                              textInputAction: TextInputAction.next,
+                              decoration: InputDecoration(
+                                labelText: AppStrings.get('farm_name', _lang),
+                                hintText: isEn ? 'e.g. Home Field' : 'जैसे: मुख्य खेत',
+                                prefixIcon: const Icon(Icons.agriculture_rounded),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            SecondaryButton(
+                              label: _detectingGps
+                                  ? (isEn ? 'Detecting GPS...' : 'GPS खोजा जा रहा है...')
+                                  : AppStrings.get('use_current_gps', _lang),
+                              icon: Icons.my_location_rounded,
+                              onPressed: _detectingGps ? null : _detectGps,
+                            ),
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: _villageController,
+                              onChanged: (_) => setState(() {}),
+                              textInputAction: TextInputAction.next,
+                              decoration: InputDecoration(
+                                labelText: AppStrings.get('village', _lang),
+                                hintText: isEn ? 'e.g. Rampur' : 'जैसे: रामपुर',
+                                prefixIcon: const Icon(Icons.holiday_village_rounded),
+                                errorText: _touchedValidation && !_isLocationValid
+                                    ? (isEn ? 'Enter a valid village name' : 'सही गाँव का नाम लिखें')
+                                    : null,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: _districtController,
+                              onChanged: (_) => setState(() {}),
+                              textInputAction: TextInputAction.done,
+                              decoration: InputDecoration(
+                                labelText: AppStrings.get('district', _lang),
+                                hintText: isEn ? 'e.g. Karnal' : 'जैसे: करनाल',
+                                prefixIcon: const Icon(Icons.location_city_rounded),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: AppTheme.s24),
+
+                      // Section 2: Crop & Land Size
+                      SectionHeader(title: AppStrings.get('profile_section_crop', _lang)),
+                      AppSurface(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text(
+                              AppStrings.get('current_crop', _lang),
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: textPrimary,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            ChoiceChipGroup<String>(
+                              selectedValue: _isOtherCrop ? '__other__' : _selectedCropKey,
+                              options: cropOptions,
+                              onSelected: (val) {
+                                setState(() {
+                                  if (val == '__other__') {
+                                    _isOtherCrop = true;
+                                    _selectedCropKey = '__other__';
+                                  } else {
+                                    _isOtherCrop = false;
+                                    _selectedCropKey = val;
+                                  }
+                                });
+                              },
+                            ),
+                            AnimatedSize(
+                              duration: AppTheme.motionDuration(
+                                context,
+                                const Duration(milliseconds: 220),
+                              ),
+                              curve: Curves.easeOutCubic,
+                              child: _isOtherCrop
+                                  ? Padding(
+                                      padding: const EdgeInsets.only(top: 12),
+                                      child: TextField(
+                                        controller: _customCropController,
+                                        onChanged: (_) => setState(() {}),
+                                        decoration: InputDecoration(
+                                          labelText: AppStrings.get('crop_other', _lang),
+                                          hintText: AppStrings.get('crop_other_hint', _lang),
+                                          prefixIcon: const Icon(Icons.eco_rounded),
+                                          errorText: !_isCropValid
+                                              ? (isEn
+                                                  ? 'Please enter crop name'
+                                                  : 'कृपया फसल का नाम लिखें')
+                                              : null,
+                                        ),
+                                      ),
+                                    )
+                                  : const SizedBox.shrink(),
+                            ),
+                            const SizedBox(height: 16),
+                            TextField(
+                              controller: _acresController,
+                              onChanged: (_) => setState(() {}),
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              decoration: InputDecoration(
+                                labelText: AppStrings.get('land_size', _lang),
+                                hintText: '2.5',
+                                suffixText: AppStrings.get('acres_suffix', _lang),
+                                prefixIcon: const Icon(Icons.square_foot_rounded),
+                                errorText: !_isAcresValid
+                                    ? (isEn
+                                        ? 'Enter valid land size in acres'
+                                        : 'एकड़ में सही भूमि क्षेत्र दर्ज करें')
+                                    : null,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              AppStrings.get('crop_stage', _lang),
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: textPrimary,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            ChoiceChipGroup<String>(
+                              selectedValue: _cropStage,
+                              options: stageOptions,
+                              onSelected: (v) => setState(() => _cropStage = v),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: AppTheme.s24),
+
+                      // Section 3: Field Details (Terrain, Soil, Irrigation as text-only ChoiceChipGroups)
+                      SectionHeader(title: AppStrings.get('profile_section_field', _lang)),
+                      AppSurface(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text(
+                              AppStrings.get('terrain_title', _lang),
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: textPrimary,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            ChoiceChipGroup<String>(
+                              selectedValue: _terrain,
+                              options: terrainOptions,
+                              onSelected: (v) => setState(() => _terrain = v),
+                            ),
+                            const SizedBox(height: 18),
+                            Text(
+                              AppStrings.get('soil_title', _lang),
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: textPrimary,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            ChoiceChipGroup<String>(
+                              selectedValue: _soilType,
+                              options: soilOptions,
+                              onSelected: (v) => setState(() => _soilType = v),
+                            ),
+                            const SizedBox(height: 18),
+                            Text(
+                              AppStrings.get('irrigation_title', _lang),
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: textPrimary,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            ChoiceChipGroup<String>(
+                              selectedValue: _irrigationType,
+                              options: irrigationOptions,
+                              onSelected: (v) => setState(() => _irrigationType = v),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (!_isFormValid) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          isEn
+                              ? 'Please complete crop and land size to save.'
+                              : 'सहेजने के लिए कृपया फसल और भूमि क्षेत्र पूरा करें।',
+                          style: AppTheme.labelStyle.copyWith(color: AppTheme.danger),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+
+              // Sticky bottom Save bar (respects safe area and keyboard)
+              Container(
+                padding: const EdgeInsets.fromLTRB(
+                  AppTheme.screenPadding,
+                  10,
+                  AppTheme.screenPadding,
+                  12,
+                ),
+                decoration: BoxDecoration(
+                  color: AppTheme.surfaceFill(context),
+                  border: Border(top: BorderSide(color: AppTheme.borderColor(context))),
+                ),
+                child: PrimaryButton(
+                  label: widget.isEditing
+                      ? AppStrings.get('save_profile_btn', _lang)
                       : AppStrings.get('finish_setup', _lang),
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  icon: Icons.check_rounded,
+                  onPressed: _isFormValid ? _saveFarm : null,
                 ),
               ),
-              const SizedBox(height: 20),
             ],
           ),
         ),
       ),
-    );
-  }
-}
-
-class _BigIconPicker extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _BigIconPicker({
-    required this.icon,
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        width: 100,
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFFE8F5E9) : Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected ? const Color(0xFF1B5E20) : Colors.grey.shade300,
-            width: isSelected ? 2.5 : 1,
-          ),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, size: 32, color: isSelected ? const Color(0xFF1B5E20) : Colors.grey.shade700),
-            const SizedBox(height: 6),
-            Text(
-              label,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                color: isSelected ? const Color(0xFF1B5E20) : Colors.black87,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _StageChip extends StatelessWidget {
-  final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _StageChip({required this.label, required this.isSelected, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return ChoiceChip(
-      label: Text(label, style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
-      selected: isSelected,
-      selectedColor: const Color(0xFFE8F5E9),
-      labelStyle: TextStyle(color: isSelected ? const Color(0xFF1B5E20) : Colors.black87),
-      onSelected: (_) => onTap(),
     );
   }
 }

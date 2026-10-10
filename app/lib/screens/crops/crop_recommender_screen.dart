@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../../services/api_service.dart';
-import '../../services/storage_service.dart';
 import '../../models/farm_profile.dart';
 import '../../models/weather_models.dart';
+import '../../services/api_service.dart';
+import '../../services/storage_service.dart';
+import '../../theme/app_theme.dart';
+import '../../widgets/glass_card.dart';
 import '../chat/krishi_sahayak_screen.dart';
 
 class CropRecommendationItem {
@@ -39,19 +41,16 @@ class CropRecommendationItem {
     required this.needsExpertReview,
   });
 
-  static List<String> _localizeReasons(dynamic rawReasons, String cropNameEn, String lang) {
+  static List<String> _localizeReasons(dynamic rawReasons, String nameEn, String lang) {
     if (lang == 'en') {
-      final lower = cropNameEn.toLowerCase();
+      final lower = nameEn.toLowerCase();
       if (lower.contains('wheat')) {
         return [
-          'Primary food grain crop with excellent output under assured irrigation.',
-          'Well adapted to medium and heavy loam soils of region.',
-          'Current season is optimal for temperature and vegetative growth.',
-          'High yield potential with ICAR package of practices compliance.',
+          'Primary food grain crop well-suited for Black/Alluvial soils and canal/tube-well irrigation.',
+          'Ideal for Rabi season cool temperature range (12°C - 28°C).',
         ];
       } else if (lower.contains('chickpea') || lower.contains('gram')) {
         return [
-          'Current season (Rabi sowing) is highly favorable for chickpea.',
           'Black soil moisture retention capacity is optimal for chickpea root system.',
           'Low water requirement: safest choice for rainfed or deficit irrigation plots.',
           'Drought-tolerant traits provide resilience against 30-day deficit rain forecast.',
@@ -145,7 +144,10 @@ class CropRecommendationItem {
               .replaceAll('(Gram)', '')
               .replaceAll('(Mustard)', '')
               .trim())
-          : (json['drought_tolerant_alternative']?.toString().replaceAll(RegExp(r'\s*\([A-Za-z\s-]+\)'), '').trim()),
+          : (json['drought_tolerant_alternative']
+              ?.toString()
+              .replaceAll(RegExp(r'\s*\([A-Za-z\s-]+\)'), '')
+              .trim()),
       sourceCitation: json['source_citation'] ?? 'ICAR Guide',
       needsExpertReview: json['needs_expert_review'] ?? true,
     );
@@ -161,6 +163,8 @@ class CropRecommenderScreen extends StatefulWidget {
   final double? latitude;
   final double? longitude;
   final WeatherData? weather;
+  final VoidCallback? onBack;
+  final ValueChanged<String>? onAskCrop;
 
   const CropRecommenderScreen({
     super.key,
@@ -172,6 +176,8 @@ class CropRecommenderScreen extends StatefulWidget {
     this.latitude,
     this.longitude,
     this.weather,
+    this.onBack,
+    this.onAskCrop,
   });
 
   @override
@@ -179,12 +185,13 @@ class CropRecommenderScreen extends StatefulWidget {
 }
 
 class _CropRecommenderScreenState extends State<CropRecommenderScreen> {
+  // ignore: unused_field
   final ApiService _apiService = ApiService();
   bool _isLoading = true;
   late String _lang;
   late String _seasonTitle;
-  late String _climateOutlookSummary;
   List<CropRecommendationItem> _recommendations = [];
+  final Set<int> _expandedRanks = {};
 
   double _activeLat = 21.1458;
   double _activeLon = 79.0882;
@@ -204,9 +211,6 @@ class _CropRecommenderScreenState extends State<CropRecommenderScreen> {
     _activeLocationName = widget.village;
     _activeWeather = widget.weather;
     _seasonTitle = _lang == 'en' ? 'Rabi Season' : 'रबी सीजन';
-    _climateOutlookSummary = _lang == 'en'
-        ? 'Next 30 days: 35% below normal rainfall probability in region (EC46 / SEAS5)'
-        : 'आगामी 30 दिनों में क्षेत्र में 35% कम वर्षा की संभावना (EC46 / SEAS5)';
     _fetchRecommendations();
   }
 
@@ -223,7 +227,9 @@ class _CropRecommenderScreenState extends State<CropRecommenderScreen> {
       _activeLocationName = widget.village;
       if (widget.weather != null) _activeWeather = widget.weather;
       _applyGpsWeatherMetrics();
-      _recommendations = _getGpsDrivenRecommendations();
+      setState(() {
+        _recommendations = _getGpsDrivenRecommendations();
+      });
     }
   }
 
@@ -240,26 +246,17 @@ class _CropRecommenderScreenState extends State<CropRecommenderScreen> {
       _gpsRain10d = rSum;
     }
 
-    final cleanLoc = _lang == 'en'
-        ? (_activeLocationName.contains('Umred') || _activeLocationName.contains('उमरेड')
-            ? 'Umred'
-            : _activeLocationName.replaceAll(RegExp(r'[\u0900-\u097F]+'), '').trim())
-        : (_activeLocationName.contains('Umred') || _activeLocationName.contains('उमरेड')
-            ? 'उमरेड'
-            : _activeLocationName.replaceAll(RegExp(r'\s*\([A-Za-z\s-]+\)'), '').trim());
-    final locLabel = cleanLoc.isNotEmpty ? cleanLoc : (_lang == 'en' ? 'GPS Farm' : 'GPS क्षेत्र');
-
     final isHot = _gpsTemp >= 32.0;
     final isWet = _gpsRain10d >= 25.0 || _gpsHumidity >= 72.0;
 
     if (_lang == 'en') {
-      _seasonTitle = isHot ? 'Zaid / Warm Season' : (isWet ? 'Humid / Monsoon Transition' : 'Rabi Season');
-      _climateOutlookSummary =
-          'GPS Live ($locLabel): Temp ${_gpsTemp.toStringAsFixed(1)}°C, Soil Moisture ${(_gpsSoilMoisture * 100).round()}%, 10-Day Rain ${_gpsRain10d.toStringAsFixed(1)} mm (${_activeLat.toStringAsFixed(2)}°N, ${_activeLon.toStringAsFixed(2)}°E)';
+      _seasonTitle = isHot
+          ? 'Zaid / Warm Season'
+          : (isWet ? 'Humid / Monsoon Transition' : 'Rabi Season');
     } else {
-      _seasonTitle = isHot ? 'गर्म / जायद अनुकूल' : (isWet ? 'आर्द्र / नमी अनुकूल सीजन' : 'रबी सीजन');
-      _climateOutlookSummary =
-          'GPS लाइव ($locLabel): तापमान ${_gpsTemp.toStringAsFixed(1)}°C, मिट्टी की नमी ${(_gpsSoilMoisture * 100).round()}%, 10-दिवसीय वर्षा ${_gpsRain10d.toStringAsFixed(1)} मिमी (${_activeLat.toStringAsFixed(2)}°N, ${_activeLon.toStringAsFixed(2)}°E)';
+      _seasonTitle = isHot
+          ? 'गर्म / जायद अनुकूल'
+          : (isWet ? 'आर्द्र / नमी अनुकूल सीजन' : 'रबी सीजन');
     }
   }
 
@@ -268,7 +265,6 @@ class _CropRecommenderScreenState extends State<CropRecommenderScreen> {
       _isLoading = true;
     });
 
-    // 1. Load saved GPS coordinates and cached weather if not passed directly
     try {
       if (_activeWeather == null) {
         final savedLoc = await StorageService.getLastLocation();
@@ -304,20 +300,17 @@ class _CropRecommenderScreenState extends State<CropRecommenderScreen> {
     final isWet = rain10d >= 25.0 || hum >= 72 || soilPct >= 35;
     final isHotDry = temp >= 32.0 && rain10d < 15.0;
 
-    // Dynamic GPS-calibrated suitability scores based on temperature, rainfall & soil moisture
     final chickpeaScore = isHotDry ? 98 : (isWet ? 86 : 97);
     final mustardScore = isHotDry ? 95 : (isWet ? 84 : 94);
     final wheatScore = isWet ? 96 : (temp <= 27.0 ? 93 : 88);
     final fourthScore = isWet ? 92 : (isHotDry ? 90 : 85);
     final fifthScore = isWet ? 89 : 83;
 
-    final locEn = _activeLocationName.replaceAll(RegExp(r'[\u0900-\u097F]+'), '').replaceAll('()', '').trim();
-    final regionEn = locEn.isNotEmpty ? locEn : 'your GPS region';
-    final locHi = _activeLocationName.replaceAll(RegExp(r'\s*\([A-Za-z\s-]+\)'), '').trim();
-    final regionHi = locHi.isNotEmpty ? locHi : 'आपके GPS क्षेत्र';
+    final regionEn = _resolveDisplayLocation(true, fallback: 'your GPS region');
+    final regionHi = _resolveDisplayLocation(false, fallback: 'आपके GPS क्षेत्र');
 
     if (_lang == 'en') {
-      final list = <CropRecommendationItem>[
+      return <CropRecommendationItem>[
         CropRecommendationItem(
           rank: 1,
           nameHi: 'चना',
@@ -425,9 +418,8 @@ class _CropRecommenderScreenState extends State<CropRecommenderScreen> {
           needsExpertReview: true,
         ),
       ];
-      return list;
     } else {
-      final list = <CropRecommendationItem>[
+      return <CropRecommendationItem>[
         CropRecommendationItem(
           rank: 1,
           nameHi: 'चना',
@@ -535,7 +527,6 @@ class _CropRecommenderScreenState extends State<CropRecommenderScreen> {
           needsExpertReview: true,
         ),
       ];
-      return list;
     }
   }
 
@@ -545,510 +536,663 @@ class _CropRecommenderScreenState extends State<CropRecommenderScreen> {
     try {
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri);
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                _lang == 'en'
-                    ? 'KVK Helpline: 1800-180-1551'
-                    : 'KVK हेल्पलाइन: 1800-180-1551',
+        return;
+      }
+    } catch (_) {}
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          _lang == 'en'
+              ? 'KVK Helpline: 1800-180-1551'
+              : 'KVK हेल्पलाइन: 1800-180-1551',
+        ),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _showIcarExpertNoticeSheet() {
+    final isEn = _lang == 'en';
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => SheetScaffold(
+        title: isEn
+            ? 'ICAR / KVK Expert Review Notice'
+            : 'विशेषज्ञ समीक्षा आवश्यक (ICAR / KVK मानक)',
+        subtitle: isEn
+            ? 'Scientific crop suitability & local agronomy verification'
+            : 'वैज्ञानिक फसल उपयुक्तता एवं स्थानीय कृषि सत्यापन',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              isEn
+                  ? 'These crop recommendations are calibrated from live Open-Meteo GPS weather, root-zone soil moisture, and ICAR package of practices. Before purchasing seeds or applying fertilizers, please confirm seed varieties with your local Krishi Vigyan Kendra (KVK).'
+                  : 'ये फसल सिफारिशें लाइव GPS मौसम, मिट्टी की नमी और ICAR कृषि मानकों पर आधारित हैं। बीज खरीदने या बुवाई का अंतिम निर्णय लेने से पूर्व अपने नजदीकी कृषि विज्ञान केंद्र (KVK) के विशेषज्ञों से परामर्श अवश्य लें।',
+              style: AppTheme.bodyStyle.copyWith(
+                color: AppTheme.textPrimary(ctx),
               ),
-              backgroundColor: const Color(0xFF1B5E20),
             ),
-          );
-        }
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _lang == 'en'
-                  ? 'KVK Helpline: 1800-180-1551'
-                  : 'KVK हेल्पलाइन: 1800-180-1551',
+            const SizedBox(height: AppTheme.s16),
+            PrimaryButton(
+              icon: Icons.phone_in_talk_rounded,
+              label: isEn
+                  ? 'Call KVK Helpline (1800-180-1551)'
+                  : 'KVK हेल्पलाइन 1800-180-1551 पर कॉल करें',
+              onPressed: () {
+                Navigator.pop(ctx);
+                _callKvk();
+              },
             ),
-            backgroundColor: const Color(0xFF1B5E20),
-          ),
-        );
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _askAboutCrop(CropRecommendationItem item) {
+    final isEn = _lang == 'en';
+    final cropLabel = isEn ? item.nameEn : item.nameHi;
+    final prompt = isEn
+        ? 'Give me sowing and irrigation advice for $cropLabel in my field.'
+        : 'मेरे खेत में $cropLabel की बुवाई और सिंचाई के बारे में सलाह दें।';
+    if (widget.onAskCrop != null) {
+      widget.onAskCrop!(prompt);
+      return;
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => KrishiSahayakScreen(
+          farm: widget.farm,
+          locationName: _activeLocationName,
+          latitude: _activeLat,
+          longitude: _activeLon,
+          weather: _activeWeather,
+          lang: _lang,
+          initialPrompt: prompt,
+        ),
+      ),
+    );
+  }
+
+  String _formatTolerance(String level) {
+    final isEn = _lang == 'en';
+    switch (level.toLowerCase()) {
+      case 'high':
+        return isEn ? 'High' : 'उच्च';
+      case 'medium':
+        return isEn ? 'Medium' : 'मध्यम';
+      default:
+        return isEn ? 'Low' : 'कम';
+    }
+  }
+
+  String _resolveDisplayLocation(bool isEn, {required String fallback}) {
+    final raw = _activeLocationName.trim();
+    if (isEn) {
+      if (raw.contains('Umred') || raw.contains('उमरेड')) return 'Umred';
+      if (raw.contains('Nagpur') || raw.contains('नागपुर')) return 'Nagpur';
+      if (raw.contains('Mountain View') || raw.contains('माउंटेन व्यू')) {
+        return 'Mountain View';
       }
+      final stripped = raw
+          .replaceAll(RegExp(r'[\u0900-\u097F]+'), '')
+          .replaceAll('()', '')
+          .replaceAll(RegExp(r'^[,.\s()-]+|[,.\s()-]+$'), '')
+          .trim();
+      if (stripped.isNotEmpty) return stripped;
+      final farmVillage = (widget.farm?.village ?? '')
+          .replaceAll(RegExp(r'[\u0900-\u097F]+'), '')
+          .replaceAll('()', '')
+          .replaceAll(RegExp(r'^[,.\s()-]+|[,.\s()-]+$'), '')
+          .trim();
+      return farmVillage.isNotEmpty ? farmVillage : fallback;
+    } else {
+      if (raw.contains('उमरेड') || raw.contains('Umred')) return 'उमरेड';
+      final stripped = raw
+          .replaceAll(RegExp(r'\s*\([A-Za-z\s-]+\)'), '')
+          .replaceAll(RegExp(r'^[,.\s()-]+|[,.\s()-]+$'), '')
+          .trim();
+      return stripped.isNotEmpty ? stripped : fallback;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final displayFarmName = _lang == 'en'
-        ? (widget.farm?.getName('en') ??
-            (widget.farmName.contains(RegExp(r'[\u0900-\u097F]'))
-                ? 'Main Farm'
-                : widget.farmName.replaceAll(RegExp(r'\s*\([A-Za-z\s-]+\)'), '').trim()))
-        : (widget.farm?.getName('hi') ??
-            (widget.farmName.toLowerCase().contains('farm')
-                ? 'बड़ा खेत'
-                : widget.farmName.replaceAll(RegExp(r'\s*\([A-Za-z\s-]+\)'), '').trim()));
-    final rawVillage = _activeLocationName.isNotEmpty ? _activeLocationName : widget.village;
-    final displayVillage = _lang == 'en'
-        ? (rawVillage.contains('Umred') || rawVillage.contains('उमरेड')
-            ? 'Umred'
-            : rawVillage.replaceAll(RegExp(r'[\u0900-\u097F]+'), '').trim())
-        : (rawVillage.contains('Umred') || rawVillage.contains('उमरेड')
-            ? 'उमरेड'
-            : rawVillage.replaceAll(RegExp(r'\s*\([A-Za-z\s-]+\)'), '').trim());
+    final isEn = _lang == 'en';
+    final soilPct = (_gpsSoilMoisture * 100).round();
+    final locLabel = _resolveDisplayLocation(isEn, fallback: isEn ? 'Farm' : 'खेत');
+
+    final gpsSummaryLine = isEn
+        ? '$locLabel • ${_gpsTemp.toStringAsFixed(0)}°C • Soil moisture $soilPct% • 10-day rain ${_gpsRain10d.toStringAsFixed(0)} mm • $_seasonTitle'
+        : '$locLabel • ${_gpsTemp.toStringAsFixed(0)}°C • मिट्टी नमी $soilPct% • 10-दिन वर्षा ${_gpsRain10d.toStringAsFixed(0)} मिमी • $_seasonTitle';
 
     return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          tooltip: _lang == 'en' ? 'Back' : 'वापस जाएं',
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              _lang == 'en' ? 'Crop Advisory & Recommendations' : 'फसल चयन व सिफारिशें',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            Text(
-              '$displayFarmName • ${displayVillage.isNotEmpty ? displayVillage : rawVillage}',
-              style: const TextStyle(fontSize: 12),
-            ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: _lang == 'en' ? 'Refresh' : 'ताज़ा करें',
-            onPressed: _fetchRecommendations,
-          ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: const Color(0xFFBF360C),
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.mic, size: 26),
-        label: Text(
-          _lang == 'en' ? 'Ask Crop Questions' : 'फसल पर सवाल पूछें',
-          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-        ),
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => KrishiSahayakScreen(
-                farm: widget.farm,
-                locationName: displayVillage.isNotEmpty ? displayVillage : rawVillage,
-                latitude: _activeLat,
-                longitude: _activeLon,
-                weather: _activeWeather,
-                lang: _lang,
-              ),
-            ),
-          );
-        },
-      ),
-      body: _isLoading
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const CircularProgressIndicator(color: Color(0xFF1B5E20)),
-                  const SizedBox(height: 16),
-                  Text(
-                    _lang == 'en'
-                        ? 'Finding optimal crops based on GPS soil and weather...'
-                        : 'आपके GPS स्थान व मौसम के अनुसार सर्वोत्तम फसलें खोजी जा रही हैं...',
-                  ),
-                ],
-              ),
-            )
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
-              children: [
-                // Header Season & Climate Outlook Card
-                _buildClimateOutlookCard(),
-                const SizedBox(height: 12),
-
-                // Expert Review Mandatory Warning
-                _buildExpertReviewNotice(),
-                const SizedBox(height: 16),
-
-                // Top 5 Recommendations Section Header
-                Row(
+      body: AmbientBackground(
+        quiet: true,
+        weatherCode: _activeWeather?.current.weatherCode ?? 0,
+        isDay: _activeWeather?.current.isDay ?? true,
+        temperature: _gpsTemp,
+        child: SafeArea(
+          child: Column(
+            children: [
+              // 1. Header
+              Container(
+                constraints: const BoxConstraints(minHeight: 56),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppTheme.s16,
+                  vertical: AppTheme.s8,
+                ),
+                child: Row(
                   children: [
-                    const Icon(Icons.eco, color: Color(0xFF1B5E20), size: 22),
-                    const SizedBox(width: 8),
-                    Text(
-                      _lang == 'en' ? 'Top 5 Recommended Crops' : 'शीर्ष 5 अनुशंसित फसलें',
-                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                    Semantics(
+                      button: true,
+                      label: isEn ? 'Back' : 'वापस जाएं',
+                      child: IconButton(
+                        icon: Icon(
+                          Icons.arrow_back,
+                          color: AppTheme.textPrimary(context),
+                        ),
+                        onPressed: () {
+                          if (widget.onBack != null) {
+                            widget.onBack!();
+                          } else {
+                            Navigator.of(context).maybePop();
+                          }
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: AppTheme.s4),
+                    Expanded(
+                      child: Text(
+                        isEn ? 'Crop Advisory & Recommendations' : 'फसल चयन व सिफारिशें',
+                        style: AppTheme.sectionStyle.copyWith(
+                          color: AppTheme.textPrimary(context),
+                        ),
+                      ),
+                    ),
+                    TextButton.icon(
+                      onPressed: _callKvk,
+                      icon: Icon(
+                        Icons.phone_in_talk_rounded,
+                        size: 18,
+                        color: AppTheme.primaryActionColor(context),
+                      ),
+                      label: Text(
+                        isEn ? 'Call Now' : 'कॉल करें',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.primaryActionColor(context),
+                        ),
+                      ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
+              ),
 
-                // Crop Recommendation Cards
-                ..._recommendations.map((crop) => _buildCropCard(crop)),
+              Expanded(
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : ListView(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppTheme.s16,
+                          vertical: AppTheme.s8,
+                        ),
+                        children: [
+                          // 2. Condensed 1-line GPS Summary Banner
+                          AppSurface(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: AppTheme.s12,
+                              vertical: 10,
+                            ),
+                            borderRadius: AppTheme.rInput,
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.my_location_rounded,
+                                  size: 18,
+                                  color: AppTheme.primaryActionColor(context),
+                                ),
+                                const SizedBox(width: AppTheme.s8),
+                                Expanded(
+                                  child: Text(
+                                    gpsSummaryLine,
+                                    style: TextStyle(
+                                      fontSize: 13.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppTheme.textPrimary(context),
+                                      height: 1.35,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: AppTheme.s8),
 
-                const SizedBox(height: 16),
-                // KVK Toll Free Helpline Footer Card
-                _buildKvkHelplineCard(),
-              ],
-            ),
+                          // 3. 1-line ICAR/KVK Expert-Review Notice with Info Icon
+                          InfoBanner(
+                            icon: Icons.verified_user_rounded,
+                            iconColor: AppTheme.semanticWarningText(context),
+                            text: isEn
+                                ? 'Expert Review Required: Verify final seed choice with KVK'
+                                : 'विशेषज्ञ समीक्षा आवश्यक: अंतिम निर्णय से पूर्व KVK से संपर्क करें',
+                            onTap: _showIcarExpertNoticeSheet,
+                            trailing: Icon(
+                              Icons.info_outline_rounded,
+                              size: 20,
+                              color: AppTheme.textSecondary(context),
+                            ),
+                          ),
+                          const SizedBox(height: AppTheme.s16),
+
+                          SectionHeader(
+                            title: isEn
+                                ? 'Top 5 Recommended Crops'
+                                : 'शीर्ष 5 अनुशंसित फसलें',
+                          ),
+
+                          // 4. Rank #1 Expanded Card
+                          if (_recommendations.isNotEmpty)
+                            _buildRankOneCard(_recommendations.first, isEn),
+
+                          const SizedBox(height: AppTheme.s12),
+
+                          // 5. Ranks #2-#5 Compact Expandable Rows
+                          ..._recommendations.skip(1).map(
+                                (item) => Padding(
+                                  padding: const EdgeInsets.only(bottom: AppTheme.s8),
+                                  child: _buildCompactCropRow(item, isEn),
+                                ),
+                              ),
+
+                          const SizedBox(height: AppTheme.s24),
+                        ],
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
-  Widget _buildClimateOutlookCard() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFE8F5E9),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFA5D6A7)),
+  Widget _buildRankOneCard(CropRecommendationItem item, bool isEn) {
+    final cropTitle = isEn ? item.nameEn : item.nameHi;
+    final primaryCol = AppTheme.primaryActionColor(context);
+    final fillCol = AppTheme.primaryButtonFill(context);
+
+    return AppSurface(
+      padding: const EdgeInsets.all(AppTheme.s16),
+      borderColor: primaryCol,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: AppTheme.s8,
+            runSpacing: AppTheme.s8,
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppTheme.s12,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: fillCol,
+                  borderRadius: BorderRadius.circular(AppTheme.rPill),
+                ),
+                child: Text(
+                  isEn ? '#1 Best Match' : '#1 सर्वोत्तम फसल',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppTheme.s12,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: fillCol.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(AppTheme.rPill),
+                ),
+                child: Text(
+                  '${item.matchScore}% ${isEn ? "match" : "उपयुक्त"}',
+                  style: TextStyle(
+                    color: primaryCol,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppTheme.s12),
+          Text(
+            cropTitle,
+            style: AppTheme.titleStyle.copyWith(
+              color: AppTheme.textPrimary(context),
+            ),
+          ),
+          const SizedBox(height: AppTheme.s8),
+
+          // Two key trait chips
+          Wrap(
+            spacing: AppTheme.s8,
+            runSpacing: AppTheme.s8,
+            children: [
+              _buildTraitChip(
+                Icons.schedule_rounded,
+                item.durationDays,
+              ),
+              _buildTraitChip(
+                Icons.water_drop_rounded,
+                '${item.waterNeedMm.round()} mm • ${isEn ? "Drought" : "सूखा सहन"}: ${_formatTolerance(item.droughtTolerance)}',
+              ),
+            ],
+          ),
+          const SizedBox(height: AppTheme.s12),
+
+          // Match Reasons
+          ...item.reasons.map(
+            (r) => Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 3),
+                    child: Icon(
+                      Icons.check_circle_rounded,
+                      size: 16,
+                      color: primaryCol,
+                    ),
+                  ),
+                  const SizedBox(width: AppTheme.s8),
+                  Expanded(
+                    child: Text(
+                      r,
+                      style: TextStyle(
+                        fontSize: 14.5,
+                        color: AppTheme.textPrimary(context),
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          if (item.riskNotes.isNotEmpty) ...[
+            const SizedBox(height: AppTheme.s8),
+            Text(
+              item.riskNotes.first,
+              style: TextStyle(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.semanticWarningText(context),
+                height: 1.35,
+              ),
+            ),
+          ],
+
+          const SizedBox(height: AppTheme.s8),
+          Text(
+            '${isEn ? "Source" : "स्रोत"}: ${item.sourceCitation}',
+            style: TextStyle(
+              fontSize: 12,
+              color: AppTheme.textSecondary(context),
+            ),
+          ),
+          const SizedBox(height: AppTheme.s12),
+          SecondaryButton(
+            icon: Icons.mic_rounded,
+            label: isEn ? 'Ask about Crop' : 'फसल पर सवाल पूछें',
+            onPressed: () => _askAboutCrop(item),
+          ),
+        ],
       ),
+    );
+  }
+
+  Widget _buildCompactCropRow(CropRecommendationItem item, bool isEn) {
+    final isExpanded = _expandedRanks.contains(item.rank);
+    final cropTitle = isEn ? item.nameEn : item.nameHi;
+    final primaryCol = AppTheme.primaryActionColor(context);
+    final disableAnimations = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+
+    return AppSurface(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppTheme.s16,
+        vertical: AppTheme.s12,
+      ),
+      borderRadius: AppTheme.rInput,
+      onTap: () {
+        setState(() {
+          if (isExpanded) {
+            _expandedRanks.remove(item.rank);
+          } else {
+            _expandedRanks.add(item.rank);
+          }
+        });
+      },
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                width: 32,
+                height: 32,
+                alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1B5E20),
-                  borderRadius: BorderRadius.circular(8),
+                  color: primaryCol.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(AppTheme.s8),
                 ),
                 child: Text(
-                  _seasonTitle,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
-                  ),
-                ),
-              ),
-              const Spacer(),
-              const Icon(Icons.my_location, color: Color(0xFF1B5E20), size: 16),
-              const SizedBox(width: 4),
-              Text(
-                _lang == 'en' ? 'Live GPS Grounded' : 'लाइव GPS आधारित',
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF1B5E20)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text(
-            _climateOutlookSummary,
-            style: const TextStyle(
-              fontSize: 13.5,
-              fontWeight: FontWeight.w600,
-              color: Colors.black87,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            _lang == 'en'
-                ? 'Rule: Crop scores dynamically ranked by live GPS temperature, soil moisture, and 10-day rainfall.'
-                : 'नियम: फसलों की उपयुक्तता आपके लाइव GPS तापमान, मिट्टी की नमी और 10-दिवसीय वर्षा के अनुसार तय की गई है।',
-            style: const TextStyle(fontSize: 12, color: Colors.black54),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildExpertReviewNotice() {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.amber.shade50,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.amber.shade300),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.assignment_late, color: Colors.amber.shade900, size: 22),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _lang == 'en' ? 'Expert Review Advised' : 'विशेषज्ञ समीक्षा आवश्यक',
+                  '#${item.rank}',
                   style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.brown.shade900,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w800,
+                    color: primaryCol,
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  _lang == 'en'
-                      ? 'These recommendations are based on ICAR Package of Practices standards. Consult local KVK expert and soil testing before sowing.'
-                      : 'ये सिफारिशें ICAR एवं राज्य कृषि विश्वविद्यालयों के पैकेज ऑफ प्रैक्टिसेज के सामान्य मानकों पर आधारित हैं। बुवाई से पूर्व मिट्टी परीक्षण व स्थानीय KVK विशेषज्ञ से परामर्श लें।',
-                  style: const TextStyle(fontSize: 11, color: Colors.black87, height: 1.3),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCropCard(CropRecommendationItem crop) {
-    final title = _lang == 'en' ? crop.nameEn : crop.nameHi;
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Top Row: Rank Badge + Crop Name + Score Badge
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                CircleAvatar(
-                  radius: 16,
-                  backgroundColor: const Color(0xFF1B5E20),
-                  child: Text(
-                    '#${crop.rank}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1B5E20),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.green.shade100,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.green.shade400),
-                  ),
-                  child: Text(
-                    _lang == 'en' ? '${crop.matchScore}% Match' : '${crop.matchScore}% उपयुक्त',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.green.shade900,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-
-            // Trait Badges Row
-            Wrap(
-              spacing: 8,
-              runSpacing: 6,
-              children: [
-                _buildTraitBadge(
-                  Icons.timelapse,
-                  _lang == 'en' ? 'Duration' : 'अवधि',
-                  crop.durationDays,
-                ),
-                _buildTraitBadge(
-                  Icons.water_drop,
-                  _lang == 'en' ? 'Water' : 'पानी',
-                  '${crop.waterNeedMm.toInt()} mm',
-                ),
-                _buildTraitBadge(
-                  Icons.wb_sunny,
-                  _lang == 'en' ? 'Drought' : 'सूखा सहनशीलता',
-                  crop.droughtTolerance == 'high'
-                      ? (_lang == 'en' ? 'High' : 'उच्च')
-                      : crop.droughtTolerance == 'medium'
-                          ? (_lang == 'en' ? 'Medium' : 'मध्यम')
-                          : (_lang == 'en' ? 'Low' : 'कम'),
-                ),
-                _buildTraitBadge(
-                  Icons.ac_unit,
-                  _lang == 'en' ? 'Frost' : 'पाला सहनशीलता',
-                  crop.frostTolerance == 'high'
-                      ? (_lang == 'en' ? 'High' : 'उच्च')
-                      : crop.frostTolerance == 'medium'
-                          ? (_lang == 'en' ? 'Medium' : 'मध्यम')
-                          : (_lang == 'en' ? 'Low' : 'कम'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            const Divider(),
-
-            // Reasons Section
-            Text(
-              _lang == 'en' ? 'Suitability Reasons:' : 'उपयुक्तता के मुख्य कारण:',
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87),
-            ),
-            const SizedBox(height: 6),
-            ...crop.reasons.map((r) => Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Icon(Icons.check_circle, color: Color(0xFF2E7D32), size: 16),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          r,
-                          style: const TextStyle(fontSize: 13, color: Colors.black87, height: 1.3),
-                        ),
-                      ),
-                    ],
-                  ),
-                )),
-
-            // Risk Notes or Drought Alternative
-            if (crop.riskNotes.isNotEmpty || crop.droughtAlternative != null) ...[
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.orange.shade50,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.orange.shade200),
-                ),
+              ),
+              const SizedBox(width: AppTheme.s12),
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    ...crop.riskNotes.map((rn) => Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Icon(Icons.warning_amber, color: Colors.deepOrange, size: 16),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                rn,
-                                style: const TextStyle(fontSize: 12, color: Colors.brown, height: 1.3),
-                              ),
-                            ),
-                          ],
-                        )),
-                    if (crop.droughtAlternative != null) ...[
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          const Icon(Icons.alt_route, color: Colors.deepPurple, size: 16),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              _lang == 'en'
-                                  ? 'Safe alternative in deficit rain: ${crop.droughtAlternative}'
-                                  : 'कम वर्षा में सुरक्षित विकल्प: ${crop.droughtAlternative}',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.deepPurple,
-                              ),
-                            ),
-                          ),
-                        ],
+                    Text(
+                      cropTitle,
+                      style: TextStyle(
+                        fontSize: 16.5,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textPrimary(context),
                       ),
-                    ],
+                    ),
+                    Text(
+                      '${item.durationDays} • ${item.waterNeedMm.round()} mm',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: AppTheme.textSecondary(context),
+                      ),
+                    ),
                   ],
                 ),
               ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppTheme.s8,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: primaryCol.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(AppTheme.rPill),
+                ),
+                child: Text(
+                  '${item.matchScore}%',
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w800,
+                    color: primaryCol,
+                  ),
+                ),
+              ),
+              const SizedBox(width: AppTheme.s4),
+              Icon(
+                isExpanded
+                    ? Icons.expand_less_rounded
+                    : Icons.expand_more_rounded,
+                color: AppTheme.textSecondary(context),
+              ),
             ],
-
-            const SizedBox(height: 8),
-            // Citation
-            Text(
-              _lang == 'en' ? 'Source: ${crop.sourceCitation}' : 'स्रोत: ${crop.sourceCitation}',
-              style: const TextStyle(fontSize: 10, color: Colors.black45, fontStyle: FontStyle.italic),
-            ),
-          ],
-        ),
+          ),
+          AnimatedSize(
+            duration: disableAnimations
+                ? Duration.zero
+                : const Duration(milliseconds: 240),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: isExpanded
+                ? Padding(
+                    padding: const EdgeInsets.only(top: AppTheme.s12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Wrap(
+                          spacing: AppTheme.s8,
+                          runSpacing: AppTheme.s8,
+                          children: [
+                            _buildTraitChip(
+                              Icons.wb_sunny_rounded,
+                              '${isEn ? "Drought" : "सूखा सहन"}: ${_formatTolerance(item.droughtTolerance)}',
+                            ),
+                            _buildTraitChip(
+                              Icons.ac_unit_rounded,
+                              '${isEn ? "Frost" : "पाला सहन"}: ${_formatTolerance(item.frostTolerance)}',
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: AppTheme.s12),
+                        ...item.reasons.map(
+                          (r) => Padding(
+                            padding: const EdgeInsets.only(bottom: 6),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 3),
+                                  child: Icon(
+                                    Icons.check_circle_outline_rounded,
+                                    size: 16,
+                                    color: primaryCol,
+                                  ),
+                                ),
+                                const SizedBox(width: AppTheme.s8),
+                                Expanded(
+                                  child: Text(
+                                    r,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: AppTheme.textPrimary(context),
+                                      height: 1.4,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        if (item.riskNotes.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            item.riskNotes.first,
+                            style: TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.semanticWarningText(context),
+                              height: 1.35,
+                            ),
+                          ),
+                        ],
+                        if (item.droughtAlternative != null &&
+                            item.droughtAlternative!.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            '${isEn ? "Drought-tolerant alternative" : "कम पानी विकल्प"}: ${item.droughtAlternative}',
+                            style: TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w600,
+                              color: primaryCol,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 6),
+                        Text(
+                          '${isEn ? "Source" : "स्रोत"}: ${item.sourceCitation}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppTheme.textSecondary(context),
+                          ),
+                        ),
+                        const SizedBox(height: AppTheme.s8),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton.icon(
+                            onPressed: () => _askAboutCrop(item),
+                            icon: const Icon(Icons.mic_rounded, size: 18),
+                            label: Text(
+                              isEn ? 'Ask about Crop' : 'फसल पर सवाल पूछें',
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildTraitBadge(IconData icon, String label, String value) {
+  Widget _buildTraitChip(IconData icon, String text) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppTheme.s12,
+        vertical: 6,
+      ),
       decoration: BoxDecoration(
-        color: Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(8),
+        color: AppTheme.primaryActionColor(context).withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(AppTheme.rChip),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: const Color(0xFF1B5E20)),
-          const SizedBox(width: 4),
-          Text(
-            '$label: $value',
-            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.black87),
+          Icon(
+            icon,
+            size: 15,
+            color: AppTheme.primaryActionColor(context),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildKvkHelplineCard() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1B5E20),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.support_agent, color: Colors.white, size: 36),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _lang == 'en' ? 'Kisan Call Center (KVK)' : 'किसान कॉल सेंटर (KVK)',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 15,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  _lang == 'en'
-                      ? 'Toll-free 1800-180-1551 to discuss with agriculture experts'
-                      : 'टोल-फ्री 1800-180-1551 पर कृषि वैज्ञानिक से निःशुल्क चर्चा करें',
-                  style: const TextStyle(color: Colors.white70, fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.white,
-              foregroundColor: const Color(0xFF1B5E20),
-              minimumSize: const Size(80, 40),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            ),
-            onPressed: _callKvk,
+          const SizedBox(width: 6),
+          Flexible(
             child: Text(
-              _lang == 'en' ? 'Call Now' : 'कॉल करें',
-              style: const TextStyle(fontWeight: FontWeight.bold),
+              text,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textPrimary(context),
+              ),
             ),
           ),
         ],

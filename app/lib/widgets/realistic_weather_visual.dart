@@ -20,12 +20,14 @@ class RealisticWeatherVisual extends StatefulWidget {
 }
 
 class _RealisticWeatherVisualState extends State<RealisticWeatherVisual>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late AnimationController _controller;
+  bool _appActive = true;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 8),
@@ -33,46 +35,76 @@ class _RealisticWeatherVisualState extends State<RealisticWeatherVisual>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncAnimationState();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appActive = state == AppLifecycleState.resumed;
+    _syncAnimationState();
+  }
+
+  void _syncAnimationState() {
+    if (!mounted) return;
+    final disableAnimations = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    final tickerEnabled = TickerMode.valuesOf(context).enabled;
+    if (_appActive && !disableAnimations && tickerEnabled) {
+      if (!_controller.isAnimating) {
+        _controller.repeat();
+      }
+    } else {
+      if (_controller.isAnimating) {
+        _controller.stop();
+      }
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: widget.size,
-      height: widget.size,
-      child: AnimatedBuilder(
-        animation: _controller,
-        builder: (context, child) {
-          final isDaytime = widget.isDay ?? (DateTime.now().hour >= 6 && DateTime.now().hour < 19);
-          final progress = _controller.value;
-          final code = widget.weatherCode;
+    return RepaintBoundary(
+      child: SizedBox(
+        width: widget.size,
+        height: widget.size,
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, child) {
+            final isDaytime = widget.isDay ?? (DateTime.now().hour >= 6 && DateTime.now().hour < 19);
+            final progress = _controller.value;
+            final code = widget.weatherCode;
 
-          if (code == 0) {
-            // Clear Sky (Daytime 3D Sun vs Nighttime 3D Moon with stars)
-            return isDaytime ? _build3DSun(progress) : _build3DMoon(progress);
-          } else if (code >= 1 && code <= 3) {
-            // Partly Cloudy (Day sun behind cloud vs Night moon behind cloud)
-            return isDaytime ? _buildPartlyCloudy(progress) : _buildPartlyCloudyNight(progress);
-          } else if (code == 45 || code == 48) {
-            // Foggy / Mist
-            return _buildFoggy(progress, isNight: !isDaytime);
-          } else if (code >= 51 && code <= 65) {
-            // Rain
-            return _buildRain(progress, isNight: !isDaytime);
-          } else if (code >= 80 && code <= 82) {
-            // Showers
-            return _buildShowers(progress, isNight: !isDaytime);
-          } else if (code >= 95) {
-            // Thunderstorm / Hail
-            return _buildThunderstorm(progress, isNight: !isDaytime);
-          } else {
-            // Fair weather cloud
-            return _buildDefaultCloud(progress, isNight: !isDaytime);
-          }
-        },
+            if (code == 0) {
+              // Clear Sky (Daytime 3D Sun vs Nighttime 3D Moon with stars)
+              return isDaytime ? _build3DSun(progress) : _build3DMoon(progress);
+            } else if (code >= 1 && code <= 3) {
+              // Partly Cloudy (Day sun behind cloud vs Night moon behind cloud)
+              return isDaytime ? _buildPartlyCloudy(progress) : _buildPartlyCloudyNight(progress);
+            } else if (code == 45 || code == 48) {
+              // Foggy / Mist
+              return _buildFoggy(progress, isNight: !isDaytime);
+            } else if (code >= 51 && code <= 65) {
+              // Rain
+              return _buildRain(progress, isNight: !isDaytime);
+            } else if (code >= 80 && code <= 82) {
+              // Showers
+              return _buildShowers(progress, isNight: !isDaytime);
+            } else if (code >= 95) {
+              // Thunderstorm / Hail
+              return _buildThunderstorm(progress, isNight: !isDaytime);
+            } else {
+              // Fair weather cloud
+              return _buildDefaultCloud(progress, isNight: !isDaytime);
+            }
+          },
+        ),
       ),
     );
   }

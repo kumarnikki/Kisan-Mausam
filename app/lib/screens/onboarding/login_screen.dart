@@ -3,6 +3,8 @@ import 'package:google_sign_in/google_sign_in.dart';
 import '../../services/alert_service.dart';
 import '../../services/api_service.dart';
 import '../../services/storage_service.dart';
+import '../../theme/app_theme.dart';
+import '../../widgets/glass_card.dart';
 import 'otp_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -89,7 +91,6 @@ class _LoginScreenState extends State<LoginScreen> {
       if (mounted) setState(() => _isLoading = false);
     }
 
-    // If native OAuth failed or is unconfigured on device, seamlessly open real Google Account entry
     if (mounted && !realSuccess) {
       _showGoogleAccountSignInDialog();
     }
@@ -108,22 +109,22 @@ class _LoginScreenState extends State<LoginScreen> {
     await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppTheme.rCard)),
         title: Row(
           children: [
             Container(
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
-                color: Colors.blue.shade50,
+                color: AppTheme.info.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(Icons.g_mobiledata, color: Colors.blue, size: 30),
+              child: const Icon(Icons.g_mobiledata_rounded, color: AppTheme.info, size: 30),
             ),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
                 _lang == 'hi' ? 'Google खाते से लॉगिन' : 'Sign in with Google',
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
               ),
             ),
           ],
@@ -137,7 +138,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 _lang == 'hi'
                     ? 'अपना Google / Gmail खाता विवरण दर्ज करें:'
                     : 'Enter your Google / Gmail account details:',
-                style: const TextStyle(fontSize: 13, color: Colors.black87),
+                style: TextStyle(fontSize: 13.5, color: AppTheme.textSecondary(context)),
               ),
               const SizedBox(height: 14),
               TextField(
@@ -145,8 +146,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 keyboardType: TextInputType.emailAddress,
                 decoration: InputDecoration(
                   labelText: _lang == 'hi' ? 'Google ईमेल' : 'Google Email',
-                  prefixIcon: const Icon(Icons.email_outlined, color: Colors.blue),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  prefixIcon: const Icon(Icons.email_outlined),
                 ),
               ),
               const SizedBox(height: 12),
@@ -154,8 +154,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 controller: nameCtrl,
                 decoration: InputDecoration(
                   labelText: _lang == 'hi' ? 'आपका नाम' : 'Your Name',
-                  prefixIcon: const Icon(Icons.person_outline, color: Colors.blue),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  prefixIcon: const Icon(Icons.person_outline_rounded),
                 ),
               ),
               const SizedBox(height: 12),
@@ -164,11 +163,12 @@ class _LoginScreenState extends State<LoginScreen> {
                 keyboardType: TextInputType.phone,
                 maxLength: 10,
                 decoration: InputDecoration(
-                  labelText: _lang == 'hi' ? 'मोबाइल नंबर (SMS अलर्ट हेतु)' : 'Mobile Number (for SMS Alerts)',
+                  labelText: _lang == 'hi'
+                      ? 'मोबाइल नंबर (SMS अलर्ट हेतु)'
+                      : 'Mobile Number (for SMS Alerts)',
                   prefixText: '+91 ',
                   counterText: '',
-                  prefixIcon: const Icon(Icons.phone_android, color: Colors.blue),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  prefixIcon: const Icon(Icons.phone_android_rounded),
                 ),
               ),
             ],
@@ -180,12 +180,7 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Text(_lang == 'hi' ? 'रद्द करें' : 'Cancel'),
           ),
           ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue.shade700,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-            icon: const Icon(Icons.check_circle_outline, size: 18),
+            icon: const Icon(Icons.check_circle_outline_rounded, size: 18),
             label: Text(_lang == 'hi' ? 'साइन-इन करें' : 'Sign In with Google'),
             onPressed: () async {
               final email = emailCtrl.text.trim();
@@ -194,8 +189,13 @@ class _LoginScreenState extends State<LoginScreen> {
               if (email.isEmpty || !email.contains('@')) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text(_lang == 'hi' ? 'कृपया मान्य Google ईमेल दर्ज करें' : 'Please enter a valid Google email'),
-                    backgroundColor: Colors.red.shade700,
+                    behavior: SnackBarBehavior.floating,
+                    content: Text(
+                      _lang == 'hi'
+                          ? 'कृपया मान्य Google ईमेल दर्ज करें'
+                          : 'Please enter a valid Google email',
+                    ),
+                    backgroundColor: AppTheme.danger,
                   ),
                 );
                 return;
@@ -228,12 +228,13 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!hasValidEmail && !hasValidPhone) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
+          behavior: SnackBarBehavior.floating,
           content: Text(
             _lang == 'hi'
                 ? 'कृपया सही ईमेल या 10 अंकों का मोबाइल नंबर दर्ज करें'
                 : 'Enter a valid email or 10-digit mobile number',
           ),
-          backgroundColor: Colors.red.shade700,
+          backgroundColor: AppTheme.danger,
         ),
       );
       return;
@@ -241,8 +242,13 @@ class _LoginScreenState extends State<LoginScreen> {
     if (password.length < 6) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(_lang == 'hi' ? 'पासवर्ड कम से कम 6 अक्षरों का होना चाहिए' : 'Password must be at least 6 characters'),
-          backgroundColor: Colors.red.shade700,
+          behavior: SnackBarBehavior.floating,
+          content: Text(
+            _lang == 'hi'
+                ? 'पासवर्ड कम से कम 6 अक्षरों का होना चाहिए'
+                : 'Password must be at least 6 characters',
+          ),
+          backgroundColor: AppTheme.danger,
         ),
       );
       return;
@@ -267,20 +273,23 @@ class _LoginScreenState extends State<LoginScreen> {
       }
       if (mobileToSave != null && mobileToSave.length == 10) {
         await StorageService.saveUserPhone(mobileToSave);
-        // Immediately dispatch welcome & climate monitoring SMS to the registered number
         _apiService.sendWeatherOrSosSms(
           phone: mobileToSave,
           alertType: 'account_weather_active',
-          message: 'KisanMausam: Your mobile +91$mobileToSave is now active for real-time GPS Weather, Climate Change & SOS SMS alerts.',
+          message:
+              'KisanMausam: Your mobile +91$mobileToSave is now active for real-time GPS Weather, Climate Change & SOS SMS alerts.',
         );
       }
       if (mounted) widget.onLoginSuccess();
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(_lang == 'hi' ? 'लॉगिन असफल। पुन: प्रयास करें।' : 'Login failed. Try again.'),
-            backgroundColor: Colors.red.shade700,
+            behavior: SnackBarBehavior.floating,
+            content: Text(
+              _lang == 'hi' ? 'लॉगिन असफल। पुन: प्रयास करें।' : 'Login failed. Try again.',
+            ),
+            backgroundColor: AppTheme.danger,
           ),
         );
       }
@@ -290,296 +299,245 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final textSecondary = AppTheme.textSecondary(context);
+    final accent = AppTheme.primaryActionColor(context);
+
     return Scaffold(
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SizedBox(height: 20),
-
-              // Logo / App Name
-              Center(
-                child: Column(
-                  children: [
-                    Container(
-                      width: 88,
-                      height: 88,
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF1B5E20), Color(0xFF388E3C)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(22),
-                      ),
-                      child: const Icon(Icons.agriculture, color: Colors.white, size: 48),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      _lang == 'hi' ? 'किसान मौसम' : 'KisanMausam',
-                      style: const TextStyle(
-                        fontSize: 30,
-                        fontWeight: FontWeight.w900,
-                        color: Color(0xFF1B5E20),
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _lang == 'hi'
-                          ? 'भारतीय किसानों के लिए मौसम व फसल सुरक्षा ऐप'
-                          : 'Weather & Crop Protection App for Indian Farmers',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 36),
-
-              // Sign Up / Login toggle
-              Row(
-                children: [
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () => setState(() => _isSignUp = false),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 10),
+      backgroundColor: Colors.transparent,
+      body: AmbientBackground(
+        quiet: true,
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const SizedBox(height: 12),
+                Center(
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 72,
+                        height: 72,
                         decoration: BoxDecoration(
-                          border: Border(
-                            bottom: BorderSide(
-                              color: !_isSignUp ? const Color(0xFF1B5E20) : Colors.grey.shade300,
-                              width: !_isSignUp ? 2.5 : 1.0,
+                          color: AppTheme.primaryGreen,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: const Icon(Icons.agriculture_rounded, color: Colors.white, size: 42),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        _lang == 'hi' ? 'किसान मौसम' : 'KisanMausam',
+                        style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.w800,
+                          color: accent,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _lang == 'hi'
+                            ? 'भारतीय किसानों के लिए मौसम व फसल सुरक्षा ऐप'
+                            : 'Weather & Crop Protection App for Indian Farmers',
+                        textAlign: TextAlign.center,
+                        style: AppTheme.labelStyle.copyWith(color: textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                AppSurface(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: InkWell(
+                              onTap: () => setState(() => _isSignUp = false),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(vertical: 10),
+                                decoration: BoxDecoration(
+                                  border: Border(
+                                    bottom: BorderSide(
+                                      color: !_isSignUp ? accent : AppTheme.borderColor(context),
+                                      width: !_isSignUp ? 2.5 : 1.0,
+                                    ),
+                                  ),
+                                ),
+                                child: Text(
+                                  _lang == 'hi' ? 'लॉगिन' : 'Login',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    color: !_isSignUp ? accent : textSecondary,
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
-                        ),
-                        child: Text(
-                          _lang == 'hi' ? 'लॉगिन' : 'Login',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: !_isSignUp ? const Color(0xFF1B5E20) : Colors.grey,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () => setState(() => _isSignUp = true),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        decoration: BoxDecoration(
-                          border: Border(
-                            bottom: BorderSide(
-                              color: _isSignUp ? const Color(0xFF1B5E20) : Colors.grey.shade300,
-                              width: _isSignUp ? 2.5 : 1.0,
+                          Expanded(
+                            child: InkWell(
+                              onTap: () => setState(() => _isSignUp = true),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(vertical: 10),
+                                decoration: BoxDecoration(
+                                  border: Border(
+                                    bottom: BorderSide(
+                                      color: _isSignUp ? accent : AppTheme.borderColor(context),
+                                      width: _isSignUp ? 2.5 : 1.0,
+                                    ),
+                                  ),
+                                ),
+                                child: Text(
+                                  _lang == 'hi' ? 'खाता बनाएं' : 'Sign Up',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    color: _isSignUp ? accent : textSecondary,
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+
+                      TextField(
+                        controller: _emailController,
+                        keyboardType: TextInputType.emailAddress,
+                        onChanged: _autoSavePhoneIfValid,
+                        decoration: InputDecoration(
+                          prefixIcon: const Icon(Icons.email_outlined),
+                          labelText: _lang == 'hi'
+                              ? 'ईमेल पता (या मोबाइल नंबर)'
+                              : 'Email address (or Mobile Number)',
                         ),
-                        child: Text(
-                          _lang == 'hi' ? 'खाता बनाएं' : 'Sign Up',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: _isSignUp ? const Color(0xFF1B5E20) : Colors.grey,
+                      ),
+                      const SizedBox(height: 14),
+
+                      TextField(
+                        controller: _phoneController,
+                        keyboardType: TextInputType.phone,
+                        maxLength: 10,
+                        onChanged: _autoSavePhoneIfValid,
+                        decoration: InputDecoration(
+                          prefixIcon: const Icon(Icons.phone_android_rounded),
+                          prefixText: '+91 ',
+                          counterText: '',
+                          labelText: _lang == 'hi'
+                              ? 'मोबाइल नंबर (मौसम व जलवायु SMS हेतु)'
+                              : 'Mobile Number (for Weather & Climate SMS)',
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+
+                      TextField(
+                        controller: _passwordController,
+                        obscureText: !_showPassword,
+                        decoration: InputDecoration(
+                          prefixIcon: const Icon(Icons.lock_outline_rounded),
+                          labelText: _lang == 'hi' ? 'पासवर्ड' : 'Password',
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _showPassword
+                                  ? Icons.visibility_off_rounded
+                                  : Icons.visibility_rounded,
+                            ),
+                            onPressed: () => setState(() => _showPassword = !_showPassword),
                           ),
                         ),
                       ),
-                    ),
-                  ),
-                ],
-              ),
+                      const SizedBox(height: 20),
 
-              const SizedBox(height: 28),
-
-              // Email or Mobile field
-              TextField(
-                controller: _emailController,
-                keyboardType: TextInputType.emailAddress,
-                onChanged: _autoSavePhoneIfValid,
-                decoration: InputDecoration(
-                  prefixIcon: const Icon(Icons.email_outlined, color: Color(0xFF1B5E20)),
-                  labelText: _lang == 'hi' ? 'ईमेल पता (या मोबाइल नंबर)' : 'Email address (or Mobile Number)',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: Color(0xFF1B5E20), width: 2),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // Mobile Number field (for Weather & Climate Change SMS Alerts)
-              TextField(
-                controller: _phoneController,
-                keyboardType: TextInputType.phone,
-                maxLength: 10,
-                onChanged: _autoSavePhoneIfValid,
-                decoration: InputDecoration(
-                  prefixIcon: const Icon(Icons.phone_android, color: Color(0xFF1B5E20)),
-                  prefixText: '+91 ',
-                  counterText: '',
-                  labelText: _lang == 'hi'
-                      ? 'मोबाइल नंबर (मौसम व जलवायु SMS हेतु)'
-                      : 'Mobile Number (for Weather & Climate SMS)',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: Color(0xFF1B5E20), width: 2),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // Password field
-              TextField(
-                controller: _passwordController,
-                obscureText: !_showPassword,
-                decoration: InputDecoration(
-                  prefixIcon: const Icon(Icons.lock_outline, color: Color(0xFF1B5E20)),
-                  labelText: _lang == 'hi' ? 'पासवर्ड' : 'Password',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: Color(0xFF1B5E20), width: 2),
-                  ),
-                  suffixIcon: IconButton(
-                    icon: Icon(_showPassword ? Icons.visibility_off : Icons.visibility),
-                    onPressed: () => setState(() => _showPassword = !_showPassword),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 28),
-
-              // Email login / signup button
-              _isLoading
-                  ? const Center(child: CircularProgressIndicator(color: Color(0xFF1B5E20)))
-                  : ElevatedButton(
-                      onPressed: _handleEmailAuth,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF1B5E20),
-                        foregroundColor: Colors.white,
-                        minimumSize: const Size(double.infinity, 52),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                      ),
-                      child: Text(
-                        _isSignUp
+                      PrimaryButton(
+                        label: _isSignUp
                             ? (_lang == 'hi' ? 'खाता बनाएं' : 'Create Account')
                             : (_lang == 'hi' ? 'लॉगिन करें' : 'Log In'),
-                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                        isLoading: _isLoading,
+                        onPressed: _isLoading ? null : _handleEmailAuth,
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(child: Divider(color: AppTheme.borderColor(context))),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Text(
+                        _lang == 'hi' ? 'या' : 'OR',
+                        style: AppTheme.labelStyle.copyWith(
+                          color: textSecondary,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
+                    Expanded(child: Divider(color: AppTheme.borderColor(context))),
+                  ],
+                ),
+                const SizedBox(height: 16),
 
-              const SizedBox(height: 18),
+                SecondaryButton(
+                  label: _lang == 'hi' ? 'Google से जारी रखें' : 'Continue with Google',
+                  icon: Icons.g_mobiledata_rounded,
+                  onPressed: _isLoading ? null : _handleGoogleSignIn,
+                ),
+                const SizedBox(height: 12),
 
-              // Divider
-              Row(
-                children: [
-                  Expanded(child: Divider(color: Colors.grey.shade300)),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: Text(
-                      _lang == 'hi' ? 'या' : 'OR',
-                      style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.w600),
+                SecondaryButton(
+                  label: _lang == 'hi' ? 'मोबाइल OTP से जारी रखें' : 'Continue with Phone OTP',
+                  icon: Icons.phone_android_rounded,
+                  onPressed: _isLoading
+                      ? null
+                      : () async {
+                          await Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (ctx) => OtpScreen(
+                                onBack: () => Navigator.of(ctx).pop(),
+                                onOtpVerified: () {
+                                  Navigator.of(ctx).pop();
+                                  widget.onLoginSuccess();
+                                },
+                              ),
+                            ),
+                          );
+                        },
+                ),
+                const SizedBox(height: 20),
+
+                Text(
+                  _lang == 'hi'
+                      ? 'साइन अप करने से आप हमारी गोपनीयता नीति (DPDP Act 2023 के अनुसार) से सहमत हैं। आपका डेटा कभी नहीं बेचा जाएगा।'
+                      : 'By signing up you agree to our Privacy Policy (aligned with DPDP Act 2023). Your data is never sold.',
+                  textAlign: TextAlign.center,
+                  style: AppTheme.labelStyle.copyWith(color: textSecondary, fontSize: 12),
+                ),
+                const SizedBox(height: 8),
+
+                Center(
+                  child: TextButton.icon(
+                    onPressed: () async {
+                      final newLang = _lang == 'hi' ? 'en' : 'hi';
+                      await StorageService.saveLanguage(newLang);
+                      if (mounted) setState(() => _lang = newLang);
+                    },
+                    icon: Icon(Icons.language_rounded, size: 18, color: accent),
+                    label: Text(
+                      _lang == 'hi' ? 'Switch to English' : 'हिंदी में बदलें',
+                      style: TextStyle(color: accent, fontWeight: FontWeight.w700),
                     ),
                   ),
-                  Expanded(child: Divider(color: Colors.grey.shade300)),
-                ],
-              ),
-
-              const SizedBox(height: 18),
-
-              // Continue with Google
-              OutlinedButton.icon(
-                onPressed: _isLoading ? null : _handleGoogleSignIn,
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 52),
-                  side: BorderSide(color: Colors.grey.shade400, width: 1.5),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 ),
-                icon: Container(
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    color: Colors.blue.shade700,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: const Icon(Icons.g_mobiledata, color: Colors.white, size: 20),
-                ),
-                label: Text(
-                  _lang == 'hi' ? 'Google से जारी रखें' : 'Continue with Google',
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.black87),
-                ),
-              ),
-
-              const SizedBox(height: 14),
-
-              // Continue with Phone OTP
-              OutlinedButton.icon(
-                onPressed: _isLoading
-                    ? null
-                    : () async {
-                        await Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (ctx) => OtpScreen(
-                              onBack: () => Navigator.of(ctx).pop(),
-                              onOtpVerified: () {
-                                Navigator.of(ctx).pop();
-                                widget.onLoginSuccess();
-                              },
-                            ),
-                          ),
-                        );
-                      },
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 52),
-                  side: BorderSide(color: Colors.grey.shade400, width: 1.5),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                ),
-                icon: const Icon(Icons.phone_android, color: Color(0xFF1B5E20)),
-                label: Text(
-                  _lang == 'hi' ? 'मोबाइल OTP से जारी रखें' : 'Continue with Phone OTP',
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.black87),
-                ),
-              ),
-
-              const SizedBox(height: 28),
-
-              // Privacy note
-              Text(
-                _lang == 'hi'
-                    ? 'साइन अप करने से आप हमारी गोपनीयता नीति (DPDP Act 2023 के अनुसार) से सहमत हैं। आपका डेटा कभी नहीं बेचा जाएगा।'
-                    : 'By signing up you agree to our Privacy Policy (aligned with DPDP Act 2023). Your data is never sold.',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 11, color: Colors.grey.shade600, height: 1.4),
-              ),
-
-              const SizedBox(height: 8),
-
-              // Language toggle
-              Center(
-                child: TextButton(
-                  onPressed: () async {
-                    final newLang = _lang == 'hi' ? 'en' : 'hi';
-                    await StorageService.saveLanguage(newLang);
-                    if (mounted) setState(() => _lang = newLang);
-                  },
-                  child: Text(
-                    _lang == 'hi' ? '🌐 Switch to English' : '🌐 हिंदी में बदलें',
-                    style: const TextStyle(color: Color(0xFF1B5E20)),
-                  ),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
