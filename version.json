@@ -1,10 +1,10 @@
 {
-  "version": "1.1.4",
-  "versionCode": 14,
-  "releaseName": "Kisan Mausam v1.1.4 - Custom Farmer & Crop Profile Setup + UI Fix Edition",
+  "version": "1.1.5",
+  "versionCode": 15,
+  "releaseName": "Kisan Mausam v1.1.5 - Login Number Auto-SMS & Custom Farmer Profile Edition",
   "apkUrl": "https://github.com/kumarnikki/Kisan-Mausam/releases/download/v1.0.0/kisan-mausam-release.apk",
   "githubReleaseUrl": "https://github.com/kumarnikki/Kisan-Mausam/releases/latest",
-  "changelog": "• New Account Setup (including Phone OTP login) now prompts for Farmer Name, Crop selection (10 popular crops + custom), Land Area (Acres), Soil & Irrigation\n• Removed hardcoded Soybean default crop across the app\n• Added editable Farmer & Crop Profile card in Settings\n• Fixed squished Weather Risk & Early Warning header layout on Home screen",
+  "changelog": "• SOS & Weather Alerts automatically use the mobile number given at Login (removed SMS number editing UI in SOS/Weather Alerts)\n• New Account Setup prompts for Farmer Name, Crop selection (10 popular crops + custom), Land Area (Acres), Soil & Irrigation\n• Editable Farmer & Crop Profile card in Settings\n• Fixed Weather Risk & Early Warning header layout on Home screen",
   "minRequiredVersion": "1.0.0",
-  "publishedAt": "2026-10-10T18:22:00Z"
+  "publishedAt": "2026-10-10T18:35:00Z"
 }

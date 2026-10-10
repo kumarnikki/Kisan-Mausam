@@ -21,7 +21,6 @@ class FarmSetupScreen extends StatefulWidget {
 
 class _FarmSetupScreenState extends State<FarmSetupScreen> {
   final _farmerNameController = TextEditingController();
-  final _phoneController = TextEditingController();
   final _nameController = TextEditingController();
   final _villageController = TextEditingController();
   final _districtController = TextEditingController();
@@ -59,7 +58,6 @@ class _FarmSetupScreenState extends State<FarmSetupScreen> {
   Future<void> _loadExistingProfile() async {
     final l = await StorageService.getLanguage();
     final savedUserName = await StorageService.getUserName();
-    final savedPhone = await StorageService.getUserPhone();
     final profileConfigured = await StorageService.isProfileConfigured();
     final farms = await StorageService.getFarms();
 
@@ -71,9 +69,6 @@ class _FarmSetupScreenState extends State<FarmSetupScreen> {
           !savedUserName.startsWith('किसान (+91') &&
           !savedUserName.startsWith('Farmer (+91')) {
         _farmerNameController.text = savedUserName;
-      }
-      if (savedPhone != null && savedPhone.isNotEmpty) {
-        _phoneController.text = savedPhone;
       }
 
       if (profileConfigured && farms.isNotEmpty) {
@@ -105,7 +100,6 @@ class _FarmSetupScreenState extends State<FarmSetupScreen> {
   @override
   void dispose() {
     _farmerNameController.dispose();
-    _phoneController.dispose();
     _nameController.dispose();
     _villageController.dispose();
     _districtController.dispose();
@@ -120,10 +114,6 @@ class _FarmSetupScreenState extends State<FarmSetupScreen> {
     final farmerName = _farmerNameController.text.trim();
     if (farmerName.isNotEmpty) {
       await StorageService.saveUserName(farmerName);
-    }
-    final rawPhone = _phoneController.text.replaceAll(RegExp(r'\D'), '');
-    if (rawPhone.length >= 10) {
-      await StorageService.saveUserPhone(rawPhone.substring(rawPhone.length - 10));
     }
 
     final cropText = _cropController.text.trim().isEmpty
@@ -202,29 +192,16 @@ class _FarmSetupScreenState extends State<FarmSetupScreen> {
               ),
               const SizedBox(height: 20),
 
-              // 1. Farmer Name & Mobile Number
-              TextField(
-                controller: _farmerNameController,
-                decoration: InputDecoration(
-                  labelText: isEn ? 'Farmer Name (Your Name)' : 'किसान का नाम (आपका नाम)',
-                  hintText: isEn ? 'Enter your full name' : 'अपना नाम लिखें',
-                  prefixIcon: const Icon(Icons.person_outline, color: Color(0xFF1B5E20)),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-              const SizedBox(height: 14),
+              // 1. Farmer Name & Farm Name
               Row(
                 children: [
                   Expanded(
                     child: TextField(
-                      controller: _phoneController,
-                      keyboardType: TextInputType.phone,
-                      maxLength: 10,
+                      controller: _farmerNameController,
                       decoration: InputDecoration(
-                        labelText: isEn ? 'Mobile Number' : 'मोबाइल नंबर',
-                        prefixText: '+91 ',
-                        counterText: '',
-                        prefixIcon: const Icon(Icons.phone_android, color: Color(0xFF1B5E20)),
+                        labelText: isEn ? 'Farmer Name' : 'किसान का नाम',
+                        hintText: isEn ? 'Your Name' : 'आपका नाम',
+                        prefixIcon: const Icon(Icons.person_outline, color: Color(0xFF1B5E20)),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                       ),
                     ),

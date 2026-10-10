@@ -1416,79 +1416,6 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          InkWell(
-            onTap: _showSimulationDialog,
-            borderRadius: BorderRadius.circular(8),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-              decoration: BoxDecoration(
-                color: (_userPhone != null && _userPhone!.isNotEmpty)
-                    ? const Color(0xFFE8F5E9)
-                    : Colors.orange.shade50,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: (_userPhone != null && _userPhone!.isNotEmpty)
-                      ? Colors.green.shade300
-                      : Colors.orange.shade300,
-                ),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.sms_outlined,
-                    size: 16,
-                    color: (_userPhone != null && _userPhone!.isNotEmpty)
-                        ? const Color(0xFF1B5E20)
-                        : Colors.orange.shade900,
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      (_userPhone != null && _userPhone!.isNotEmpty)
-                          ? (_lang == 'hi'
-                              ? 'SMS नंबर: +91 $_userPhone (बदलने हेतु टैप करें)'
-                              : 'SMS Number: +91 $_userPhone (Tap to edit)')
-                          : (_lang == 'hi'
-                              ? 'SMS अलर्ट हेतु यहाँ टैप करके मोबाइल नंबर जोड़ें'
-                              : 'Tap here to link Mobile Number for Weather & SOS SMS'),
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w600,
-                        color: (_userPhone != null && _userPhone!.isNotEmpty)
-                            ? const Color(0xFF1B5E20)
-                            : Colors.orange.shade900,
-                      ),
-                    ),
-                  ),
-                  if (_userPhone != null && _userPhone!.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 6),
-                      child: InkWell(
-                        onTap: () => _triggerSimulation('weather_change', phoneNumber: _userPhone),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF1B5E20),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            _lang == 'hi' ? 'SMS भेजें' : 'Send SMS',
-                            style: const TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      ),
-                    )
-                  else
-                    Icon(
-                      Icons.edit_outlined,
-                      size: 14,
-                      color: Colors.orange.shade900,
-                    ),
-                ],
-              ),
-            ),
-          ),
           const SizedBox(height: 10),
           if (hasHighRisk) ...[
             ...h1Risks.map((risk) => _buildDetectedRiskItem(risk)),
@@ -1661,7 +1588,6 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
         if (mounted) setState(() => _userPhone = savedPhone);
       }
     }
-    final phoneCtrl = TextEditingController(text: savedPhone ?? '');
     if (!mounted) return;
 
     showDialog(
@@ -1684,35 +1610,35 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                isHi
-                    ? 'SMS अलर्ट प्राप्त करने हेतु मोबाइल नंबर दर्ज करें:'
-                    : 'Enter mobile number to receive SMS alert:',
-                style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: phoneCtrl,
-                keyboardType: TextInputType.phone,
-                maxLength: 10,
-                onChanged: (val) {
-                  final digits = val.replaceAll(RegExp(r'\D'), '');
-                  if (digits.length >= 10) {
-                    final ten = digits.substring(digits.length - 10);
-                    StorageService.saveUserPhone(ten);
-                    if (mounted) setState(() => _userPhone = ten);
-                  }
-                },
-                decoration: InputDecoration(
-                  prefixText: '+91 ',
-                  hintText: '9876543210',
-                  counterText: '',
-                  isDense: true,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              if (savedPhone != null && savedPhone.isNotEmpty) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE8F5E9),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.green.shade300),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.phone_android, size: 16, color: Color(0xFF1B5E20)),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          isHi
+                              ? 'लॉगिन मोबाइल नंबर: +91 $savedPhone'
+                              : 'Login Mobile Number: +91 $savedPhone',
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1B5E20),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
+                const SizedBox(height: 12),
+              ],
               Text(
                 isHi
                     ? 'चुनें कि कौन-सा अलर्ट या SOS भेजना है:'
@@ -1729,9 +1655,8 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                 ),
                 subtitle: Text(isHi ? 'तत्काल आपातकालीन SMS व अलर्ट भेजें' : 'Immediate SOS SMS & alert dispatch'),
                 onTap: () {
-                  final phone = phoneCtrl.text.trim();
                   Navigator.pop(ctx);
-                  _triggerSimulation('sos', phoneNumber: phone);
+                  _triggerSimulation('sos');
                 },
               ),
               ListTile(
@@ -1740,9 +1665,8 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                 title: Text(isHi ? 'अचानक मौसम परिवर्तन' : 'Sudden Weather Change'),
                 subtitle: Text(isHi ? 'चेतावनी SMS • 82% संभावना' : 'Weather Shift SMS • 82% Probability'),
                 onTap: () {
-                  final phone = phoneCtrl.text.trim();
                   Navigator.pop(ctx);
-                  _triggerSimulation('weather_change', phoneNumber: phone);
+                  _triggerSimulation('weather_change');
                 },
               ),
               ListTile(
@@ -1751,9 +1675,8 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                 title: Text(isHi ? 'पाला व शीतलहर (1.2°C)' : 'Ground Frost (1.2°C)'),
                 subtitle: Text(isHi ? 'गंभीर चेतावनी • 85% संभावना' : 'Red Alert • 85% Probability'),
                 onTap: () {
-                  final phone = phoneCtrl.text.trim();
                   Navigator.pop(ctx);
-                  _triggerSimulation('frost', phoneNumber: phone);
+                  _triggerSimulation('frost');
                 },
               ),
               ListTile(
@@ -1762,9 +1685,8 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                 title: Text(isHi ? 'अत्यधिक भारी वर्षा (145 मिमी)' : 'Excessive Rain (145mm)'),
                 subtitle: Text(isHi ? 'गंभीर चेतावनी • 90% संभावना' : 'Red Alert • 90% Probability'),
                 onTap: () {
-                  final phone = phoneCtrl.text.trim();
                   Navigator.pop(ctx);
-                  _triggerSimulation('heavy_rain', phoneNumber: phone);
+                  _triggerSimulation('heavy_rain');
                 },
               ),
               ListTile(
@@ -1773,9 +1695,8 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                 title: Text(isHi ? 'भीषण लू (44.5°C)' : 'Severe Heat Wave (44.5°C)'),
                 subtitle: Text(isHi ? 'चेतावनी • 88% संभावना' : 'Orange Alert • 88% Probability'),
                 onTap: () {
-                  final phone = phoneCtrl.text.trim();
                   Navigator.pop(ctx);
-                  _triggerSimulation('heat_wave', phoneNumber: phone);
+                  _triggerSimulation('heat_wave');
                 },
               ),
             ],
@@ -1783,33 +1704,22 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () {
-              final digits = phoneCtrl.text.replaceAll(RegExp(r'\D'), '');
-              if (digits.length >= 10) {
-                final ten = digits.substring(digits.length - 10);
-                StorageService.saveUserPhone(ten);
-                if (mounted) setState(() => _userPhone = ten);
-              }
-              Navigator.pop(ctx);
-            },
-            child: Text(isHi ? 'सहेजें व बंद करें' : 'Save & Close'),
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(isHi ? 'बंद करें' : 'Close'),
           ),
         ],
       ),
     );
   }
 
-  void _triggerSimulation(String scenario, {String? phoneNumber}) async {
+  void _triggerSimulation(String scenario) async {
     final isHi = _lang == 'hi';
-    var cleanPhone = phoneNumber?.replaceAll(RegExp(r'\D'), '') ?? '';
-    if (cleanPhone.length >= 10) {
-      cleanPhone = cleanPhone.substring(cleanPhone.length - 10);
-      await StorageService.saveUserPhone(cleanPhone);
-      if (mounted) setState(() => _userPhone = cleanPhone);
-    } else {
-      final stored = _userPhone ?? await StorageService.getUserPhone() ?? await AlertService.detectSimPhoneNumber();
-      if (stored != null && stored.length >= 10) {
-        cleanPhone = stored.substring(stored.length - 10);
+    var cleanPhone = '';
+    final stored = _userPhone ?? await StorageService.getUserPhone() ?? await AlertService.detectSimPhoneNumber();
+    if (stored != null && stored.length >= 10) {
+      final digits = stored.replaceAll(RegExp(r'\D'), '');
+      if (digits.length >= 10) {
+        cleanPhone = digits.substring(digits.length - 10);
         await StorageService.saveUserPhone(cleanPhone);
         if (mounted) setState(() => _userPhone = cleanPhone);
       }
@@ -1817,27 +1727,23 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
 
     if (!mounted) return;
 
-    // If no phone number is linked yet, prompt the user to enter their 10-digit number first
-    if (cleanPhone.length < 10) {
-      _showSimulationDialog();
-      return;
-    }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          isHi
-              ? '+91 $cleanPhone पर SMS एवं अलर्ट भेजा जा रहा है...'
-              : 'Sending SMS & hazard alert to +91 $cleanPhone...',
+    if (cleanPhone.length >= 10) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isHi
+                ? '+91 $cleanPhone पर SMS एवं अलर्ट भेजा जा रहा है...'
+                : 'Sending SMS & hazard alert to +91 $cleanPhone...',
+          ),
         ),
-      ),
-    );
+      );
+    }
 
     final loc = _gpsLocationName ?? _currentFarm?.village ?? (isHi ? 'आपके क्षेत्र' : 'your location');
     final res = await _apiService.simulateAlert(
       _currentFarm?.id ?? 1,
       scenario,
-      phoneNumber: cleanPhone,
+      phoneNumber: cleanPhone.isNotEmpty ? cleanPhone : null,
       locationName: loc,
     );
     if (!mounted) return;
