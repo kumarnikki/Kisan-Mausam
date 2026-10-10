@@ -13,9 +13,6 @@ import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
-import android.telephony.SmsManager
-import android.telephony.SubscriptionManager
-import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
@@ -25,7 +22,7 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "in.kishanmausam.kisan_mausam/native_alert"
-    private val SMS_PERMISSION_REQ_CODE = 9001
+    private val NOTIF_PERMISSION_REQ_CODE = 9001
 
     private var toneGenerator: ToneGenerator? = null
     private val alarmHandler = Handler(Looper.getMainLooper())
@@ -34,10 +31,6 @@ class MainActivity : FlutterActivity() {
     private var previousMusicVolume: Int? = null
     private var previousAlarmVolume: Int? = null
 
-    private var pendingSmsPhone: String? = null
-    private var pendingSmsMessage: String? = null
-    private var pendingSmsTitle: String? = null
-
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         createAlertNotificationChannel()
@@ -45,15 +38,11 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "requestSmsPermission" -> {
-                    val granted = ensurePermissionsRequested()
+                    val granted = ensureNotificationPermissionRequested()
                     result.success(granted)
                 }
                 "hasSmsPermission" -> {
-                    val granted = ContextCompat.checkSelfPermission(
-                        this,
-                        Manifest.permission.SEND_SMS
-                    ) == PackageManager.PERMISSION_GRANTED
-                    result.success(granted)
+                    result.success(true)
                 }
                 "getSimPhoneNumber" -> {
                     result.success(null)
@@ -70,56 +59,29 @@ class MainActivity : FlutterActivity() {
                     val phone = call.argument<String>("phone") ?: ""
                     val message = call.argument<String>("message") ?: ""
                     val title = call.argument<String>("title") ?: "Kisan Mausam Weather Alert"
-                    val sent = sendDirectSmsAndNotify(phone, title, message)
-                    result.success(sent)
+                    val resolvedPhone = normalizePhone(phone)
+                    showHighPriorityAlertNotification(title, message, resolvedPhone)
+                    result.success(true)
                 }
                 else -> result.notImplemented()
             }
         }
     }
 
-    private fun ensurePermissionsRequested(): Boolean {
-        val needed = mutableListOf<String>()
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) {
-            needed.add(Manifest.permission.SEND_SMS)
-        }
+    private fun ensureNotificationPermissionRequested(): Boolean {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                needed.add(Manifest.permission.POST_NOTIFICATIONS)
+                try {
+                    ActivityCompat.requestPermissions(
+                        this,
+                        arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                        NOTIF_PERMISSION_REQ_CODE
+                    )
+                } catch (_: Exception) {}
+                return false
             }
-        }
-        if (needed.isNotEmpty()) {
-            try {
-                ActivityCompat.requestPermissions(this, needed.toTypedArray(), SMS_PERMISSION_REQ_CODE)
-            } catch (_: Exception) {}
-            return false
         }
         return true
-    }
-
-    private fun requestSmsPermissionsWithRetry(attempt: Int) {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED) {
-            val phone = pendingSmsPhone
-            val msg = pendingSmsMessage
-            val title = pendingSmsTitle ?: "Kisan Mausam Weather Alert"
-            if (phone != null && msg != null) {
-                pendingSmsPhone = null
-                pendingSmsMessage = null
-                pendingSmsTitle = null
-                dispatchSmsReliable(phone, msg, title)
-            }
-            return
-        }
-        ensurePermissionsRequested()
-        if (attempt < 4) {
-            alarmHandler.postDelayed({
-                if (pendingSmsPhone != null &&
-                    ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED
-                ) {
-                    requestSmsPermissionsWithRetry(attempt + 1)
-                }
-            }, 1500)
-        }
     }
 
     private fun startMaxVolumeHardwareSiren() {
@@ -218,183 +180,6 @@ class MainActivity : FlutterActivity() {
         return if (ten.length == 10) "+91$ten" else raw
     }
 
-    /**
-     * Converts any alert message into a clean, single-segment GSM 7-bit ASCII string (<= 152 chars)
-     * so Indian carriers (Jio / Airtel / Vi / BSNL) and Android SmsManager.sendTextMessage
-     * deliver the exact weather alert text as a single standard SMS PDU (never an OTP).
-     */
-    private fun toSingleSegmentAsciiSms(rawMessage: String, title: String): String {
-        val asciiOnly = rawMessage
-            .replace("°C", "C")
-            .replace("°", "")
-            .replace("•", "-")
-            .replace("—", "-")
-            .replace("–", "-")
-            .map { ch -> if (ch.code in 32..126) ch else ' ' }
-            .joinToString("")
-            .replace(Regex("\\s+"), " ")
-            .trim()
-
-        val letterCount = asciiOnly.count { it in 'A'..'Z' || it in 'a'..'z' }
-        val baseText = if (letterCount >= 12) {
-            asciiOnly
-        } else {
-            val cleanTitle = title
-                .map { ch -> if (ch.code in 32..126) ch else ' ' }
-                .joinToString("")
-                .replace(Regex("\\s+"), " ")
-                .trim()
-                .ifEmpty { "KisanMausam Weather Alert" }
-            "$cleanTitle: Weather alert active for your farm location. Take precaution. Helpline: 1800-180-1551"
-        }
-
-        return if (baseText.length <= 152) {
-            baseText
-        } else {
-            baseText.substring(0, 149) + "..."
-        }
-    }
-
-    private fun sendDirectSmsAndNotify(rawPhone: String, title: String, message: String): Boolean {
-        val digits = rawPhone.filter { it.isDigit() }
-        if (digits.length < 10 || message.isBlank()) return false
-        val resolvedPhone = normalizePhone(rawPhone)
-
-        showHighPriorityAlertNotification(title, message, resolvedPhone)
-
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED) {
-            return dispatchSmsReliable(resolvedPhone, message, title)
-        } else {
-            pendingSmsPhone = resolvedPhone
-            pendingSmsMessage = message
-            pendingSmsTitle = title
-            requestSmsPermissionsWithRetry(0)
-            return true
-        }
-    }
-
-    private fun getActiveSmsManagers(): List<SmsManager> {
-        val managers = mutableListOf<SmsManager>()
-        val subIds = mutableListOf<Int>()
-
-        try {
-            val defaultSms = SubscriptionManager.getDefaultSmsSubscriptionId()
-            if (defaultSms != SubscriptionManager.INVALID_SUBSCRIPTION_ID && defaultSms > 0) {
-                subIds.add(defaultSms)
-            }
-        } catch (_: Exception) {}
-
-        try {
-            val defaultVoice = SubscriptionManager.getDefaultVoiceSubscriptionId()
-            if (defaultVoice != SubscriptionManager.INVALID_SUBSCRIPTION_ID && defaultVoice > 0) {
-                subIds.add(defaultVoice)
-            }
-        } catch (_: Exception) {}
-
-        try {
-            val defaultData = SubscriptionManager.getDefaultDataSubscriptionId()
-            if (defaultData != SubscriptionManager.INVALID_SUBSCRIPTION_ID && defaultData > 0) {
-                subIds.add(defaultData)
-            }
-        } catch (_: Exception) {}
-
-        subIds.add(1)
-        subIds.add(2)
-
-        for (sid in subIds.distinct()) {
-            try {
-                val mgr = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    getSystemService(SmsManager::class.java)?.createForSubscriptionId(sid)
-                } else {
-                    @Suppress("DEPRECATION")
-                    SmsManager.getSmsManagerForSubscriptionId(sid)
-                }
-                if (mgr != null) {
-                    managers.add(mgr)
-                }
-            } catch (_: Exception) {}
-        }
-
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                val sysMgr = getSystemService(SmsManager::class.java)
-                if (sysMgr != null) {
-                    managers.add(sysMgr)
-                }
-            }
-        } catch (_: Exception) {}
-
-        try {
-            @Suppress("DEPRECATION")
-            val defMgr = SmsManager.getDefault()
-            if (defMgr != null) {
-                managers.add(defMgr)
-            }
-        } catch (_: Exception) {}
-
-        return managers
-    }
-
-    private fun dispatchSmsReliable(destPhone: String, rawMessage: String, title: String): Boolean {
-        val smsText = toSingleSegmentAsciiSms(rawMessage, title)
-        val managers = getActiveSmsManagers()
-        if (managers.isEmpty()) return false
-
-        val digits = destPhone.filter { it.isDigit() }
-        val tenDigits = if (digits.length >= 10) digits.takeLast(10) else digits
-        val plus91Phone = if (tenDigits.length == 10) "+91$tenDigits" else destPhone
-
-        var sentOnAny = false
-        for (mgr in managers) {
-            try {
-                mgr.sendTextMessage(plus91Phone, null, smsText, null, null)
-                sentOnAny = true
-                break
-            } catch (_: Exception) {
-                try {
-                    mgr.sendTextMessage(tenDigits, null, smsText, null, null)
-                    sentOnAny = true
-                    break
-                } catch (_: Exception) {}
-            }
-        }
-        return sentOnAny
-    }
-
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == SMS_PERMISSION_REQ_CODE) {
-            if (grantResults.isEmpty()) {
-                if (pendingSmsPhone != null) {
-                    alarmHandler.postDelayed({ ensurePermissionsRequested() }, 1200)
-                }
-                return
-            }
-            val phone = pendingSmsPhone
-            val msg = pendingSmsMessage
-            val title = pendingSmsTitle ?: "Kisan Mausam Weather Alert"
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED) {
-                if (phone != null && msg != null) {
-                    pendingSmsPhone = null
-                    pendingSmsMessage = null
-                    pendingSmsTitle = null
-                    val ok = dispatchSmsReliable(phone, msg, title)
-                    if (ok) {
-                        Toast.makeText(
-                            this,
-                            "Weather Alert SMS sent to $phone",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                }
-            }
-        }
-    }
-
     private fun createAlertNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
@@ -402,7 +187,7 @@ class MainActivity : FlutterActivity() {
                 "Kisan Mausam Weather & SOS Alerts",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "Critical Weather Change & SOS SMS Alerts"
+                description = "Critical Weather Change & SOS Alerts"
                 enableVibration(true)
             }
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -413,13 +198,14 @@ class MainActivity : FlutterActivity() {
     private fun showHighPriorityAlertNotification(title: String, message: String, destPhone: String) {
         try {
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val phoneLabel = if (destPhone.isNotBlank()) "📲 $destPhone: " else ""
             val notif = NotificationCompat.Builder(this, "kisan_weather_sms_alerts")
                 .setSmallIcon(android.R.drawable.ic_dialog_alert)
                 .setContentTitle(title)
-                .setContentText(message)
-                .setStyle(NotificationCompat.BigTextStyle().bigText("$message\n📲 SMS -> $destPhone"))
+                .setContentText("$phoneLabel$message")
+                .setStyle(NotificationCompat.BigTextStyle().bigText("$phoneLabel$message"))
                 .setPriority(NotificationCompat.PRIORITY_MAX)
-                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setCategory(NotificationCompat.CATEGORY_MESSAGE)
                 .setAutoCancel(true)
                 .build()
             nm.notify((System.currentTimeMillis() % 100000).toInt(), notif)

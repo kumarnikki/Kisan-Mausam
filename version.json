@@ -1,10 +1,10 @@
 {
-  "version": "1.1.2",
-  "versionCode": 12,
-  "releaseName": "Kisan Mausam v1.1.2 - Concise AI & Direct Weather SMS Edition",
+  "version": "1.1.3",
+  "versionCode": 13,
+  "releaseName": "Kisan Mausam v1.1.3 - Play Protect Safe & Concise AI Edition",
   "apkUrl": "https://github.com/kumarnikki/Kisan-Mausam/releases/download/v1.0.0/kisan-mausam-release.apk",
   "githubReleaseUrl": "https://github.com/kumarnikki/Kisan-Mausam/releases/latest",
-  "changelog": "• Short, crisp, to-the-point AI Krishi Sahayak responses (1-2 sentences)\n• Direct Weather & SOS Alert SMS text dispatch (never sends OTP for weather alerts)\n• Top Crop Advisory quick navigation & bottom-right Voice Assistant FAB\n• Play Protect safe manifest permissions",
+  "changelog": "• Removed SEND_SMS & SmsManager DEX calls so Chrome & Play Protect download/install with zero security warnings\n• Short, crisp, to-the-point AI Krishi Sahayak responses (1-2 sentences)\n• Removed OTP fallback on weather alerts (never sends OTP for weather changes)\n• Top Crop Advisory quick navigation & bottom-right Voice Assistant FAB",
   "minRequiredVersion": "1.0.0",
-  "publishedAt": "2026-10-10T12:00:00Z"
+  "publishedAt": "2026-10-10T12:15:00Z"
 }
