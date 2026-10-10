@@ -42,11 +42,11 @@ class WeatherService:
         params = {
             "latitude": latitude,
             "longitude": longitude,
+            "current": "temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m,wind_gusts_10m",
             "hourly": "temperature_2m,relativehumidity_2m,precipitation_probability,precipitation,rain,weathercode,windspeed_10m,windgusts_10m,uv_index,soil_temperature_0cm,soil_moisture_0_1cm,apparent_temperature",
             "daily": "temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,windspeed_10m_max,sunrise,sunset,uv_index_max,weathercode",
-            "timezone": "Asia/Kolkata",
+            "timezone": "auto",
             "forecast_days": 16,
-            "past_days": 1
         }
         if settings.OPEN_METEO_API_KEY:
             params["apikey"] = settings.OPEN_METEO_API_KEY
@@ -58,6 +58,7 @@ class WeatherService:
                 raw = resp.json()
 
             # Format normalized response
+            cur_raw = raw.get("current", {})
             hourly = raw.get("hourly", {})
             daily = raw.get("daily", {})
 
@@ -67,24 +68,34 @@ class WeatherService:
             now_iso = datetime.now().strftime("%Y-%m-%dT%H:00")
             if now_iso in times:
                 now_idx = times.index(now_iso)
+            elif times:
+                # Find closest index
+                for idx, t in enumerate(times):
+                    if t >= now_iso:
+                        now_idx = idx
+                        break
+
+            cur_is_day = cur_raw.get("is_day")
+            if cur_is_day is None:
+                cur_is_day = 1 if (6 <= datetime.now().hour < 19) else 0
 
             current_data = {
-                "time": times[now_idx] if times else datetime.now().isoformat(),
-                "temperature_2m": hourly.get("temperature_2m", [25.0])[now_idx],
-                "relativehumidity_2m": hourly.get("relativehumidity_2m", [60.0])[now_idx],
-                "apparent_temperature": hourly.get("apparent_temperature", [26.0])[now_idx],
-                "precipitation": hourly.get("precipitation", [0.0])[now_idx],
-                "weathercode": hourly.get("weathercode", [0])[now_idx],
-                "windspeed_10m": hourly.get("windspeed_10m", [10.0])[now_idx],
-                "windgusts_10m": hourly.get("windgusts_10m", [15.0])[now_idx],
-                "uv_index": hourly.get("uv_index", [5.0])[now_idx],
-                "soil_temperature_0cm": hourly.get("soil_temperature_0cm", [24.0])[now_idx],
-                "soil_moisture_0_1cm": hourly.get("soil_moisture_0_1cm", [0.22])[now_idx],
-                "is_day": 1 if (6 <= datetime.now().hour < 19) else 0,
+                "time": cur_raw.get("time") or (times[now_idx] if times else datetime.now().isoformat()),
+                "temperature_2m": cur_raw.get("temperature_2m") if cur_raw.get("temperature_2m") is not None else hourly.get("temperature_2m", [25.0])[now_idx],
+                "relativehumidity_2m": cur_raw.get("relative_humidity_2m") if cur_raw.get("relative_humidity_2m") is not None else hourly.get("relativehumidity_2m", [60.0])[now_idx],
+                "apparent_temperature": cur_raw.get("apparent_temperature") if cur_raw.get("apparent_temperature") is not None else hourly.get("apparent_temperature", [26.0])[now_idx],
+                "precipitation": cur_raw.get("precipitation") if cur_raw.get("precipitation") is not None else hourly.get("precipitation", [0.0])[now_idx],
+                "weathercode": cur_raw.get("weather_code") if cur_raw.get("weather_code") is not None else hourly.get("weathercode", [0])[now_idx],
+                "windspeed_10m": cur_raw.get("wind_speed_10m") if cur_raw.get("wind_speed_10m") is not None else hourly.get("windspeed_10m", [10.0])[now_idx],
+                "windgusts_10m": cur_raw.get("wind_gusts_10m") if cur_raw.get("wind_gusts_10m") is not None else hourly.get("windgusts_10m", [15.0])[now_idx],
+                "uv_index": hourly.get("uv_index", [5.0])[now_idx] if now_idx < len(hourly.get("uv_index", [])) else 5.0,
+                "soil_temperature_0cm": hourly.get("soil_temperature_0cm", [24.0])[now_idx] if now_idx < len(hourly.get("soil_temperature_0cm", [])) else 24.0,
+                "soil_moisture_0_1cm": hourly.get("soil_moisture_0_1cm", [0.22])[now_idx] if now_idx < len(hourly.get("soil_moisture_0_1cm", [])) else 0.22,
+                "is_day": int(cur_is_day),
             }
 
             hourly_items = []
-            for i in range(min(48, len(times))):
+            for i in range(now_idx, min(now_idx + 48, len(times))):
                 hourly_items.append({
                     "time": times[i],
                     "temperature_2m": hourly.get("temperature_2m", [])[i],
