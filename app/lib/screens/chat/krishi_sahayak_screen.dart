@@ -146,21 +146,6 @@ class _KrishiSahayakScreenState extends State<KrishiSahayakScreen>
             : 'राम-राम किसान भाई! मैं आपका किसान मौसम कृषि सहायक हूँ। आपके क्षेत्र ($village)$tempStr और फसल ($crop) के मौसम व सुरक्षा पर कोई भी सवाल बोलकर या लिखकर पूछें।\n\n'
                 'मैं भारतीय कृषि अनुसंधान परिषद (ICAR) एवं मौसम विज्ञान विभाग (IMD) के वैज्ञानिक मानकों पर आधारित सलाह देता हूँ।',
         isUser: false,
-        tips: isEn
-            ? [
-                'What is the current temperature?',
-                'Should I irrigate today?',
-                'When will it rain?',
-                'How to prevent frost damage?',
-                '30-day climate outlook'
-              ]
-            : [
-                'अभी का तापमान कितना है?',
-                'क्या आज पानी दूं?',
-                'बारिश कब होगी?',
-                'पाले से कैसे बचाएं?',
-                '30-दिवसीय मौसमी रुझान'
-              ],
         kvkContact: '1800-180-1551',
         timestamp: _formatTime(),
         category: isEn ? 'Welcome' : 'स्वागत',
@@ -760,33 +745,6 @@ class _KrishiSahayakScreenState extends State<KrishiSahayakScreen>
                   tooltip: 'Gemini API Key',
                   onPressed: _showApiKeyDialog,
                 ),
-
-                // KVK Helpline Call Button (Required by widget test!)
-                IconButton(
-                  icon: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF43A047), Color(0xFF1B5E20)],
-                      ),
-                      borderRadius: BorderRadius.circular(14),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFF1B5E20).withValues(alpha: 0.25),
-                          blurRadius: 8,
-                          offset: const Offset(0, 3),
-                        ),
-                      ],
-                    ),
-                    child: const Icon(
-                      Icons.phone_in_talk,
-                      color: Colors.white,
-                      size: 20,
-                    ),
-                  ),
-                  tooltip: _lang == 'en' ? 'Call KVK Helpline' : 'KVK कॉल करें',
-                  onPressed: _callKvk,
-                ),
               ],
             ),
           ),
@@ -948,7 +906,7 @@ class _KrishiSahayakScreenState extends State<KrishiSahayakScreen>
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.call, size: 12, color: Colors.white),
+                  Icon(Icons.phone_in_talk, size: 12, color: Colors.white),
                   SizedBox(width: 4),
                   Text(
                     'KVK',

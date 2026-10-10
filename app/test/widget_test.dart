@@ -145,15 +145,19 @@ void main() {
     ));
     await tester.pump(const Duration(milliseconds: 200));
 
-    // Verify Prominent Mic Button is visible
+    // Verify Prominent Mic Button / Hero Voice Banner is visible
     expect(find.text('बोलकर पूछें'), findsOneWidget);
-    expect(find.byIcon(Icons.mic), findsOneWidget);
+    expect(find.byIcon(Icons.mic), findsWidgets);
 
-    // Verify Top Bar elements: GPS my_location button, Search button, Settings button
+    // Verify Top Bar elements: Settings button and Location button
     expect(find.byIcon(Icons.settings), findsOneWidget);
+    expect(find.byIcon(Icons.location_on), findsOneWidget);
+
+    // Tap location selector to reveal GPS auto-locate and Search
+    await tester.tap(find.byIcon(Icons.location_on));
+    await tester.pump(const Duration(milliseconds: 300));
     expect(find.byIcon(Icons.my_location), findsOneWidget);
     expect(find.byIcon(Icons.search), findsOneWidget);
-    expect(find.byIcon(Icons.location_on), findsOneWidget);
   });
 
   testWidgets('Test 7: KrishiSahayakScreen renders AI chat, quick chips, back button and KVK helpline', (WidgetTester tester) async {

@@ -65,50 +65,25 @@ class _ProminentMicButtonState extends State<ProminentMicButton>
               ),
             ),
 
-            // Actual FAB with exact text & icon expected by tests
-            FloatingActionButton.extended(
-              heroTag: 'kisan_mic_fab',
-              onPressed: widget.onPressed ??
-                  () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) => const KrishiSahayakScreen(),
-                      ),
-                    );
-                  },
-              elevation: 8,
-              highlightElevation: 12,
-              backgroundColor: const Color(0xFFBF360C),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(28),
-                side: BorderSide(
-                  color: Colors.white.withValues(alpha: 0.35),
-                  width: 1.5,
-                ),
-              ),
-              icon: Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withValues(alpha: 0.15),
-                ),
+            // Compact 56px circular FAB to prevent overlapping text content on scroll
+            SizedBox(
+              width: 56,
+              height: 56,
+              child: FloatingActionButton(
+                heroTag: 'kisan_mic_fab',
+                onPressed: widget.onPressed ??
+                    () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => const KrishiSahayakScreen(),
+                        ),
+                      );
+                    },
+                elevation: 6,
+                highlightElevation: 10,
+                backgroundColor: const Color(0xFF1B5E20),
+                shape: const CircleBorder(),
                 child: const Icon(Icons.mic, size: 28, color: Colors.white),
-              ),
-              label: Text(
-                widget.label,
-                style: const TextStyle(
-                  fontSize: 15.5,
-                  fontWeight: FontWeight.w900,
-                  color: Colors.white,
-                  letterSpacing: 0.4,
-                  shadows: [
-                    Shadow(
-                      color: Colors.black26,
-                      blurRadius: 4,
-                      offset: Offset(0, 1),
-                    ),
-                  ],
-                ),
               ),
             ),
           ],

@@ -429,19 +429,19 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                 // 1. Top Bar with Farm Switcher & Settings Icon in Glass Capsule
                 SliverToBoxAdapter(
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     child: GlassCard(
-                      borderRadius: 22,
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      borderRadius: 16,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       child: Row(
                         children: [
-                          // Farm Switcher Dropdown
+                          // Farm Switcher Dropdown (Tap to change location, auto-locate or search)
                           Expanded(
                             child: InkWell(
                               onTap: _showFarmSelector,
-                              borderRadius: BorderRadius.circular(16),
+                              borderRadius: BorderRadius.circular(12),
                               child: Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                                 child: Row(
                                   children: [
                                     Container(
@@ -450,7 +450,13 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                                         color: const Color(0xFF1B5E20).withValues(alpha: 0.12),
                                         shape: BoxShape.circle,
                                       ),
-                                      child: const Icon(Icons.location_on, color: Color(0xFF1B5E20), size: 20),
+                                      child: _isLocating
+                                          ? const SizedBox(
+                                              width: 20,
+                                              height: 20,
+                                              child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF1B5E20)),
+                                            )
+                                          : const Icon(Icons.location_on, color: Color(0xFF1B5E20), size: 20),
                                     ),
                                     const SizedBox(width: 8),
                                     Flexible(
@@ -479,49 +485,8 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                               ),
                             ),
                           ),
-                          const SizedBox(width: 4),
-                          // GPS Current Location button
-                          _isLocating
-                              ? const SizedBox(
-                                  width: 38,
-                                  height: 38,
-                                  child: Padding(
-                                    padding: EdgeInsets.all(8),
-                                    child: CircularProgressIndicator(strokeWidth: 2.2, color: Color(0xFF1B5E20)),
-                                  ),
-                                )
-                              : Container(
-                                  decoration: BoxDecoration(
-                                    color: _gpsLat != null
-                                        ? const Color(0xFF1B5E20).withValues(alpha: 0.15)
-                                        : Colors.black.withValues(alpha: 0.04),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: IconButton(
-                                    icon: Icon(
-                                      Icons.my_location,
-                                      size: 20,
-                                      color: _gpsLat != null ? const Color(0xFF1B5E20) : Colors.black87,
-                                    ),
-                                    tooltip: _lang == 'hi' ? 'मेरा स्थान' : 'My Location',
-                                    onPressed: _fetchCurrentLocationGPS,
-                                  ),
-                                ),
-                          const SizedBox(width: 4),
-                          // Search Location button
-                          Container(
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.04),
-                              shape: BoxShape.circle,
-                            ),
-                            child: IconButton(
-                              icon: const Icon(Icons.search, size: 20, color: Colors.black87),
-                              tooltip: _lang == 'hi' ? 'स्थान खोजें' : 'Search Location',
-                              onPressed: _showLocationSearchDialog,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          // Settings
+                          const SizedBox(width: 8),
+                          // Only One Icon on Right: Settings Gear
                           Container(
                             decoration: BoxDecoration(
                               color: Colors.black.withValues(alpha: 0.04),
@@ -663,9 +628,14 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                   ),
                 )
               else if (_weather != null) ...[
-                // 2. WeatherMaster-inspired Large Current Conditions Hero Header
+                // 2. Large Current Conditions Hero Header
                 SliverToBoxAdapter(
                   child: _buildCurrentWeatherHero(_weather!.current),
+                ),
+
+                // Voice Assistant Hero Banner (One-time prominent entry point per Point 1)
+                SliverToBoxAdapter(
+                  child: _buildVoiceHeroBanner(),
                 ),
 
                 // 2.2 Risk Early Warnings Hero Section
@@ -699,32 +669,11 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                     child: _buildSunCycleTile(_weather!.daily.first),
                   ),
 
-                // 6. 10-Day Daily Forecast Section
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.calendar_month, color: Color(0xFF1B5E20), size: 24),
-                        const SizedBox(width: 8),
-                        Text(
-                          AppStrings.get('daily_forecast', _lang),
-                          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                        ),
-                      ],
-                    ),
+                // 6. 10-Day Daily Forecast Section (Unified list row container per Point 9)
+                if (_weather!.daily.isNotEmpty)
+                  SliverToBoxAdapter(
+                    child: _buildDailyForecastSection(_weather!.daily),
                   ),
-                ),
-
-                SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                      final item = _weather!.daily[index];
-                      return _buildDailyForecastCard(item);
-                    },
-                    childCount: _weather!.daily.length,
-                  ),
-                ),
 
                 // 7. Open-Meteo CC BY 4.0 Attribution Footer
                 SliverToBoxAdapter(
@@ -742,7 +691,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                           'KisanMausam v1.0 • Hindi-First Agri Weather App',
                           style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
                         ),
-                        const SizedBox(height: 48), // Padding for mic FAB
+                        const SizedBox(height: 84), // 84px clearance so FAB never overlaps content
                       ],
                     ),
                   ),
@@ -755,6 +704,107 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
     ),
   );
 }
+
+  Widget _buildVoiceHeroBanner() {
+    final isHi = _lang == 'hi';
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Colors.black.withValues(alpha: 0.08),
+          width: 1.0,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => KrishiSahayakScreen(
+                  farm: _currentFarm,
+                  locationName: _gpsLocationName ?? _currentFarm?.village,
+                  latitude: _gpsLat ?? _weather?.latitude ?? _currentFarm?.latitude,
+                  longitude: _gpsLon ?? _weather?.longitude ?? _currentFarm?.longitude,
+                  weather: _weather,
+                  lang: _lang,
+                ),
+              ),
+            );
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1B5E20).withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.mic, color: Color(0xFF1B5E20), size: 24),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        isHi ? 'बोलकर पूछें' : 'Voice Assistant',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1B5E20),
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        isHi ? 'मौसम या खेती संबंधी सवाल पूछें' : 'Ask weather or farming questions',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1B5E20),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    isHi ? 'बोलें' : 'Tap to Talk',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _buildCurrentWeatherHero(CurrentWeather current) {
     final isDay = current.isDay;
@@ -777,7 +827,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                     : const [Color(0xFF0F172A), Color(0xFF1E293B), Color(0xFF0D1B2A)])));
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(28),
         gradient: LinearGradient(
@@ -1112,12 +1162,21 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
   }
 
   Widget _buildSoilHealthTile(CurrentWeather current) {
-    return GlassCard(
-      margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-      borderRadius: 22,
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       padding: const EdgeInsets.all(16),
-      tintColor: const Color(0xFFEFEBE9),
-      border: Border.all(color: const Color(0xFFBCAAA4), width: 1.0),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.08), width: 1.0),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1126,7 +1185,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
               Container(
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF5D4037).withValues(alpha: 0.15),
+                  color: const Color(0xFF5D4037).withValues(alpha: 0.12),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.grass, color: Color(0xFF5D4037), size: 20),
@@ -1134,7 +1193,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
               const SizedBox(width: 8),
               Text(
                 AppStrings.get('soil_health', _lang),
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF4E342E)),
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF4E342E)),
               ),
             ],
           ),
@@ -1178,12 +1237,21 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
   }
 
   Widget _buildSunCycleTile(DailyForecast today) {
-    return GlassCard(
-      margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-      borderRadius: 22,
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      tintColor: const Color(0xFFFFF8E1),
-      border: Border.all(color: Colors.amber.shade200, width: 1.0),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.08), width: 1.0),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
@@ -1194,7 +1262,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                 Container(
                   padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
-                    color: Colors.orange.withValues(alpha: 0.15),
+                    color: Colors.orange.withValues(alpha: 0.12),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(Icons.wb_sunny, color: Colors.orange, size: 22),
@@ -1210,7 +1278,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
               ],
             ),
           ),
-          Container(width: 1, height: 32, color: Colors.orange.shade200),
+          Container(width: 1, height: 32, color: Colors.grey.shade300),
           Expanded(
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -1218,7 +1286,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                 Container(
                   padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
-                    color: Colors.deepOrange.withValues(alpha: 0.15),
+                    color: Colors.deepOrange.withValues(alpha: 0.12),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(Icons.nightlight_round, color: Colors.deepOrange, size: 22),
@@ -1275,23 +1343,79 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
     }
   }
 
-  Widget _buildDailyForecastCard(DailyForecast day) {
-    final icon = _getWeatherIcon(day.weatherCode);
-
-    // Compute weekly min & max for spectrum normalization
+  Widget _buildDailyForecastSection(List<DailyForecast> daily) {
     double weekMin = 50;
     double weekMax = -20;
-    if (_weather != null) {
-      for (final d in _weather!.daily) {
-        if (d.tempMin < weekMin) weekMin = d.tempMin;
-        if (d.tempMax > weekMax) weekMax = d.tempMax;
-      }
+    for (final d in daily) {
+      if (d.tempMin < weekMin) weekMin = d.tempMin;
+      if (d.tempMax > weekMax) weekMax = d.tempMax;
     }
 
-    return GlassCard(
-      margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
-      borderRadius: 18,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.08), width: 1.0),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1B5E20).withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.calendar_month, color: Color(0xFF1B5E20), size: 18),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  AppStrings.get('daily_forecast', _lang),
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1, thickness: 0.8),
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            itemCount: daily.length,
+            separatorBuilder: (context, index) => Divider(
+              height: 16,
+              thickness: 0.8,
+              indent: 16,
+              endIndent: 16,
+              color: Colors.black.withValues(alpha: 0.06),
+            ),
+            itemBuilder: (context, index) {
+              final day = daily[index];
+              return _buildDailyForecastRow(day, weekMin, weekMax);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDailyForecastRow(DailyForecast day, double weekMin, double weekMax) {
+    final icon = _getWeatherIcon(day.weatherCode);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: Row(
         children: [
           // Date
@@ -1299,11 +1423,11 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
             width: 72,
             child: Text(
               _formatDayLabel(day.date),
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
             ),
           ),
           // Weather Icon
-          Icon(icon, size: 24, color: const Color(0xFF1B5E20)),
+          Icon(icon, size: 22, color: const Color(0xFF1B5E20)),
           const SizedBox(width: 6),
           // Rain chance pill
           SizedBox(
@@ -1325,7 +1449,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
           // Min Temp
           Text(
             '${day.tempMin.round()}°',
-            style: TextStyle(fontSize: 13.5, color: Colors.grey.shade600, fontWeight: FontWeight.bold),
+            style: TextStyle(fontSize: 13, color: Colors.grey.shade600, fontWeight: FontWeight.bold),
           ),
           const SizedBox(width: 8),
           // Temperature Spectrum Range Bar
@@ -1341,7 +1465,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
           // Max Temp
           Text(
             '${day.tempMax.round()}°',
-            style: const TextStyle(fontSize: 16.5, fontWeight: FontWeight.w900),
+            style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w900),
           ),
         ],
       ),
@@ -1353,14 +1477,23 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
     final h3Risks = _riskData?.horizon3.risks ?? [];
     final hasHighRisk = h1Risks.isNotEmpty;
 
-    return GlassCard(
-      margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      borderRadius: 24,
-      padding: const EdgeInsets.all(18),
-      tintColor: hasHighRisk ? const Color(0xFFFFEBEE) : const Color(0xFFE8F5E9),
-      border: Border.all(
-        color: hasHighRisk ? Colors.red.shade300 : Colors.green.shade300,
-        width: 1.5,
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: hasHighRisk ? Colors.red.shade400 : Colors.green.shade400,
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1371,13 +1504,13 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                 padding: const EdgeInsets.all(7),
                 decoration: BoxDecoration(
                   color: hasHighRisk
-                      ? Colors.red.withValues(alpha: 0.15)
-                      : Colors.green.withValues(alpha: 0.15),
+                      ? Colors.red.withValues(alpha: 0.12)
+                      : const Color(0xFF1B5E20).withValues(alpha: 0.12),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
                   hasHighRisk ? Icons.warning_amber_rounded : Icons.verified_user_outlined,
-                  color: hasHighRisk ? Colors.red.shade700 : Colors.green.shade800,
+                  color: hasHighRisk ? Colors.red.shade700 : const Color(0xFF1B5E20),
                   size: 24,
                 ),
               ),
@@ -1389,9 +1522,9 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                     Text(
                       AppStrings.get('risk_card_title', _lang),
                       style: TextStyle(
-                        fontSize: 16,
+                        fontSize: 18,
                         fontWeight: FontWeight.bold,
-                        color: hasHighRisk ? Colors.red.shade900 : Colors.green.shade900,
+                        color: hasHighRisk ? Colors.red.shade900 : const Color(0xFF1B5E20),
                       ),
                     ),
                     Row(
@@ -1410,7 +1543,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                               ? (_lang == 'hi' ? 'सक्रिय चेतावनी' : 'Active Hazards')
                               : AppStrings.get('risk_farm_safe', _lang),
                           style: TextStyle(
-                            fontSize: 11,
+                            fontSize: 12,
                             fontWeight: FontWeight.w600,
                             color: hasHighRisk ? Colors.red.shade800 : Colors.green.shade800,
                           ),
@@ -1424,7 +1557,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF1B5E20),
                   foregroundColor: Colors.white,
-                  elevation: 2,
+                  elevation: 0,
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   minimumSize: const Size(60, 34),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
@@ -1442,9 +1575,8 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.8),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.green.shade200),
+                color: const Color(0xFFE8F5E9),
+                borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
                 children: [
@@ -1453,7 +1585,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                   Expanded(
                     child: Text(
                       AppStrings.get('risk_no_hazards', _lang),
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.green.shade900),
+                      style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500, color: Colors.green.shade900),
                     ),
                   ),
                 ],
@@ -1465,9 +1597,8 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.75),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.green.shade200),
+                color: const Color(0xFFF1F8E9),
+                borderRadius: BorderRadius.circular(12),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1478,7 +1609,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                       const SizedBox(width: 6),
                       Text(
                         AppStrings.get('seasonal_title', _lang),
-                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF1B5E20)),
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF1B5E20)),
                       ),
                     ],
                   ),
@@ -1498,7 +1629,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                       }
                       return '$activeLoc में अगले 30 दिनों में सामान्य से कम वर्षा होने की संभावना 35% है।';
                     }(),
-                    style: const TextStyle(fontSize: 12.5, color: Colors.black87, height: 1.3),
+                    style: const TextStyle(fontSize: 13, color: Colors.black87, height: 1.35),
                   ),
                 ],
               ),
@@ -1577,7 +1708,6 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
             decoration: BoxDecoration(
               color: Colors.amber.shade50,
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: Colors.amber.shade200),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1608,12 +1738,21 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
         : (enso != null ? enso.phase : 'Neutral');
     final oniVal = enso?.oniValue ?? -0.2;
 
-    return GlassCard(
-      margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      borderRadius: 24,
-      padding: const EdgeInsets.all(18),
-      tintColor: const Color(0xFFE1F5FE),
-      border: Border.all(color: Colors.blue.shade200, width: 1.2),
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.08), width: 1.0),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1622,7 +1761,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
               Container(
                 padding: const EdgeInsets.all(7),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0277BD).withValues(alpha: 0.15),
+                  color: const Color(0xFF0277BD).withValues(alpha: 0.12),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.public, color: Color(0xFF0277BD), size: 22),
@@ -1634,11 +1773,11 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                   children: [
                     Text(
                       AppStrings.get('enso_title', _lang),
-                      style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.bold, color: Color(0xFF01579B)),
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF01579B)),
                     ),
                     Text(
                       'Oceanic Nino Index (ONI)',
-                      style: TextStyle(fontSize: 11, color: Colors.blue.shade800),
+                      style: TextStyle(fontSize: 11.5, color: Colors.blue.shade800),
                     ),
                   ],
                 ),
@@ -1652,8 +1791,8 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFF0288D1).withValues(alpha: 0.35),
-                      blurRadius: 8,
+                      color: const Color(0xFF0288D1).withValues(alpha: 0.25),
+                      blurRadius: 6,
                       offset: const Offset(0, 2),
                     ),
                   ],
@@ -1675,7 +1814,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                     ? enso.explanationHi.replaceAll(RegExp(r'\s*\([A-Za-z\s-ñÑíÍ/]+\)'), '').trim()
                     : 'अल नीनो व ला नीना प्रशांत महासागर का समुद्री तापमान चक्र है। वर्तमान में तटस्थ स्थिति है। यह एक वैश्विक सूचकांक है; अपने स्थानीय खेत के लिए 30-दिवसीय वर्षा पूर्वानुमान देखें।')
                 : 'El Niño and La Niña represent ocean surface temperature cycles. Currently in Neutral phase. Check 30-day outlook for local rainfall.',
-            style: const TextStyle(fontSize: 12.5, color: Colors.black87, height: 1.35),
+            style: const TextStyle(fontSize: 13.5, color: Colors.black87, height: 1.35),
           ),
           const SizedBox(height: 10),
           Row(
@@ -1684,8 +1823,8 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.blue.shade100,
-                  borderRadius: BorderRadius.circular(10),
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
                   'ONI Index: ${oniVal >= 0 ? "+" : ""}$oniVal°C',
@@ -1705,12 +1844,21 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
 
   Widget _buildCropRecommenderEntryCard() {
     final isHi = _lang == 'hi';
-    return GlassCard(
-      margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      borderRadius: 24,
-      padding: const EdgeInsets.all(18),
-      tintColor: const Color(0xFFF1F8E9),
-      border: Border.all(color: const Color(0xFF81C784), width: 1.2),
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.08), width: 1.0),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1719,7 +1867,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
               Container(
                 padding: const EdgeInsets.all(7),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1B5E20).withValues(alpha: 0.15),
+                  color: const Color(0xFF1B5E20).withValues(alpha: 0.12),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.psychology_alt, color: Color(0xFF1B5E20), size: 24),
@@ -1729,7 +1877,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                 child: Text(
                   AppStrings.get('crop_recommender_title', _lang),
                   style: const TextStyle(
-                    fontSize: 15.5,
+                    fontSize: 18,
                     fontWeight: FontWeight.bold,
                     color: Color(0xFF1B5E20),
                   ),
@@ -1739,8 +1887,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   color: Colors.amber.shade100,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.amber.shade300),
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
                   AppStrings.get('rabi_season', _lang),
@@ -1752,7 +1899,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
           const SizedBox(height: 10),
           Text(
             AppStrings.get('crop_recommender_subtitle', _lang),
-            style: const TextStyle(fontSize: 13, color: Colors.black87, height: 1.3),
+            style: const TextStyle(fontSize: 13.5, color: Colors.black87, height: 1.35),
           ),
           const SizedBox(height: 10),
           // Suggested crop teaser badges
@@ -1778,9 +1925,9 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF1B5E20),
                 foregroundColor: Colors.white,
-                minimumSize: const Size(double.infinity, 48),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                elevation: 3,
+                minimumSize: const Size(double.infinity, 46),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                elevation: 0,
               ),
               onPressed: () {
                 Navigator.push(
@@ -1807,15 +1954,14 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
 
   Widget _buildCropTeaserChip(String label) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFC8E6C9)),
+        color: const Color(0xFFE8F5E9),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
         label,
-        style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF2E7D32)),
+        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF1B5E20)),
       ),
     );
   }
@@ -1940,6 +2086,51 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                 style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 16),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1B5E20).withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.my_location, color: Color(0xFF1B5E20), size: 20),
+                ),
+                title: Text(
+                  _lang == 'hi' ? 'वर्तमान GPS स्थान का उपयोग करें' : 'Use Current GPS Location',
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                ),
+                subtitle: Text(
+                  _lang == 'hi' ? 'सटीक खेत मौसम हेतु स्वचालित पहचान' : 'Auto-detect exact farm location',
+                  style: const TextStyle(fontSize: 11.5),
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _fetchCurrentLocationGPS();
+                },
+              ),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.search, color: Colors.blue, size: 20),
+                ),
+                title: Text(
+                  _lang == 'hi' ? 'नया शहर या गाँव खोजें' : 'Search City or Village',
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                ),
+                subtitle: Text(
+                  _lang == 'hi' ? 'नाम लिखकर मौसम देखें' : 'Type name to check weather',
+                  style: const TextStyle(fontSize: 11.5),
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _showLocationSearchDialog();
+                },
+              ),
+              const Divider(height: 20),
               ..._farms.map((farm) {
                 final isSelected = farm.id == _currentFarm?.id;
                 return ListTile(

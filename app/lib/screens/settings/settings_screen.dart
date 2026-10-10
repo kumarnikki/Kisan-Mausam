@@ -28,6 +28,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _highContrast = false;
   String? _customBackendUrl;
   bool _isCheckingUpdate = false;
+  int _developerTapCount = 0;
+
+  void _onFooterTapped() {
+    _developerTapCount++;
+    if (_developerTapCount == 7) {
+      _developerTapCount = 0;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_lang == 'en' ? 'Developer Options Unlocked' : 'डेवलपर सेटिंग्स खोली गईं'),
+          backgroundColor: const Color(0xFF1B5E20),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      _showServerConfigDialog();
+    } else if (_developerTapCount >= 4) {
+      final remaining = 7 - _developerTapCount;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_lang == 'en'
+              ? 'You are now $remaining steps away from Developer Options'
+              : 'आप डेवलपर विकल्पों से $remaining कदम दूर हैं'),
+          duration: const Duration(milliseconds: 900),
+        ),
+      );
+    }
+  }
 
   Future<void> _checkAppUpdate() async {
     setState(() => _isCheckingUpdate = true);
@@ -319,21 +345,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const Divider(),
 
-          // Section 2: Cloud Backend & AWS Server
-          _buildSectionHeader(AppStrings.get('settings_server_section', _lang)),
-          ListTile(
-            leading: const Icon(Icons.cloud_sync, color: Color(0xFF1B5E20)),
-            title: Text(AppStrings.get('settings_server_tile', _lang), style: const TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Text(
-              _customBackendUrl != null && _customBackendUrl!.isNotEmpty
-                  ? '${AppStrings.get('settings_server_live', _lang)} $_customBackendUrl'
-                  : AppStrings.get('settings_server_default', _lang),
-            ),
-            trailing: const Icon(Icons.edit, color: Color(0xFF1B5E20)),
-            onTap: _showServerConfigDialog,
-          ),
-          const Divider(),
-
           // Section 3: Privacy & DPDP Act 2023
           _buildSectionHeader(AppStrings.get('settings_privacy_section', _lang)),
           ListTile(
@@ -396,10 +407,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 32),
           Center(
-            child: Text(
-              AppStrings.get('settings_footer', _lang),
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.grey, fontSize: 13),
+            child: InkWell(
+              onTap: _onFooterTapped,
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Text(
+                  AppStrings.get('settings_footer', _lang),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.grey, fontSize: 13),
+                ),
+              ),
             ),
           ),
           const SizedBox(height: 24),
