@@ -134,14 +134,16 @@ flowchart TD
 
 ---
 
-## 📱 Mobile UI Showcase & Field-Tested Design
+## 📱 Mobile UI Design System & Field-Tested Experience
 
-KisanMausam features a custom **Deep Forest Green & Harvest Gold Material 3 UI** engineered for **direct midday sunlight readability** and one-handed operation in the field:
+KisanMausam features a custom **Deep Forest Green (`#071A12`) & Harvest Gold (`#FF8F00`) Material 3 UI** engineered for **direct midday sunlight readability** and one-handed operation in the field:
 
-| 1. OTP Login & DPDP Consent | 2. Farmer & Crop Profile Setup | 3. Live Weather, IMD Risks & SOS 112 |
-| :---: | :---: | :---: |
-| ![Onboarding & Consent](./kisan_screen_3_consent.png) | ![Farm Profile Setup](./kisan_screen_4_farm.png) | ![Live Weather Home](./kisan_screen_5_home_live.png) |
-| *Zero-repeat persistent login with explicit DPDP Act 2023 privacy toggles* | *Captures Farmer Name, Crop, Land Area (Acres), Soil, Terrain & Irrigation* | *Dynamic sky gradients, IMD 3-Horizon risks, Soil Moisture & 112 SOS Siren* |
+| Screen / Module | Primary UI Components & Field Ergonomics |
+| :--- | :--- |
+| **1. OTP Login & DPDP Consent** | Zero-repeat persistent login with `+91` mobile OTP verification, Google/Email options, and explicit DPDP Act 2023 privacy toggles. |
+| **2. Farmer & Crop Profile Setup** | Captures **Farmer Name**, **Current Crop** (10 popular crops + custom entry), **Land Area (Acres)**, **Auto-GPS Village/District**, **Crop Stage**, **Soil Type**, **Terrain**, and **Irrigation**. |
+| **3. Live Weather, IMD Risks & SOS 112** | Dynamic WMO sky gradients, top-level Crop Advisory quick button, IMD 3-Horizon hazard banner, root-zone soil moisture cards, and one-tap **SOS 112 Dual-Layer Hardware Siren + Auto SMS**. |
+| **4. AI Krishi Sahayak & Editable Settings** | Floating bottom-right Hindi/English voice assistant (`speech_to_text` + **Amazon Polly** / `flutter_tts`), plus an editable Farmer & Crop Profile card at the top of Settings. |
 
 ---
 
