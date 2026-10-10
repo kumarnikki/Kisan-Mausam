@@ -168,7 +168,7 @@ class AppStrings {
       'kvk_call_btn': 'कॉल करें',
     },
     'en': {
-      'app_title': 'KisanMausam',
+      'app_title': 'Kisan Mausam',
       'tagline': 'Precise Weather, Crop Protection & Farm Advisory',
       'select_language': 'Select Language',
       'hindi': 'Hindi',

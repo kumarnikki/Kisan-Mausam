@@ -11,6 +11,7 @@ import 'screens/home/weather_home_screen.dart';
 import 'screens/settings/settings_screen.dart';
 
 import 'services/api_service.dart';
+import 'l10n/app_strings.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -67,7 +68,7 @@ class _KisanMausamAppState extends State<KisanMausamApp> {
     }
 
     return MaterialApp(
-      title: 'किसान मौसम (KisanMausam)',
+      title: AppStrings.get('app_title', _language),
       debugShowCheckedModeBanner: false,
       theme: selectedTheme,
       locale: Locale(_language),
