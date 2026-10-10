@@ -10,7 +10,7 @@ class ProminentMicButton extends StatefulWidget {
   const ProminentMicButton({
     super.key,
     this.onPressed,
-    this.label = 'बोलकर पूछें (Voice)',
+    this.label = 'बोलकर पूछें',
   });
 
   @override

@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../l10n/app_strings.dart';
 import 'api_service.dart';
 
 class AppUpdateInfo {
@@ -188,6 +189,7 @@ class UpdateService {
     BuildContext context,
     AppUpdateInfo info, {
     bool dismissible = true,
+    String lang = 'hi',
   }) {
     showDialog(
       context: context,
@@ -211,9 +213,9 @@ class UpdateService {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'नया अपडेट उपलब्ध है!',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  Text(
+                    AppStrings.get('update_dialog_title', lang),
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   Text(
                     'v${info.currentVersion} ➔ v${info.latestVersion}',
@@ -248,7 +250,7 @@ class UpdateService {
                       const Icon(Icons.new_releases, color: Color(0xFF1B5E20), size: 16),
                       const SizedBox(width: 6),
                       Text(
-                        'नया क्या है (What\'s New):',
+                        AppStrings.get('update_dialog_whats_new', lang),
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.bold,
@@ -276,7 +278,7 @@ class UpdateService {
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    'अपडेट करने पर आपका डेटा और खेत सुरक्षित रहेंगे।',
+                    AppStrings.get('update_dialog_data_safe', lang),
                     style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
                   ),
                 ),
@@ -289,7 +291,7 @@ class UpdateService {
           if (dismissible)
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('बाद में (Later)'),
+              child: Text(AppStrings.get('update_dialog_later', lang)),
             ),
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
@@ -299,15 +301,15 @@ class UpdateService {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
             icon: const Icon(Icons.download, size: 18),
-            label: const Text('अभी अपडेट करें (Update Now)'),
+            label: Text(AppStrings.get('update_dialog_now', lang)),
             onPressed: () async {
               Navigator.pop(ctx);
               final messenger = ScaffoldMessenger.of(context);
               messenger.showSnackBar(
-                const SnackBar(
-                  content: Text('⬇️ अपडेट डाउनलोड हो रहा है... डाउनलोड पूरा होने पर इंस्टॉल करें।'),
-                  backgroundColor: Color(0xFF1B5E20),
-                  duration: Duration(seconds: 4),
+                SnackBar(
+                  content: Text(AppStrings.get('update_downloading_snack', lang)),
+                  backgroundColor: const Color(0xFF1B5E20),
+                  duration: const Duration(seconds: 4),
                 ),
               );
               await launchUpdate(info.apkUrl);

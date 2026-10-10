@@ -47,15 +47,15 @@ def derive_current_season(current_date: Optional[date] = None) -> Dict[str, Any]
     day = current_date.day
 
     if 6 <= month <= 9:
-        return {"primary": "kharif", "secondary": None, "name_hi": "खरीफ (Kharif)", "name_en": "Kharif (Monsoon)"}
+        return {"primary": "kharif", "secondary": None, "name_hi": "खरीफ", "name_en": "Kharif Season"}
     elif month == 10:
-        return {"primary": "rabi", "secondary": "kharif", "name_hi": "रबी बुवाई (Rabi Transition)", "name_en": "Rabi Sowing / Kharif Harvest"}
+        return {"primary": "rabi", "secondary": "kharif", "name_hi": "रबी बुवाई", "name_en": "Rabi Transition Season"}
     elif 11 <= month or month <= 2:
-        return {"primary": "rabi", "secondary": None, "name_hi": "रबी (Rabi)", "name_en": "Rabi (Winter)"}
+        return {"primary": "rabi", "secondary": None, "name_hi": "रबी", "name_en": "Rabi Season"}
     elif month == 3:
-        return {"primary": "zaid", "secondary": "rabi", "name_hi": "जायद बुवाई (Zaid Sowing)", "name_en": "Zaid Summer Sowing"}
+        return {"primary": "zaid", "secondary": "rabi", "name_hi": "जायद बुवाई", "name_en": "Zaid Sowing Season"}
     else:  # April, May
-        return {"primary": "zaid", "secondary": None, "name_hi": "जायद (Zaid)", "name_en": "Zaid (Summer)"}
+        return {"primary": "zaid", "secondary": None, "name_hi": "जायद", "name_en": "Zaid Season"}
 
 class CropRecommenderService:
     def __init__(self, db: AsyncSession):

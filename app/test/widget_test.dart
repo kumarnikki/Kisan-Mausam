@@ -121,8 +121,8 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    expect(find.text('भू-भाग (Terrain)'), findsOneWidget);
-    expect(find.text('मिट्टी का प्रकार (Soil Type)'), findsOneWidget);
+    expect(find.text('भू-भाग'), findsOneWidget);
+    expect(find.text('मिट्टी का प्रकार'), findsOneWidget);
     expect(find.text('सिंचाई व्यवस्था'), findsOneWidget);
     expect(find.text('फसल की अवस्था'), findsOneWidget);
     expect(find.byIcon(Icons.arrow_back), findsOneWidget);
@@ -146,7 +146,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
 
     // Verify Prominent Mic Button is visible
-    expect(find.text('बोलकर पूछें (Voice)'), findsOneWidget);
+    expect(find.text('बोलकर पूछें'), findsOneWidget);
     expect(find.byIcon(Icons.mic), findsOneWidget);
 
     // Verify Top Bar elements: GPS my_location button, Search button, Settings button
@@ -185,9 +185,9 @@ void main() {
     expect(find.byIcon(Icons.arrow_back), findsOneWidget);
     expect(find.textContaining('विशेषज्ञ समीक्षा आवश्यक'), findsOneWidget);
     expect(find.textContaining('शीर्ष 5 अनुशंसित फसलें'), findsOneWidget);
-    expect(find.text('चना (देसी / काबुली)'), findsOneWidget);
-    expect(find.text('सरसों / राई'), findsOneWidget);
-    expect(find.text('गेहूं (कनक)'), findsOneWidget);
+    expect(find.text('चना'), findsOneWidget);
+    expect(find.text('सरसों'), findsOneWidget);
+    expect(find.text('गेहूं'), findsOneWidget);
     expect(find.text('फसल पर सवाल पूछें'), findsOneWidget);
   });
 
@@ -245,5 +245,30 @@ void main() {
     await tester.tap(find.text('समझ गया'));
     await tester.pumpAndSettle();
     expect(find.text('पाला व शीतलहर चेतावनी'), findsNothing);
+  });
+
+  testWidgets('Test 11: CropRecommenderScreen renders pure English in English mode and pure Hindi in Hindi mode', (WidgetTester tester) async {
+    // English mode
+    await tester.pumpWidget(const MaterialApp(
+      home: CropRecommenderScreen(lang: 'en'),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Crop Advisory & Recommendations'), findsOneWidget);
+    expect(find.text('Top 5 Recommended Crops'), findsOneWidget);
+    expect(find.text('Chickpea'), findsOneWidget);
+    expect(find.text('Call Now'), findsOneWidget);
+    expect(find.text('फसल चयन व सिफारिशें'), findsNothing);
+
+    // Hindi mode
+    await tester.pumpWidget(const MaterialApp(
+      home: CropRecommenderScreen(lang: 'hi'),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('फसल चयन व सिफारिशें'), findsOneWidget);
+    expect(find.text('शीर्ष 5 अनुशंसित फसलें'), findsOneWidget);
+    expect(find.text('कॉल करें'), findsOneWidget);
+    expect(find.text('Top 5 Recommended Crops'), findsNothing);
   });
 }

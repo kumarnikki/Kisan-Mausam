@@ -50,17 +50,17 @@ class StorageService {
       return [
         FarmProfile(
           id: 1,
-          name: 'बड़ा खेत (मुख्य)',
+          name: 'बड़ा खेत',
           latitude: 21.1458,
           longitude: 79.0882,
-          village: 'उमरेड (Umred)',
-          district: 'नागपुर (Nagpur)',
-          state: 'महाराष्ट्र (Maharashtra)',
+          village: 'उमरेड',
+          district: 'नागपुर',
+          state: 'महाराष्ट्र',
           terrain: 'plain',
           soilType: 'black',
           irrigationType: 'tube-well',
           landSizeAcres: 4.5,
-          currentCrop: 'सोयाबीन (Soybean)',
+          currentCrop: 'सोयाबीन',
           cropStage: 'flowering',
           sowingDate: '2026-07-05',
         )

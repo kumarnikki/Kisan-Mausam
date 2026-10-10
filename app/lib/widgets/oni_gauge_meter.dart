@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 /// Interactive oceanic ONI Climate Index Gauge meter (-2.0°C La Niña to +2.0°C El Niño)
 class OniGaugeMeter extends StatelessWidget {
   final double oniValue;
+  final String lang;
 
   const OniGaugeMeter({
     super.key,
     required this.oniValue,
+    this.lang = 'hi',
   });
 
   @override
@@ -97,18 +99,18 @@ class OniGaugeMeter extends StatelessWidget {
         // Scale labels
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: const [
+          children: [
             Text(
-              '❄️ ला नीना (-2°C)',
-              style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF0277BD)),
+              lang == 'en' ? '❄️ La Niña (-2°C)' : '❄️ ला नीना (-2°C)',
+              style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF0277BD)),
             ),
             Text(
-              'तटस्थ (0°C)',
-              style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.black54),
+              lang == 'en' ? 'Neutral (0°C)' : 'तटस्थ (0°C)',
+              style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.black54),
             ),
             Text(
-              '☀️ एल नीनो (+2°C)',
-              style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFFD84315)),
+              lang == 'en' ? '☀️ El Niño (+2°C)' : '☀️ एल नीनो (+2°C)',
+              style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFFD84315)),
             ),
           ],
         ),

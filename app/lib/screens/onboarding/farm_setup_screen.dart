@@ -19,11 +19,11 @@ class FarmSetupScreen extends StatefulWidget {
 
 class _FarmSetupScreenState extends State<FarmSetupScreen> {
   final _nameController = TextEditingController(text: 'बड़ा खेत 1');
-  final _villageController = TextEditingController(text: 'उमरेड (Umred)');
-  final _districtController = TextEditingController(text: 'नागपुर (Nagpur)');
-  final _stateController = TextEditingController(text: 'महाराष्ट्र (Maharashtra)');
+  final _villageController = TextEditingController(text: 'उमरेड');
+  final _districtController = TextEditingController(text: 'नागपुर');
+  final _stateController = TextEditingController(text: 'महाराष्ट्र');
   final _acresController = TextEditingController(text: '4.5');
-  final _cropController = TextEditingController(text: 'सोयाबीन (Soybean)');
+  final _cropController = TextEditingController(text: 'सोयाबीन');
 
   String _terrain = 'plain';
   String _soilType = 'black';
@@ -35,14 +35,33 @@ class _FarmSetupScreenState extends State<FarmSetupScreen> {
   void initState() {
     super.initState();
     StorageService.getLanguage().then((l) {
-      if (mounted) setState(() => _lang = l);
+      if (mounted) {
+        setState(() {
+          _lang = l;
+          if (_lang == 'en') {
+            _nameController.text = 'Farm 1';
+            _villageController.text = 'Umred';
+            _districtController.text = 'Nagpur';
+            _stateController.text = 'Maharashtra';
+            _cropController.text = 'Soybean';
+          } else {
+            _nameController.text = 'बड़ा खेत 1';
+            _villageController.text = 'उमरेड';
+            _districtController.text = 'नागपुर';
+            _stateController.text = 'महाराष्ट्र';
+            _cropController.text = 'सोयाबीन';
+          }
+        });
+      }
     });
   }
 
   void _saveFarm() async {
     final farm = FarmProfile(
       id: 1,
-      name: _nameController.text.trim().isEmpty ? 'मेरा खेत' : _nameController.text.trim(),
+      name: _nameController.text.trim().isEmpty
+          ? (_lang == 'en' ? 'My Farm' : 'मेरा खेत')
+          : _nameController.text.trim(),
       latitude: 21.1458,
       longitude: 79.0882,
       village: _villageController.text.trim(),

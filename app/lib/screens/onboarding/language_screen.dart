@@ -40,7 +40,7 @@ class _LanguageScreenState extends State<LanguageScreen> {
           ? AppBar(
               leading: IconButton(
                 icon: const Icon(Icons.arrow_back),
-                tooltip: 'वापस जाएं / Back',
+                tooltip: _selected == 'en' ? 'Back' : 'वापस जाएं',
                 onPressed: widget.onBack,
               ),
               elevation: 0,
@@ -89,8 +89,8 @@ class _LanguageScreenState extends State<LanguageScreen> {
               const SizedBox(height: 14),
               // Hindi Card (Default)
               _LanguageCard(
-                title: 'हिंदी (Hindi)',
-                subtitle: 'किसान भाइयों के लिए हिंदी में सम्पूर्ण जानकारी',
+                title: 'हिंदी',
+                subtitle: 'सम्पूर्ण जानकारी हिंदी में उपलब्ध',
                 code: 'hi',
                 isSelected: _selected == 'hi',
                 onTap: () => _choose('hi'),

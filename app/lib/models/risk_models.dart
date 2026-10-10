@@ -103,7 +103,9 @@ class EnsoSummary {
   factory EnsoSummary.fromJson(Map<String, dynamic> json) {
     return EnsoSummary(
       phase: json['phase'] ?? 'Neutral',
-      phaseHi: json['phase_hi'] ?? 'तटस्थ (Neutral)',
+      phaseHi: (json['phase_hi'] as String? ?? 'तटस्थ')
+          .replaceAll(RegExp(r'\s*\([A-Za-z\s-ñÑíÍ/]+\)'), '')
+          .trim(),
       status: json['status'] ?? '',
       statusHi: json['status_hi'] ?? '',
       oniValue: (json['oni_value'] as num?)?.toDouble() ?? 0.0,

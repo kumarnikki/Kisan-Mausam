@@ -37,27 +37,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) return;
       setState(() => _isCheckingUpdate = false);
       if (info.hasUpdate) {
-        UpdateService.showUpdateDialog(context, info);
+        UpdateService.showUpdateDialog(context, info, lang: _lang);
       } else {
         showDialog(
           context: context,
           builder: (ctx) => AlertDialog(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: const Row(
+            title: Row(
               children: [
-                Icon(Icons.check_circle, color: Color(0xFF1B5E20)),
-                SizedBox(width: 8),
-                Text('ऐप अपडेट है', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const Icon(Icons.check_circle, color: Color(0xFF1B5E20)),
+                const SizedBox(width: 8),
+                Text(
+                  AppStrings.get('update_dialog_current', _lang),
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
               ],
             ),
             content: Text(
-              'आपका किसान मौसम ऐप नवीनतम संस्करण (v${UpdateService.currentVersion}) पर चल रहा है। कोई नया अपडेट लंबित नहीं है।',
+              AppStrings.get('update_dialog_current_desc', _lang),
               style: const TextStyle(fontSize: 14),
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx),
-                child: const Text('ठीक है'),
+                child: Text(AppStrings.get('update_dialog_ok', _lang)),
               ),
             ],
           ),
@@ -67,7 +70,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) return;
       setState(() => _isCheckingUpdate = false);
       messenger.showSnackBar(
-        const SnackBar(content: Text('अपडेट की जांच करने में विफल। इंटरनेट जांचें।')),
+        SnackBar(content: Text(AppStrings.get('update_check_failed', _lang))),
       );
     }
   }
@@ -108,12 +111,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('खाता व डेटा हटाएं (DPDP Act 2023)'),
-        content: const Text(
-          'क्या आप सचमुच अपना खाता, खेत का विवरण और सभी मौसम अलर्ट रिकॉर्ड हमेशा के लिए हटाना चाहते हैं? यह प्रक्रिया वापस नहीं हो सकती।',
-        ),
+        title: Text(AppStrings.get('settings_delete_title', _lang)),
+        content: Text(AppStrings.get('settings_delete_confirm_desc', _lang)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('रद्द करें')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(AppStrings.get('settings_delete_cancel', _lang)),
+          ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () async {
@@ -122,14 +126,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
               widget.onResetOnboarding();
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('आपका समस्त व्यक्तिगत डेटा सफलतापूर्वक हटा दिया गया है।'),
+                  SnackBar(
+                    content: Text(AppStrings.get('settings_delete_success', _lang)),
                     backgroundColor: Colors.red,
                   ),
                 );
               }
             },
-            child: const Text('डेटा हटाएं', style: TextStyle(color: Colors.white)),
+            child: Text(
+              AppStrings.get('settings_delete_confirm_btn', _lang),
+              style: const TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),
@@ -146,12 +153,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (ctx) => StatefulBuilder(
         builder: (dlgCtx, setDlgState) => AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Row(
+          title: Row(
             children: [
-              Icon(Icons.cloud_sync, color: Color(0xFF1B5E20)),
-              SizedBox(width: 8),
+              const Icon(Icons.cloud_sync, color: Color(0xFF1B5E20)),
+              const SizedBox(width: 8),
               Expanded(
-                child: Text('AWS EC2 / क्लाउड सर्वर', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+                child: Text(
+                  AppStrings.get('server_dialog_title', _lang),
+                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                ),
               ),
             ],
           ),
@@ -159,16 +169,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'अपने लाइव AWS EC2 या क्लाउड सर्वर का IP/URL दर्ज करें ताकि ऐप सीधे आपके बैकएंड व डेटाबेस से जुड़े:',
-                style: TextStyle(fontSize: 13, color: Colors.black87),
+              Text(
+                AppStrings.get('server_dialog_desc', _lang),
+                style: const TextStyle(fontSize: 13, color: Colors.black87),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: controller,
                 decoration: InputDecoration(
                   hintText: 'http://<EC2-PUBLIC-IP>:8000',
-                  labelText: 'सर्वर बेस URL',
+                  labelText: AppStrings.get('server_dialog_label', _lang),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   prefixIcon: const Icon(Icons.link),
                 ),
@@ -193,18 +203,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     icon: isPinging
                         ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
                         : const Icon(Icons.network_ping, size: 16),
-                    label: const Text('कनेक्शन जांचें (Ping)'),
+                    label: Text(AppStrings.get('server_dialog_ping', _lang)),
                     onPressed: isPinging
                         ? null
                         : () async {
                             final target = controller.text.trim().replaceAll(RegExp(r'/+$'), '');
                             if (target.isEmpty) {
-                              setDlgState(() => pingStatus = '⚠️ कृपया पहले सर्वर URL दर्ज करें');
+                              setDlgState(() => pingStatus = AppStrings.get('server_dialog_empty_warn', _lang));
                               return;
                             }
                             setDlgState(() {
                               isPinging = true;
-                              pingStatus = 'जांच हो रही है...';
+                              pingStatus = AppStrings.get('server_dialog_pinging', _lang);
                             });
                             try {
                               final dio = Dio(BaseOptions(
@@ -214,18 +224,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               final res = await dio.get('$target/docs');
                               if (res.statusCode == 200 || res.statusCode == 404) {
                                 setDlgState(() {
-                                  pingStatus = '✅ लाइव सर्वर सक्रिय और कनेक्टेड!';
+                                  pingStatus = AppStrings.get('server_dialog_ping_success', _lang);
                                   isPinging = false;
                                 });
                               } else {
                                 setDlgState(() {
-                                  pingStatus = '⚠️ सर्वर कोड ${res.statusCode} लौटा रहा है';
+                                  pingStatus = '⚠️ ${res.statusCode}';
                                   isPinging = false;
                                 });
                               }
-                            } catch (e) {
+                            } catch (_) {
                               setDlgState(() {
-                                pingStatus = '❌ कनेक्ट नहीं हो सका (जांचें कि EC2 पर पोर्ट 8000 खुला है)';
+                                pingStatus = AppStrings.get('server_dialog_ping_fail', _lang);
                                 isPinging = false;
                               });
                             }
@@ -235,7 +245,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const SizedBox(height: 6),
               Text(
-                'ℹ️ खाली रखने पर ऐप ऑटो-मोड (Open-Meteo व डायरेक्ट Gemini क्लाउड) में चलता रहेगा।',
+                AppStrings.get('server_dialog_hint', _lang),
                 style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
               ),
             ],
@@ -243,7 +253,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('रद्द करें'),
+              child: Text(AppStrings.get('server_dialog_cancel', _lang)),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
@@ -261,13 +271,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 messenger.showSnackBar(
                   SnackBar(
                     content: Text(url.isEmpty
-                        ? 'डिफ़ॉल्ट क्लाउड मोड सक्रिय'
-                        : '✅ सर्वर URL अपडेट हो गया: $url'),
+                        ? AppStrings.get('server_saved_default', _lang)
+                        : '${AppStrings.get('server_saved_custom', _lang)}$url'),
                     backgroundColor: const Color(0xFF1B5E20),
                   ),
                 );
               },
-              child: const Text('सुरक्षित करें'),
+              child: Text(AppStrings.get('server_dialog_save', _lang)),
             ),
           ],
         ),
@@ -281,7 +291,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          tooltip: _lang == 'hi' ? 'वापस जाएं' : 'Back',
+          tooltip: AppStrings.get('settings_back', _lang),
           onPressed: widget.onClose,
         ),
         title: Text(AppStrings.get('settings', _lang)),
@@ -290,50 +300,50 @@ class _SettingsScreenState extends State<SettingsScreen> {
         padding: const EdgeInsets.symmetric(vertical: 12),
         children: [
           // Section 1: Appearance & Accessibility
-          _buildSectionHeader('प्रकटन एवं अभिगम्यता (Appearance & Accessibility)'),
+          _buildSectionHeader(AppStrings.get('settings_appearance', _lang)),
           ListTile(
             leading: const Icon(Icons.language, color: Color(0xFF1B5E20)),
-            title: const Text('भाषा / Language', style: TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Text(_lang == 'hi' ? 'वर्तमान: हिंदी (Hindi)' : 'Current: English'),
+            title: Text(AppStrings.get('settings_language', _lang), style: const TextStyle(fontWeight: FontWeight.bold)),
+            subtitle: Text(AppStrings.get('settings_current_lang', _lang)),
             trailing: OutlinedButton(
               onPressed: _toggleLanguage,
-              child: Text(_lang == 'hi' ? 'Switch to English' : 'हिंदी में बदलें'),
+              child: Text(AppStrings.get('settings_switch_to', _lang)),
             ),
           ),
           SwitchListTile(
             secondary: const Icon(Icons.contrast, color: Color(0xFF1B5E20)),
             title: Text(AppStrings.get('high_contrast', _lang), style: const TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: const Text('खेत में धूप के दौरान स्पष्टता हेतु गहरा काला व सफेद बॉर्डर'),
+            subtitle: Text(AppStrings.get('settings_high_contrast_sub', _lang)),
             value: _highContrast,
             onChanged: _toggleHighContrast,
           ),
           const Divider(),
 
-          // Section 1.5: Cloud Backend & AWS Server
-          _buildSectionHeader('क्लाउड बैकएंड व डेटाबेस (AWS EC2 / Server)'),
+          // Section 2: Cloud Backend & AWS Server
+          _buildSectionHeader(AppStrings.get('settings_server_section', _lang)),
           ListTile(
             leading: const Icon(Icons.cloud_sync, color: Color(0xFF1B5E20)),
-            title: const Text('बैकएंड सर्वर URL (Backend API)', style: TextStyle(fontWeight: FontWeight.bold)),
+            title: Text(AppStrings.get('settings_server_tile', _lang), style: const TextStyle(fontWeight: FontWeight.bold)),
             subtitle: Text(
               _customBackendUrl != null && _customBackendUrl!.isNotEmpty
-                  ? 'लाइव सर्वर: $_customBackendUrl'
-                  : 'डिफ़ॉल्ट: ${ApiService.backendBaseUrl} (ऑटो-क्लाउड फॉलबैक सक्रिय)',
+                  ? '${AppStrings.get('settings_server_live', _lang)} $_customBackendUrl'
+                  : AppStrings.get('settings_server_default', _lang),
             ),
             trailing: const Icon(Icons.edit, color: Color(0xFF1B5E20)),
             onTap: _showServerConfigDialog,
           ),
           const Divider(),
 
-          // Section 2: Privacy & DPDP Act 2023
-          _buildSectionHeader('गोपनीयता एवं सुरक्षा (DPDP Act 2023)'),
+          // Section 3: Privacy & DPDP Act 2023
+          _buildSectionHeader(AppStrings.get('settings_privacy_section', _lang)),
           ListTile(
             leading: const Icon(Icons.privacy_tip_outlined, color: Color(0xFF1B5E20)),
-            title: const Text('गोपनीयता नीति (Privacy Policy)'),
-            subtitle: const Text('आपका डेटा सुरक्षित है, किसी तीसरे पक्ष को नहीं बेचा जाता'),
+            title: Text(AppStrings.get('settings_privacy_policy', _lang)),
+            subtitle: Text(AppStrings.get('settings_privacy_policy_sub', _lang)),
             trailing: const Icon(Icons.chevron_right),
             onTap: () {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('किसान मौसम: भारत DPDP अधिनियम 2023 अनुरूप')),
+                SnackBar(content: Text(AppStrings.get('consent_subtitle', _lang))),
               );
             },
           ),
@@ -343,13 +353,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
               AppStrings.get('delete_data', _lang),
               style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
             ),
-            subtitle: const Text('खाता, खेत प्रोफाइल और अलर्ट का संपूर्ण विलोपन'),
+            subtitle: Text(AppStrings.get('settings_delete_sub', _lang)),
             onTap: _confirmDeleteData,
           ),
           const Divider(),
 
-          // Section 3: In-App Updates
-          _buildSectionHeader('ऐप अपडेट (In-App Updates)'),
+          // Section 4: In-App Updates
+          _buildSectionHeader(AppStrings.get('settings_updates_section', _lang)),
           ListTile(
             leading: Container(
               padding: const EdgeInsets.all(8),
@@ -359,8 +369,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               child: const Icon(Icons.system_update_alt, color: Color(0xFF1B5E20), size: 20),
             ),
-            title: const Text('नया अपडेट जांचें (Check for Updates)'),
-            subtitle: Text('वर्तमान संस्करण: v${UpdateService.currentVersion} • 1-टैप ऑटो अपडेट'),
+            title: Text(AppStrings.get('settings_check_update', _lang)),
+            subtitle: Text('v${UpdateService.currentVersion} • ${AppStrings.get('settings_update_sub', _lang)}'),
             trailing: _isCheckingUpdate
                 ? const SizedBox(
                     width: 22,
@@ -372,24 +382,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const Divider(),
 
-          // Section 4: About & Attribution
-          _buildSectionHeader('स्रोत एवं लाइसेंस (Attribution & About)'),
+          // Section 5: About & Attribution
+          _buildSectionHeader(AppStrings.get('settings_attribution_section', _lang)),
           ListTile(
             leading: const Icon(Icons.info_outline, color: Color(0xFF1B5E20)),
-            title: const Text('मौसम डेटा स्रोत (Data Attribution)'),
+            title: Text(AppStrings.get('settings_data_source', _lang)),
             subtitle: const Text('Powered by Open-Meteo under CC BY 4.0 (Non-Commercial License)'),
           ),
           ListTile(
             leading: const Icon(Icons.agriculture, color: Color(0xFF1B5E20)),
-            title: const Text('जोखिम एवं कृषि मानक'),
-            subtitle: const Text('भारतीय मौसम विज्ञान विभाग (IMD) एवं ICAR कृषि वैज्ञानिक मानक'),
+            title: Text(AppStrings.get('settings_standards', _lang)),
+            subtitle: Text(AppStrings.get('settings_standards_sub', _lang)),
           ),
           const SizedBox(height: 32),
-          const Center(
+          Center(
             child: Text(
-              'किसान मौसम (KisanMausam) • v1.0.0\nMade with ❤️ for Indian Farmers',
+              AppStrings.get('settings_footer', _lang),
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey, fontSize: 13),
+              style: const TextStyle(color: Colors.grey, fontSize: 13),
             ),
           ),
           const SizedBox(height: 24),

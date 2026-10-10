@@ -77,7 +77,9 @@ class _ConsentScreenState extends State<ConsentScreen> {
                     _ConsentSwitchTile(
                       icon: Icons.location_on,
                       title: AppStrings.get('consent_location', _lang),
-                      subtitle: 'खेत का पिन या गाँव चयन ताकि फ़ोन बंद होने पर भी चेतावनी सही मिले',
+                      subtitle: _lang == 'en'
+                          ? 'Farm location for accurate warnings even when app is closed'
+                          : 'खेत का स्थान ताकि ऐप बंद होने पर भी सटीक चेतावनी मिले',
                       value: _consentLocation,
                       onChanged: (v) => setState(() => _consentLocation = v),
                     ),
@@ -85,7 +87,9 @@ class _ConsentScreenState extends State<ConsentScreen> {
                     _ConsentSwitchTile(
                       icon: Icons.sms,
                       title: AppStrings.get('consent_sms', _lang),
-                      subtitle: 'आपातकालीन चेतावनी सीधे SMS पर (TRAI DLT पंजीकृत)',
+                      subtitle: _lang == 'en'
+                          ? 'Critical warnings via direct SMS (TRAI DLT registered)'
+                          : 'आपातकालीन चेतावनी सीधे SMS पर (TRAI DLT पंजीकृत)',
                       value: _consentSms,
                       onChanged: (v) => setState(() => _consentSms = v),
                     ),
@@ -93,7 +97,9 @@ class _ConsentScreenState extends State<ConsentScreen> {
                     _ConsentSwitchTile(
                       icon: Icons.notifications_active,
                       title: AppStrings.get('consent_notifications', _lang),
-                      subtitle: 'खराब मौसम से पहले मोबाइल पर अलर्ट सूचना',
+                      subtitle: _lang == 'en'
+                          ? 'Early notification alerts on device before severe weather'
+                          : 'खराब मौसम से पहले मोबाइल पर अलर्ट सूचना',
                       value: _consentNotifications,
                       onChanged: (v) => setState(() => _consentNotifications = v),
                     ),
@@ -101,7 +107,9 @@ class _ConsentScreenState extends State<ConsentScreen> {
                     _ConsentSwitchTile(
                       icon: Icons.record_voice_over,
                       title: AppStrings.get('consent_ai_logging', _lang),
-                      subtitle: 'कृषि सलाहकार से बातचीत का इतिहास (डेटा कभी बेचा या साझा नहीं किया जाता)',
+                      subtitle: _lang == 'en'
+                          ? 'Agri Assistant discussion history (never sold or shared)'
+                          : 'कृषि सलाहकार से बातचीत का इतिहास (डेटा कभी बेचा या साझा नहीं किया जाता)',
                       value: _consentAiLogging,
                       onChanged: (v) => setState(() => _consentAiLogging = v),
                     ),

@@ -104,6 +104,7 @@ class _KisanMausamAppState extends State<KisanMausamApp> {
 
     if (_isOnboardingDone) {
       return WeatherHomeScreen(
+        key: ValueKey('home_${_language}_$_isHighContrast'),
         onOpenSettings: () => setState(() => _isSettingsOpen = true),
       );
     }

@@ -31,6 +31,7 @@ class KrishiSahayakScreen extends StatefulWidget {
   final double? latitude;
   final double? longitude;
   final WeatherData? weather;
+  final String? lang;
 
   const KrishiSahayakScreen({
     super.key,
@@ -39,6 +40,7 @@ class KrishiSahayakScreen extends StatefulWidget {
     this.latitude,
     this.longitude,
     this.weather,
+    this.lang,
   });
 
   @override
@@ -56,6 +58,7 @@ class _KrishiSahayakScreenState extends State<KrishiSahayakScreen>
   bool _isLoading = false;
   bool _isSpeaking = false;
   bool _isRecording = false;
+  String _lang = 'hi';
 
   late AnimationController _pulseController;
   late AnimationController _waveController;
@@ -63,6 +66,7 @@ class _KrishiSahayakScreenState extends State<KrishiSahayakScreen>
   @override
   void initState() {
     super.initState();
+    _lang = widget.lang ?? 'hi';
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1400),
@@ -80,6 +84,18 @@ class _KrishiSahayakScreenState extends State<KrishiSahayakScreen>
     });
 
     _initWelcomeMessage();
+  }
+
+  @override
+  void didUpdateWidget(covariant KrishiSahayakScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.lang != widget.lang) {
+      setState(() {
+        _lang = widget.lang ?? 'hi';
+        _messages.clear();
+        _initWelcomeMessage();
+      });
+    }
   }
 
   @override
@@ -102,38 +118,52 @@ class _KrishiSahayakScreenState extends State<KrishiSahayakScreen>
   }
 
   String _getWeatherConditionDescription(int code) {
-    if (code == 0) return 'साफ आसमान';
-    if (code >= 1 && code <= 3) return 'हल्के बादल';
-    if (code == 45 || code == 48) return 'कोहरा';
-    if (code >= 51 && code <= 55) return 'हल्की बूंदाबांदी';
-    if (code >= 61 && code <= 65) return 'बारिश';
-    if (code >= 80 && code <= 82) return 'तेज बौछारें';
-    if (code == 95) return 'गरज-चमक';
-    if (code == 96 || code == 99) return 'ओलावृष्टि';
-    return 'सामान्य मौसम';
+    final isEn = _lang == 'en';
+    if (code == 0) return isEn ? 'Clear Sky' : 'साफ धूप';
+    if (code >= 1 && code <= 3) return isEn ? 'Partly Cloudy' : 'हल्के बादल';
+    if (code == 45 || code == 48) return isEn ? 'Foggy' : 'कोहरा';
+    if (code >= 51 && code <= 55) return isEn ? 'Drizzle' : 'हल्की बूंदाबांदी';
+    if (code >= 61 && code <= 65) return isEn ? 'Rain' : 'बारिश';
+    if (code >= 80 && code <= 82) return isEn ? 'Rain Showers' : 'तेज बौछारें';
+    if (code == 95) return isEn ? 'Thunderstorm' : 'गरज-चमक';
+    if (code == 96 || code == 99) return isEn ? 'Thunderstorm with Hail' : 'ओलावृष्टि तूफान';
+    return isEn ? 'Fair Weather' : 'सामान्य मौसम';
   }
 
   void _initWelcomeMessage() {
-    final crop = widget.farm?.currentCrop ?? 'सोयाबीन';
-    final village = widget.locationName ?? widget.farm?.village ?? 'आपका क्षेत्र';
+    final isEn = _lang == 'en';
+    final crop = widget.farm?.currentCrop ?? (isEn ? 'Soybean' : 'सोयाबीन');
+    final village = widget.locationName ?? widget.farm?.village ?? (isEn ? 'your area' : 'आपका क्षेत्र');
     final currentTemp = widget.weather?.current.temperature;
-    final tempStr = currentTemp != null ? ' (वर्तमान तापमान ${currentTemp.toStringAsFixed(1)}°C)' : '';
+    final tempStr = currentTemp != null
+        ? (isEn ? ' (current temperature ${currentTemp.toStringAsFixed(1)}°C)' : ' (वर्तमान तापमान ${currentTemp.toStringAsFixed(1)}°C)')
+        : '';
     _messages.add(
       ChatMessage(
-        text:
-            'राम-राम किसान भाई! मैं आपका किसान मौसम कृषि सहायक हूँ। आपके क्षेत्र ($village)$tempStr और फसल ($crop) के मौसम व सुरक्षा पर कोई भी सवाल बोलकर या लिखकर पूछें।\n\n'
-            'मैं भारतीय कृषि अनुसंधान परिषद (ICAR) एवं मौसम विज्ञान विभाग (IMD) के वैज्ञानिक मानकों पर आधारित सलाह देता हूँ।',
+        text: isEn
+            ? 'Hello Farmer friend! I am your KisanMausam Agricultural Assistant. Ask me any question by voice or text about the weather and crop protection for $village$tempStr and crop $crop.\n\n'
+                'I provide guidance grounded in the scientific standards of the Indian Council of Agricultural Research (ICAR) and India Meteorological Department (IMD).'
+            : 'राम-राम किसान भाई! मैं आपका किसान मौसम कृषि सहायक हूँ। आपके क्षेत्र ($village)$tempStr और फसल ($crop) के मौसम व सुरक्षा पर कोई भी सवाल बोलकर या लिखकर पूछें।\n\n'
+                'मैं भारतीय कृषि अनुसंधान परिषद (ICAR) एवं मौसम विज्ञान विभाग (IMD) के वैज्ञानिक मानकों पर आधारित सलाह देता हूँ।',
         isUser: false,
-        tips: [
-          'अभी का तापमान कितना है?',
-          'क्या आज पानी दूं?',
-          'बारिश कब होगी?',
-          'पाले से कैसे बचाएं?',
-          '30-दिवसीय मौसमी रुझान'
-        ],
+        tips: isEn
+            ? [
+                'What is the current temperature?',
+                'Should I irrigate today?',
+                'When will it rain?',
+                'How to prevent frost damage?',
+                '30-day climate outlook'
+              ]
+            : [
+                'अभी का तापमान कितना है?',
+                'क्या आज पानी दूं?',
+                'बारिश कब होगी?',
+                'पाले से कैसे बचाएं?',
+                '30-दिवसीय मौसमी रुझान'
+              ],
         kvkContact: '1800-180-1551',
         timestamp: _formatTime(),
-        category: 'स्वागत',
+        category: isEn ? 'Welcome' : 'स्वागत',
       ),
     );
   }
@@ -146,7 +176,7 @@ class _KrishiSahayakScreenState extends State<KrishiSahayakScreen>
     });
     _voiceService.speak(
       text,
-      lang: 'hi-IN',
+      lang: _lang == 'en' ? 'en-IN' : 'hi-IN',
       onStart: () {
         if (mounted) {
           setState(() {
@@ -197,12 +227,13 @@ class _KrishiSahayakScreenState extends State<KrishiSahayakScreen>
       weatherCondition: widget.weather != null ? _getWeatherConditionDescription(widget.weather!.current.weatherCode) : null,
       crop: widget.farm?.currentCrop,
       cropStage: widget.farm?.cropStage,
+      lang: _lang,
     );
 
     if (!mounted) return;
 
     if (res != null) {
-      final reply = res['reply_text'] ?? 'उत्तर प्राप्त नहीं हो सका।';
+      final reply = res['reply_text'] ?? (_lang == 'en' ? 'Could not retrieve answer.' : 'उत्तर प्राप्त नहीं हो सका।');
       final tips = (res['actionable_tips'] as List?)?.cast<String>();
       final kvk = res['kvk_contact'] ?? '1800-180-1551';
 
@@ -222,8 +253,9 @@ class _KrishiSahayakScreenState extends State<KrishiSahayakScreen>
     } else {
       setState(() {
         _messages.add(ChatMessage(
-          text:
-              'किसान भाई, मौसम सेवा से संपर्क नहीं हो पाया। कृपया इंटरनेट जांचें अथवा KVK टोल-फ्री 1800-180-1551 पर कॉल करें।',
+          text: _lang == 'en'
+              ? 'Could not connect to weather service. Please check your internet or call KVK Toll-Free 1800-180-1551.'
+              : 'किसान भाई, मौसम सेवा से संपर्क नहीं हो पाया। कृपया इंटरनेट जांचें अथवा KVK टोल-फ्री 1800-180-1551 पर कॉल करें।',
           isUser: false,
           timestamp: _formatTime(),
         ));
@@ -274,11 +306,11 @@ class _KrishiSahayakScreenState extends State<KrishiSahayakScreen>
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: const Row(
+        content: Row(
           children: [
-            Icon(Icons.mic, color: Colors.white, size: 20),
-            SizedBox(width: 8),
-            Text('सुन रहा हूँ... अपनी भाषा में बोलिए (Listening...)'),
+            const Icon(Icons.mic, color: Colors.white, size: 20),
+            const SizedBox(width: 8),
+            Text(_lang == 'en' ? 'Listening... Speak now' : 'सुन रहा हूँ... बोलिए'),
           ],
         ),
         backgroundColor: const Color(0xFFBF360C),
@@ -289,7 +321,7 @@ class _KrishiSahayakScreenState extends State<KrishiSahayakScreen>
     );
 
     final started = await _voiceService.startListening(
-      lang: 'hi-IN',
+      lang: _lang == 'en' ? 'en-IN' : 'hi-IN',
       onListeningStarted: () {
         if (mounted) {
           setState(() {
@@ -320,7 +352,7 @@ class _KrishiSahayakScreenState extends State<KrishiSahayakScreen>
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('माइक: $err (पुनः प्रयास करें या लिखकर पूछें)'),
+            content: Text(_lang == 'en' ? 'Mic: $err (Please try again or type)' : 'माइक: $err (पुनः प्रयास करें या लिखकर पूछें)'),
             backgroundColor: Colors.orange.shade800,
             duration: const Duration(seconds: 3),
             behavior: SnackBarBehavior.floating,
@@ -355,9 +387,9 @@ class _KrishiSahayakScreenState extends State<KrishiSahayakScreen>
       _waveController.reset();
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('बोलना रोक दिया गया (Audio Stopped)'),
-        duration: Duration(seconds: 1),
+      SnackBar(
+        content: Text(_lang == 'en' ? 'Audio stopped' : 'बोलना रोक दिया गया'),
+        duration: const Duration(seconds: 1),
       ),
     );
   }
@@ -665,9 +697,9 @@ class _KrishiSahayakScreenState extends State<KrishiSahayakScreen>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Text(
-                        'किसान मौसम कृषि सहायक',
-                        style: TextStyle(
+                      Text(
+                        _lang == 'en' ? 'KisanMausam Agri Assistant' : 'किसान मौसम कृषि सहायक',
+                        style: const TextStyle(
                           fontSize: 16.5,
                           fontWeight: FontWeight.w800,
                           color: Color(0xFF1B5E20),
@@ -697,9 +729,9 @@ class _KrishiSahayakScreenState extends State<KrishiSahayakScreen>
                             ),
                           ),
                           const SizedBox(width: 6),
-                          const Text(
-                            'AI ऑनलाइन',
-                            style: TextStyle(
+                          Text(
+                            _lang == 'en' ? 'AI Online' : 'AI ऑनलाइन',
+                            style: const TextStyle(
                               fontSize: 11,
                               color: Color(0xFF388E3C),
                               fontWeight: FontWeight.w600,
@@ -752,7 +784,7 @@ class _KrishiSahayakScreenState extends State<KrishiSahayakScreen>
                       size: 20,
                     ),
                   ),
-                  tooltip: 'KVK कॉल करें',
+                  tooltip: _lang == 'en' ? 'Call KVK Helpline' : 'KVK कॉल करें',
                   onPressed: _callKvk,
                 ),
               ],
@@ -814,22 +846,24 @@ class _KrishiSahayakScreenState extends State<KrishiSahayakScreen>
           ),
           const SizedBox(width: 10),
 
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'कृषि सहायक बोल रहे हैं (Audio Playing)...',
-                  style: TextStyle(
+                  _lang == 'en'
+                      ? 'Agri Assistant is speaking...'
+                      : 'कृषि सहायक बोल रहे हैं...',
+                  style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 12,
                     color: Color(0xFFE65100),
                   ),
                 ),
                 Text(
-                  'हिंदी आवाज सुन रहे हैं',
-                  style: TextStyle(fontSize: 10, color: Color(0xFF795548)),
+                  _lang == 'en' ? 'Playing voice audio' : 'ऑडियो चल रहा है',
+                  style: const TextStyle(fontSize: 10, color: Color(0xFF795548)),
                 ),
               ],
             ),
@@ -845,14 +879,14 @@ class _KrishiSahayakScreenState extends State<KrishiSahayakScreen>
                 color: const Color(0xFFC62828),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Row(
+              child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.stop, size: 15, color: Colors.white),
-                  SizedBox(width: 4),
+                  const Icon(Icons.stop, size: 15, color: Colors.white),
+                  const SizedBox(width: 4),
                   Text(
-                    'रोकें (Stop)',
-                    style: TextStyle(
+                    _lang == 'en' ? 'Stop' : 'रोकें',
+                    style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 11,
                       color: Colors.white,
@@ -889,10 +923,12 @@ class _KrishiSahayakScreenState extends State<KrishiSahayakScreen>
           const SizedBox(width: 8),
 
           // Exact string required by widget test 7!
-          const Expanded(
+          Expanded(
             child: Text(
-              'ICAR मानक: रासायनिक मात्रा KVK (1800-180-1551) से जांचें।',
-              style: TextStyle(
+              _lang == 'en'
+                  ? 'ICAR Standard: Verify chemical dosages with KVK (1800-180-1551).'
+                  : 'ICAR मानक: रासायनिक मात्रा KVK (1800-180-1551) से जांचें।',
+              style: const TextStyle(
                 fontSize: 11.5,
                 fontWeight: FontWeight.w600,
                 color: Color(0xFF2E7D32),
@@ -959,9 +995,11 @@ class _KrishiSahayakScreenState extends State<KrishiSahayakScreen>
             ),
           ),
           const SizedBox(width: 12),
-          const Text(
-            'कृषि वैज्ञानिक सलाह तैयार कर रहे हैं...',
-            style: TextStyle(
+          Text(
+            _lang == 'en'
+                ? 'Preparing agricultural advice...'
+                : 'कृषि वैज्ञानिक सलाह तैयार कर रहे हैं...',
+            style: const TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
               color: Color(0xFF1B5E20),
@@ -973,16 +1011,27 @@ class _KrishiSahayakScreenState extends State<KrishiSahayakScreen>
   }
 
   Widget _buildQuickChipsCarousel() {
-    final chips = [
-      'क्या आज पानी दूं? 💧',
-      'पाले से कैसे बचाएं? ❄️',
-      'लू व तेज गर्मी से बचाव ☀️',
-      'भारी बारिश में जलभराव 🌧️',
-      'कीट सुरक्षा जैविक उपाय 🌿',
-      '30 दिन का मौसमी रुझान 🌾',
-      'काली मिट्टी में सिंचाई 🪵',
-      'फसल बीमा PMFBY दावा 🛡️',
-    ];
+    final chips = _lang == 'en'
+        ? [
+            'Should I irrigate today? 💧',
+            'How to prevent frost? ❄️',
+            'Protection from heatwave ☀️',
+            'Waterlogging in heavy rain 🌧️',
+            'Organic pest control 🌿',
+            '30-day seasonal outlook 🌾',
+            'Irrigation in black soil 🪵',
+            'Crop insurance PMFBY claim 🛡️',
+          ]
+        : [
+            'क्या आज पानी दूं? 💧',
+            'पाले से कैसे बचाएं? ❄️',
+            'लू व तेज गर्मी से बचाव ☀️',
+            'भारी बारिश में जलभराव 🌧️',
+            'कीट सुरक्षा जैविक उपाय 🌿',
+            '30 दिन का मौसमी रुझान 🌾',
+            'काली मिट्टी में सिंचाई 🪵',
+            'फसल बीमा PMFBY दावा 🛡️',
+          ];
 
     return Container(
       height: 48,
@@ -1107,8 +1156,10 @@ class _KrishiSahayakScreenState extends State<KrishiSahayakScreen>
                 style: const TextStyle(fontSize: 14.5),
                 decoration: InputDecoration(
                   hintText: _isRecording
-                      ? 'सुन रहे हैं... (Listening...)'
-                      : 'बोलकर या लिखकर पूछें...',
+                      ? (_lang == 'en' ? 'Listening...' : 'सुन रहे हैं...')
+                      : (_lang == 'en'
+                          ? 'Ask by speaking or typing...'
+                          : 'बोलकर या लिखकर पूछें...'),
                   hintStyle: TextStyle(
                     color: _isRecording ? Colors.red.shade700 : Colors.grey.shade600,
                     fontWeight: _isRecording ? FontWeight.bold : FontWeight.normal,
@@ -1271,9 +1322,9 @@ class _KrishiSahayakScreenState extends State<KrishiSahayakScreen>
                       ),
                     ),
                     const SizedBox(width: 8),
-                    const Text(
-                      'कृषि सहायक (Agri Scientist)',
-                      style: TextStyle(
+                    Text(
+                      _lang == 'en' ? 'Agri Assistant' : 'कृषि सहायक',
+                      style: const TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 13,
                         color: Color(0xFF1B5E20),
@@ -1294,14 +1345,14 @@ class _KrishiSahayakScreenState extends State<KrishiSahayakScreen>
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(color: const Color(0xFF81C784)),
                           ),
-                          child: const Row(
+                          child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.volume_up, size: 16, color: Color(0xFF1B5E20)),
-                              SizedBox(width: 4),
+                              const Icon(Icons.volume_up, size: 16, color: Color(0xFF1B5E20)),
+                              const SizedBox(width: 4),
                               Text(
-                                'सुनें',
-                                style: TextStyle(
+                                _lang == 'en' ? 'Listen' : 'सुनें',
+                                style: const TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.bold,
                                   color: Color(0xFF1B5E20),
@@ -1343,13 +1394,13 @@ class _KrishiSahayakScreenState extends State<KrishiSahayakScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Row(
+                        Row(
                           children: [
-                            Icon(Icons.task_alt, size: 16, color: Color(0xFF1B5E20)),
-                            SizedBox(width: 6),
+                            const Icon(Icons.task_alt, size: 16, color: Color(0xFF1B5E20)),
+                            const SizedBox(width: 6),
                             Text(
-                              'महत्वपूर्ण कार्य (Action Points):',
-                              style: TextStyle(
+                              _lang == 'en' ? 'Action Points:' : 'महत्वपूर्ण कार्य:',
+                              style: const TextStyle(
                                 fontSize: 12.5,
                                 fontWeight: FontWeight.w800,
                                 color: Color(0xFF1B5E20),

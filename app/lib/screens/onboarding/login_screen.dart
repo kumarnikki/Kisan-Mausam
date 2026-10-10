@@ -110,7 +110,7 @@ class _LoginScreenState extends State<LoginScreen> {
               controller: emailCtrl,
               keyboardType: TextInputType.emailAddress,
               decoration: InputDecoration(
-                labelText: _lang == 'hi' ? 'Google ईमेल (Gmail)' : 'Google Email',
+                labelText: _lang == 'hi' ? 'Google ईमेल' : 'Google Email',
                 prefixIcon: const Icon(Icons.email_outlined, color: Colors.blue),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
@@ -119,7 +119,7 @@ class _LoginScreenState extends State<LoginScreen> {
             TextField(
               controller: nameCtrl,
               decoration: InputDecoration(
-                labelText: _lang == 'hi' ? 'आपका नाम (Farmer Name)' : 'Your Name',
+                labelText: _lang == 'hi' ? 'आपका नाम' : 'Your Name',
                 prefixIcon: const Icon(Icons.person_outline, color: Colors.blue),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
@@ -236,9 +236,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       child: const Icon(Icons.agriculture, color: Colors.white, size: 48),
                     ),
                     const SizedBox(height: 16),
-                    const Text(
-                      'किसान मौसम',
-                      style: TextStyle(
+                    Text(
+                      _lang == 'hi' ? 'किसान मौसम' : 'KisanMausam',
+                      style: const TextStyle(
                         fontSize: 30,
                         fontWeight: FontWeight.w900,
                         color: Color(0xFF1B5E20),
@@ -426,7 +426,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         // Skip to OTP flow — mark that login step is done to
                         // proceed to phone OTP
                         await StorageService.saveUserEmail('phone_user@kisanmausam.app');
-                        await StorageService.saveUserName('किसान उपयोगकर्ता');
+                        await StorageService.saveUserName(_lang == 'hi' ? 'किसान उपयोगकर्ता' : 'Farmer User');
                         widget.onLoginSuccess();
                       },
                 style: OutlinedButton.styleFrom(

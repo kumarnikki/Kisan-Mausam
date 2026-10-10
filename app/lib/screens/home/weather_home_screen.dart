@@ -98,7 +98,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
   /// Automatically fetch live GPS location on app start without blocking initial view
   Future<void> _autoFetchGPSLocation() async {
     try {
-      final loc = await LocationService.getCurrentLocation(fallbackToIp: true);
+      final loc = await LocationService.getCurrentLocation(fallbackToIp: true, lang: _lang);
       if (!mounted || loc == null) return;
       final diff = (_gpsLat == null || _gpsLon == null)
           ? 1.0
@@ -210,7 +210,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
       ),
     );
 
-    final loc = await LocationService.getCurrentLocation(fallbackToIp: true);
+    final loc = await LocationService.getCurrentLocation(fallbackToIp: true, lang: _lang);
     if (!mounted) return;
 
     if (loc != null) {
@@ -281,7 +281,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                             onPressed: () async {
                               if (controller.text.trim().isEmpty) return;
                               setDialogState(() => isSearching = true);
-                              final r = await LocationService.searchLocation(controller.text.trim());
+                              final r = await LocationService.searchLocation(controller.text.trim(), lang: _lang);
                               setDialogState(() {
                                 results = r;
                                 isSearching = false;
@@ -292,7 +292,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                   onSubmitted: (q) async {
                     if (q.trim().isEmpty) return;
                     setDialogState(() => isSearching = true);
-                    final r = await LocationService.searchLocation(q.trim());
+                    final r = await LocationService.searchLocation(q.trim(), lang: _lang);
                     setDialogState(() {
                       results = r;
                       isSearching = false;
@@ -352,14 +352,14 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
   }
 
   String _getWeatherConditionText(int code, String lang) {
-    if (code == 0) return lang == 'hi' ? 'आसमान साफ (धूप)' : 'Clear Sky';
+    if (code == 0) return lang == 'hi' ? 'साफ धूप' : 'Clear Sky';
     if (code >= 1 && code <= 3) return lang == 'hi' ? 'हल्के बादल' : 'Partly Cloudy';
-    if (code == 45 || code == 48) return lang == 'hi' ? 'कोहरा / धुंध' : 'Foggy';
+    if (code == 45 || code == 48) return lang == 'hi' ? 'कोहरा' : 'Foggy';
     if (code >= 51 && code <= 55) return lang == 'hi' ? 'हल्की बूंदाबांदी' : 'Drizzle';
     if (code >= 61 && code <= 65) return lang == 'hi' ? 'बारिश' : 'Rain';
     if (code >= 80 && code <= 82) return lang == 'hi' ? 'तेज बौछारें' : 'Rain Showers';
     if (code == 95) return lang == 'hi' ? 'गरज-चमक के साथ बारिश' : 'Thunderstorm';
-    if (code == 96 || code == 99) return lang == 'hi' ? 'ओलावृष्टि चेतावनी' : 'Thunderstorm with Hail';
+    if (code == 96 || code == 99) return lang == 'hi' ? 'ओलावृष्टि तूफान' : 'Thunderstorm with Hail';
     return lang == 'hi' ? 'सामान्य मौसम' : 'Fair Weather';
   }
 
@@ -385,6 +385,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       floatingActionButton: ProminentMicButton(
+        label: AppStrings.get('voice_assistant_btn', _lang),
         onPressed: () {
           Navigator.of(context).push(
             MaterialPageRoute(
@@ -394,6 +395,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                 latitude: _gpsLat ?? _weather?.latitude ?? _currentFarm?.latitude,
                 longitude: _gpsLon ?? _weather?.longitude ?? _currentFarm?.longitude,
                 weather: _weather,
+                lang: _lang,
               ),
             ),
           );
@@ -456,14 +458,14 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
                                           Text(
-                                            _gpsLocationName ?? _currentFarm?.name ?? 'मेरा खेत',
+                                            _gpsLocationName ?? _currentFarm?.getName(_lang) ?? (_lang == 'en' ? 'My Farm' : 'मेरा खेत'),
                                             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5),
                                             overflow: TextOverflow.ellipsis,
                                           ),
                                           Text(
                                             _gpsLocationName != null
                                                 ? 'GPS • ${_gpsLat?.toStringAsFixed(2)}°N, ${_gpsLon?.toStringAsFixed(2)}°E'
-                                                : '${_currentFarm?.village ?? ""}, ${_currentFarm?.district ?? ""}',
+                                                : '${_currentFarm?.getVillage(_lang) ?? ""}, ${_currentFarm?.getDistrict(_lang) ?? ""}',
                                             style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
                                             overflow: TextOverflow.ellipsis,
                                           ),
@@ -573,16 +575,16 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'नया ऐप अपडेट उपलब्ध: v${_availableUpdate!.latestVersion}',
+                                    '${AppStrings.get('update_banner_title', _lang)}: v${_availableUpdate!.latestVersion}',
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontWeight: FontWeight.bold,
                                       fontSize: 13,
                                     ),
                                   ),
-                                  const Text(
-                                    '1-टैप में नया संस्करण डाउनलोड व इंस्टॉल करें',
-                                    style: TextStyle(color: Colors.white70, fontSize: 11),
+                                  Text(
+                                    AppStrings.get('update_banner_sub', _lang),
+                                    style: const TextStyle(color: Colors.white70, fontSize: 11),
                                   ),
                                 ],
                               ),
@@ -595,8 +597,8 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                                 minimumSize: Size.zero,
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                               ),
-                              onPressed: () => UpdateService.showUpdateDialog(context, _availableUpdate!),
-                              child: const Text('अपडेट करें', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                              onPressed: () => UpdateService.showUpdateDialog(context, _availableUpdate!, lang: _lang),
+                              child: Text(AppStrings.get('update_banner_btn', _lang), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
                             ),
                             const SizedBox(width: 4),
                             IconButton(
@@ -758,7 +760,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
     final isDay = current.isDay;
     final condText = _getWeatherConditionText(current.weatherCode, _lang);
     final displayCond = (!isDay && current.weatherCode == 0)
-        ? (_lang == 'hi' ? 'साफ रात (Clear Night)' : 'Clear Night')
+        ? (_lang == 'hi' ? 'साफ रात' : 'Clear Night')
         : condText;
     final isRainy = current.weatherCode >= 51 && current.weatherCode <= 82;
     final isThunder = current.weatherCode >= 95;
@@ -1385,7 +1387,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _lang == 'hi' ? 'मौसम जोखिम व पूर्व चेतावनी (1-3 दिन)' : 'Weather Hazards (Days 1-3)',
+                      AppStrings.get('risk_card_title', _lang),
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -1405,8 +1407,8 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                         const SizedBox(width: 5),
                         Text(
                           hasHighRisk
-                              ? (_lang == 'hi' ? 'सक्रिय चेतावनी (Active Alert)' : 'Active Hazards')
-                              : (_lang == 'hi' ? 'खेत सुरक्षित • IMD रडार' : 'Crops Protected • Radar Active'),
+                              ? (_lang == 'hi' ? 'सक्रिय चेतावनी' : 'Active Hazards')
+                              : AppStrings.get('risk_farm_safe', _lang),
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
@@ -1429,7 +1431,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                 ),
                 onPressed: _showSimulationDialog,
                 icon: const Icon(Icons.bolt, size: 16, color: Color(0xFFFFD54F)),
-                label: Text(_lang == 'hi' ? 'टेस्ट अलर्ट' : 'Test Alert', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
+                label: Text(AppStrings.get('risk_test_btn', _lang), style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
               ),
             ],
           ),
@@ -1450,9 +1452,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      _lang == 'hi'
-                          ? 'अगले 1 से 3 दिनों में कोई गंभीर मौसम खतरा नहीं है। फसल सुरक्षित है।'
-                          : 'No imminent severe weather risks for next 1-3 days.',
+                      AppStrings.get('risk_no_hazards', _lang),
                       style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.green.shade900),
                     ),
                   ),
@@ -1477,7 +1477,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                       const Icon(Icons.date_range, size: 16, color: Color(0xFF1B5E20)),
                       const SizedBox(width: 6),
                       Text(
-                        _lang == 'hi' ? '30-दिवसीय मौसमी रुझान (EC46 / SEAS5)' : '30-Day Seasonal Outlook',
+                        AppStrings.get('seasonal_title', _lang),
                         style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF1B5E20)),
                       ),
                     ],
@@ -1485,13 +1485,16 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                   const SizedBox(height: 5),
                   Text(
                     () {
+                      final activeLoc = _gpsLocationName ?? _currentFarm?.village ?? (_lang == 'hi' ? "आपके क्षेत्र" : "your area");
+                      if (_lang == 'en') {
+                        return 'In $activeLoc, 35% probability of below-normal rainfall over next 30 days based on multi-model forecasts.';
+                      }
                       final rawStatement = h3Risks.first.accuracyStatementHi;
-                      final activeLoc = _gpsLocationName ?? _currentFarm?.village ?? "आपके क्षेत्र";
                       if (rawStatement != null && rawStatement.isNotEmpty) {
                         if (_gpsLocationName != null && rawStatement.contains('उमरेड')) {
                           return rawStatement.replaceAll('उमरेड (Umred)', activeLoc).replaceAll('उमरेड', activeLoc);
                         }
-                        return rawStatement;
+                        return rawStatement.replaceAll(' (Umred)', '');
                       }
                       return '$activeLoc में अगले 30 दिनों में सामान्य से कम वर्षा होने की संभावना 35% है।';
                     }(),
@@ -1508,6 +1511,13 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
 
   Widget _buildDetectedRiskItem(DetectedRisk risk) {
     final isRed = risk.severity == 'red';
+    final isHi = _lang == 'hi';
+    final title = isHi ? risk.titleHi : (risk.titleEn.isNotEmpty ? risk.titleEn : risk.titleHi);
+    final action = isHi ? risk.actionHi : (risk.actionEn.isNotEmpty ? risk.actionEn : risk.actionHi);
+    final badgeLabel = isHi ? (isRed ? 'गंभीर चेतावनी' : 'चेतावनी') : (isRed ? 'RED ALERT' : 'WARNING');
+    final timePrefix = isHi ? 'समय' : 'Time';
+    final timeValue = risk.expectedDate ?? (isHi ? 'अगले 24-48 घंटे' : 'Next 24-48 hours');
+
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
@@ -1535,14 +1545,14 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  isRed ? 'RED ALERT' : 'WARNING',
+                  badgeLabel,
                   style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  risk.titleHi,
+                  title,
                   style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold),
                 ),
               ),
@@ -1558,7 +1568,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
           ),
           const SizedBox(height: 6),
           Text(
-            'समय: ${risk.expectedDate ?? "अगले 24-48 घंटे"} (${risk.expectedValue})',
+            '$timePrefix: $timeValue (${risk.expectedValue})',
             style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
           ),
           const SizedBox(height: 6),
@@ -1576,7 +1586,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    risk.actionHi,
+                    action,
                     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black87),
                   ),
                 ),
@@ -1590,7 +1600,12 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
 
   Widget _buildEnsoStatusCard() {
     final enso = _ensoData;
-    final phaseText = enso?.phaseHi ?? 'तटस्थ (Neutral)';
+    final isHi = _lang == 'hi';
+    final phaseText = isHi
+        ? (enso != null
+            ? enso.phaseHi.replaceAll(RegExp(r'\s*\([A-Za-z\s-ñÑíÍ/]+\)'), '').trim()
+            : 'तटस्थ')
+        : (enso != null ? enso.phase : 'Neutral');
     final oniVal = enso?.oniValue ?? -0.2;
 
     return GlassCard(
@@ -1618,7 +1633,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _lang == 'hi' ? 'वैश्विक ईएनएसओ (El Niño / La Niña) स्थिति' : 'Global ENSO Status',
+                      AppStrings.get('enso_title', _lang),
                       style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.bold, color: Color(0xFF01579B)),
                     ),
                     Text(
@@ -1652,11 +1667,14 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
           ),
           const SizedBox(height: 14),
           // Interactive ONI Gauge Meter
-          OniGaugeMeter(oniValue: oniVal),
+          OniGaugeMeter(oniValue: oniVal, lang: _lang),
           const SizedBox(height: 12),
           Text(
-            enso?.explanationHi ??
-                'एल नीनो व ला नीना प्रशांत महासागर का समुद्री तापमान चक्र है। वर्तमान में तटस्थ (Neutral) स्थिति है। यह एक वैश्विक सूचकांक है; अपने स्थानीय खेत के लिए 30-दिवसीय वर्षा पूर्वानुमान देखें।',
+            isHi
+                ? (enso != null && enso.explanationHi.isNotEmpty
+                    ? enso.explanationHi.replaceAll(RegExp(r'\s*\([A-Za-z\s-ñÑíÍ/]+\)'), '').trim()
+                    : 'अल नीनो व ला नीना प्रशांत महासागर का समुद्री तापमान चक्र है। वर्तमान में तटस्थ स्थिति है। यह एक वैश्विक सूचकांक है; अपने स्थानीय खेत के लिए 30-दिवसीय वर्षा पूर्वानुमान देखें।')
+                : 'El Niño and La Niña represent ocean surface temperature cycles. Currently in Neutral phase. Check 30-day outlook for local rainfall.',
             style: const TextStyle(fontSize: 12.5, color: Colors.black87, height: 1.35),
           ),
           const SizedBox(height: 10),
@@ -1675,7 +1693,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                 ),
               ),
               Text(
-                'स्रोत: NOAA CPC / IMD',
+                AppStrings.get('enso_source', _lang),
                 style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontWeight: FontWeight.w500),
               ),
             ],
@@ -1686,6 +1704,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
   }
 
   Widget _buildCropRecommenderEntryCard() {
+    final isHi = _lang == 'hi';
     return GlassCard(
       margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       borderRadius: 24,
@@ -1706,10 +1725,10 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                 child: const Icon(Icons.psychology_alt, color: Color(0xFF1B5E20), size: 24),
               ),
               const SizedBox(width: 10),
-              const Expanded(
+              Expanded(
                 child: Text(
-                  'फसल चयन व सिफारिशें (Crop Advisory)',
-                  style: TextStyle(
+                  AppStrings.get('crop_recommender_title', _lang),
+                  style: const TextStyle(
                     fontSize: 15.5,
                     fontWeight: FontWeight.bold,
                     color: Color(0xFF1B5E20),
@@ -1723,28 +1742,34 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: Colors.amber.shade300),
                 ),
-                child: const Text(
-                  '🌾 रबी सीजन',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.brown),
+                child: Text(
+                  AppStrings.get('rabi_season', _lang),
+                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.brown),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 10),
-          const Text(
-            'खेत की मिट्टी, सिंचाई, वर्तमान मौसम व 30-दिवसीय जलवायु रुझान के आधार पर शीर्ष 5 अनुशंसित फसलें देखें।',
-            style: TextStyle(fontSize: 13, color: Colors.black87, height: 1.3),
+          Text(
+            AppStrings.get('crop_recommender_subtitle', _lang),
+            style: const TextStyle(fontSize: 13, color: Colors.black87, height: 1.3),
           ),
           const SizedBox(height: 10),
           // Suggested crop teaser badges
           Wrap(
             spacing: 8,
             runSpacing: 6,
-            children: [
-              _buildCropTeaserChip('🌾 गेहूं (Wheat)'),
-              _buildCropTeaserChip('🌱 चना (Chickpea)'),
-              _buildCropTeaserChip('🟡 सरसों (Mustard)'),
-            ],
+            children: isHi
+                ? [
+                    _buildCropTeaserChip('🌾 गेहूं'),
+                    _buildCropTeaserChip('🌱 चना'),
+                    _buildCropTeaserChip('🟡 सरसों'),
+                  ]
+                : [
+                    _buildCropTeaserChip('🌾 Wheat'),
+                    _buildCropTeaserChip('🌱 Chickpea'),
+                    _buildCropTeaserChip('🟡 Mustard'),
+                  ],
           ),
           const SizedBox(height: 14),
           SizedBox(
@@ -1763,15 +1788,16 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                   MaterialPageRoute(
                     builder: (context) => CropRecommenderScreen(
                       farmId: _currentFarm?.id ?? 1,
-                      farmName: _currentFarm?.name ?? 'बड़ा खेत 1',
-                      village: _currentFarm?.village ?? 'उमरेड (Umred)',
+                      farmName: _currentFarm?.getName(_lang) ?? (isHi ? 'मेरा खेत' : 'My Farm'),
+                      village: _gpsLocationName ?? _currentFarm?.getVillage(_lang) ?? (isHi ? 'उमरेड' : 'Umred'),
                       farm: _currentFarm,
+                      lang: _lang,
                     ),
                   ),
                 );
               },
               icon: const Icon(Icons.arrow_forward, size: 18),
-              label: const Text('सर्वोत्तम फसलें देखें (View Recommendations)', style: TextStyle(fontWeight: FontWeight.bold)),
+              label: Text(AppStrings.get('crop_recommender_btn', _lang), style: const TextStyle(fontWeight: FontWeight.bold)),
             ),
           ),
         ],
@@ -1795,29 +1821,32 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
   }
 
   void _showSimulationDialog() {
+    final isHi = _lang == 'hi';
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Row(
-          children: const [
-            Icon(Icons.notification_important, color: Color(0xFF1B5E20)),
-            SizedBox(width: 8),
-            Text('अलर्ट टेस्ट सिमुलेशन', style: TextStyle(fontSize: 18)),
+          children: [
+            const Icon(Icons.notification_important, color: Color(0xFF1B5E20)),
+            const SizedBox(width: 8),
+            Text(isHi ? 'अलर्ट टेस्ट सिमुलेशन' : 'Alert Simulation Test', style: const TextStyle(fontSize: 18)),
           ],
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'एक मौसमी आपदा चुनें जिसे सिम्युलेट कर Push, SMS और Email चैनल पर टेस्ट करना है:',
-              style: TextStyle(fontSize: 13),
+            Text(
+              isHi
+                  ? 'एक मौसमी आपदा चुनें जिसे सिम्युलेट कर Push, SMS और Email चैनल पर टेस्ट करना है:'
+                  : 'Select a hazard scenario to simulate dispatch across Push, SMS, and Email:',
+              style: const TextStyle(fontSize: 13),
             ),
             const SizedBox(height: 16),
             ListTile(
               leading: const Icon(Icons.ac_unit, color: Colors.lightBlue),
-              title: const Text('पाला व शीतलहर (Ground Frost 1.2°C)'),
-              subtitle: const Text('Red Alert • 85% संभावना'),
+              title: Text(isHi ? 'पाला व शीतलहर (1.2°C)' : 'Ground Frost (1.2°C)'),
+              subtitle: Text(isHi ? 'गंभीर चेतावनी • 85% संभावना' : 'Red Alert • 85% Probability'),
               onTap: () {
                 Navigator.pop(ctx);
                 _triggerSimulation('frost');
@@ -1825,8 +1854,8 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
             ),
             ListTile(
               leading: const Icon(Icons.thunderstorm, color: Colors.blue),
-              title: const Text('अत्यधिक भारी वर्षा (Heavy Rain 145mm)'),
-              subtitle: const Text('Red Alert • 90% संभावना'),
+              title: Text(isHi ? 'अत्यधिक भारी वर्षा (145 मिमी)' : 'Excessive Rain (145mm)'),
+              subtitle: Text(isHi ? 'गंभीर चेतावनी • 90% संभावना' : 'Red Alert • 90% Probability'),
               onTap: () {
                 Navigator.pop(ctx);
                 _triggerSimulation('heavy_rain');
@@ -1834,8 +1863,8 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
             ),
             ListTile(
               leading: const Icon(Icons.whatshot, color: Colors.orange),
-              title: const Text('भीषण लू (Heat Wave 44.5°C)'),
-              subtitle: const Text('Orange Alert • 88% संभावना'),
+              title: Text(isHi ? 'भीषण लू (44.5°C)' : 'Severe Heat Wave (44.5°C)'),
+              subtitle: Text(isHi ? 'चेतावनी • 88% संभावना' : 'Orange Alert • 88% Probability'),
               onTap: () {
                 Navigator.pop(ctx);
                 _triggerSimulation('heat_wave');
@@ -1846,7 +1875,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('रद्द करें'),
+            child: Text(isHi ? 'रद्द करें' : 'Cancel'),
           ),
         ],
       ),
@@ -1854,8 +1883,15 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
   }
 
   void _triggerSimulation(String scenario) async {
+    final isHi = _lang == 'hi';
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('अलर्ट सिमुलेशन भेजा जा रहा है... (SMS, Push, Email)')),
+      SnackBar(
+        content: Text(
+          isHi
+              ? 'अलर्ट सिमुलेशन भेजा जा रहा है...'
+              : 'Sending alert simulation...',
+        ),
+      ),
     );
 
     final res = await _apiService.simulateAlert(_currentFarm?.id ?? 1, scenario);
@@ -1869,8 +1905,12 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
           backgroundColor: const Color(0xFF1B5E20),
           content: Text(
             logsCount > 0
-                ? '✅ $scenarioName चेतावनी सफलतापूर्वक भेजी गई! ($logsCount चैनल डिलीवर)'
-                : 'ℹ️ अलर्ट डुप्लिकेशन रोक दिया गया (पिछले 6 घंटे में पहले ही भेजा गया था)',
+                ? (isHi
+                    ? '✅ $scenarioName चेतावनी सफलतापूर्वक भेजी गई! ($logsCount चैनल डिलीवर)'
+                    : '✅ $scenarioName alert sent successfully! ($logsCount channels dispatched)')
+                : (isHi
+                    ? 'ℹ️ अलर्ट डुप्लिकेशन रोक दिया गया (पिछले 6 घंटे में पहले ही भेजा गया था)'
+                    : 'ℹ️ Alert deduplicated (already dispatched in last 6 hours)'),
           ),
           duration: const Duration(seconds: 4),
         ),

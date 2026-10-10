@@ -17,7 +17,7 @@ class LocationService {
   static final Dio _dio = Dio(BaseOptions(connectTimeout: const Duration(seconds: 8)));
 
   /// Request permission and return current GPS location (with seamless IP fallback).
-  static Future<LocationResult?> getCurrentLocation({bool fallbackToIp = true}) async {
+  static Future<LocationResult?> getCurrentLocation({bool fallbackToIp = true, String lang = 'hi'}) async {
     Position? pos;
 
     try {
@@ -63,7 +63,7 @@ class LocationService {
 
     // If GPS returned a valid coordinate
     if (pos != null) {
-      final name = await reverseGeocode(pos.latitude, pos.longitude);
+      final name = await reverseGeocode(pos.latitude, pos.longitude, lang: lang);
       return LocationResult(
         latitude: pos.latitude,
         longitude: pos.longitude,
@@ -73,14 +73,15 @@ class LocationService {
 
     // Fallback: If GPS is disabled, indoor timeout, or permission denied, use IP location
     if (fallbackToIp) {
-      return await getIpLocation();
+      return await getIpLocation(lang: lang);
     }
 
     return null;
   }
 
   /// IP-based geolocation fallback (requires no GPS hardware/satellites)
-  static Future<LocationResult?> getIpLocation() async {
+  static Future<LocationResult?> getIpLocation({String lang = 'hi'}) async {
+    final targetLang = lang == 'en' ? 'en' : 'hi';
     // 1. Try ipwho.is
     try {
       final r = await _dio.get(
@@ -94,7 +95,7 @@ class LocationService {
         final region = (r.data['region'] as String?) ?? '';
 
         if (lat != null && lon != null) {
-          final localizedName = await reverseGeocode(lat, lon);
+          final localizedName = await reverseGeocode(lat, lon, lang: targetLang);
           final finalName = localizedName.contains('°') && city.isNotEmpty
               ? (region.isNotEmpty ? '$city, $region' : city)
               : localizedName;
@@ -120,7 +121,7 @@ class LocationService {
         final region = (r.data['regionName'] as String?) ?? '';
 
         if (lat != null && lon != null) {
-          final localizedName = await reverseGeocode(lat, lon);
+          final localizedName = await reverseGeocode(lat, lon, lang: targetLang);
           final finalName = localizedName.contains('°') && city.isNotEmpty
               ? (region.isNotEmpty ? '$city, $region' : city)
               : localizedName;
@@ -137,15 +138,17 @@ class LocationService {
   }
 
   /// Reverse geocode lat/lon → Hindi/English place name using BigDataCloud + Nominatim
-  static Future<String> reverseGeocode(double lat, double lon) async {
-    // 1. BigDataCloud Client API (fast, localized Hindi, no strict rate-limiting)
+  static Future<String> reverseGeocode(double lat, double lon, {String lang = 'hi'}) async {
+    final targetLang = lang == 'en' ? 'en' : 'hi';
+
+    // 1. BigDataCloud Client API (fast, localized, no strict rate-limiting)
     try {
       final r = await _dio.get(
         'https://api.bigdatacloud.net/data/reverse-geocode-client',
         queryParameters: {
           'latitude': lat,
           'longitude': lon,
-          'localityLanguage': 'hi',
+          'localityLanguage': targetLang,
         },
         options: Options(receiveTimeout: const Duration(seconds: 5)),
       );
@@ -167,7 +170,7 @@ class LocationService {
     try {
       final r = await _dio.get(
         'https://nominatim.openstreetmap.org/reverse',
-        queryParameters: {'lat': lat, 'lon': lon, 'format': 'json', 'accept-language': 'hi'},
+        queryParameters: {'lat': lat, 'lon': lon, 'format': 'json', 'accept-language': targetLang},
         options: Options(
           headers: {'User-Agent': 'KisanMausamApp/1.0'},
           receiveTimeout: const Duration(seconds: 5),
@@ -189,11 +192,12 @@ class LocationService {
   }
 
   /// Search for a location by city/village name → list of results.
-  static Future<List<LocationResult>> searchLocation(String query) async {
+  static Future<List<LocationResult>> searchLocation(String query, {String lang = 'hi'}) async {
+    final targetLang = lang == 'en' ? 'en' : 'hi';
     try {
       final r = await _dio.get(
         'https://geocoding-api.open-meteo.com/v1/search',
-        queryParameters: {'name': query, 'count': 7, 'language': 'hi', 'format': 'json'},
+        queryParameters: {'name': query, 'count': 7, 'language': targetLang, 'format': 'json'},
       );
       if (r.statusCode == 200 && r.data != null) {
         final results = (r.data['results'] as List?)?.cast<Map<String, dynamic>>() ?? [];

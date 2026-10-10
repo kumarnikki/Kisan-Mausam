@@ -35,15 +35,25 @@ class _OtpScreenState extends State<OtpScreen> {
   void _sendOtp() {
     if (_phoneController.text.trim().length < 10) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('कृपया सही 10 अंकों का मोबाइल नंबर भरें')),
+        SnackBar(
+          content: Text(
+            _lang == 'en'
+                ? 'Please enter a valid 10-digit mobile number'
+                : 'कृपया सही 10 अंकों का मोबाइल नंबर भरें',
+          ),
+        ),
       );
       return;
     }
     setState(() => _otpSent = true);
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('OTP भेजा गया (डेवलपमेंट मोड में 123456 दर्ज करें)'),
-        backgroundColor: Color(0xFF1B5E20),
+      SnackBar(
+        content: Text(
+          _lang == 'en'
+              ? 'OTP sent (enter 123456 in dev mode)'
+              : 'OTP भेजा गया (डेवलपमेंट मोड में 123456 दर्ज करें)',
+        ),
+        backgroundColor: const Color(0xFF1B5E20),
       ),
     );
   }
