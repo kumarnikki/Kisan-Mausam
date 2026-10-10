@@ -44,21 +44,21 @@ class FarmProfile {
       soilType: json['soil_type'] ?? 'black',
       irrigationType: json['irrigation_type'] ?? 'tube-well',
       landSizeAcres: (json['land_size_acres'] as num?)?.toDouble() ?? 3.0,
-      currentCrop: json['current_crop'] ?? 'सोयाबीन',
-      cropStage: json['crop_stage'] ?? 'flowering',
-      sowingDate: json['sowing_date'] ?? '2026-07-01',
+      currentCrop: json['current_crop'] ?? 'गेहूं',
+      cropStage: json['crop_stage'] ?? 'vegetative',
+      sowingDate: json['sowing_date'] ?? '2026-10-01',
     );
   }
 
   String getName(String lang) {
     if (lang == 'en') {
-      if (name.contains(RegExp(r'[\u0900-\u097F]'))) {
-        return 'Main Farm';
+      if (name == 'बड़ा खेत 1' || name == 'बड़ा खेत' || name == 'मेरा खेत' || name == 'खेत 1') {
+        return 'My Farm';
       }
       return name.replaceAll(RegExp(r'\s*\([A-Za-z\s-]+\)'), '').trim();
     } else {
-      if (name.toLowerCase().contains('farm') || name == 'Main Farm') {
-        return 'बड़ा खेत';
+      if (name == 'Main Farm' || name == 'My Farm') {
+        return 'मेरा खेत';
       }
       return name.replaceAll(RegExp(r'\s*\([A-Za-z\s-]+\)'), '').trim();
     }
@@ -68,7 +68,7 @@ class FarmProfile {
     if (lang == 'en') {
       if (village.contains('Umred') || village.contains('उमरेड')) return 'Umred';
       final clean = village.replaceAll(RegExp(r'[\u0900-\u097F]+'), '').replaceAll(RegExp(r'[()]'), '').trim();
-      return clean.isEmpty ? 'Umred' : clean;
+      return clean.isEmpty ? village : clean;
     } else {
       if (village.contains('Umred') || village.contains('उमरेड')) return 'उमरेड';
       return village.replaceAll(RegExp(r'\s*\([A-Za-z\s-]+\)'), '').trim();
@@ -79,7 +79,7 @@ class FarmProfile {
     if (lang == 'en') {
       if (district.contains('Nagpur') || district.contains('नागपुर')) return 'Nagpur';
       final clean = district.replaceAll(RegExp(r'[\u0900-\u097F]+'), '').replaceAll(RegExp(r'[()]'), '').trim();
-      return clean.isEmpty ? 'Nagpur' : clean;
+      return clean.isEmpty ? district : clean;
     } else {
       if (district.contains('Nagpur') || district.contains('नागपुर')) return 'नागपुर';
       return district.replaceAll(RegExp(r'\s*\([A-Za-z\s-]+\)'), '').trim();
@@ -90,7 +90,7 @@ class FarmProfile {
     if (lang == 'en') {
       if (state.contains('Maharashtra') || state.contains('महाराष्ट्र')) return 'Maharashtra';
       final clean = state.replaceAll(RegExp(r'[\u0900-\u097F]+'), '').replaceAll(RegExp(r'[()]'), '').trim();
-      return clean.isEmpty ? 'Maharashtra' : clean;
+      return clean.isEmpty ? state : clean;
     } else {
       if (state.contains('Maharashtra') || state.contains('महाराष्ट्र')) return 'महाराष्ट्र';
       return state.replaceAll(RegExp(r'\s*\([A-Za-z\s-]+\)'), '').trim();
@@ -99,17 +99,29 @@ class FarmProfile {
 
   String getCurrentCrop(String lang) {
     if (lang == 'en') {
-      if (currentCrop.contains('Soybean') || currentCrop.contains('सोयाबीन')) return 'Soybean';
       if (currentCrop.contains('Wheat') || currentCrop.contains('गेहूं')) return 'Wheat';
-      if (currentCrop.contains('Chickpea') || currentCrop.contains('चना')) return 'Chickpea';
+      if (currentCrop.contains('Paddy') || currentCrop.contains('Rice') || currentCrop.contains('धान')) return 'Paddy';
+      if (currentCrop.contains('Chickpea') || currentCrop.contains('Gram') || currentCrop.contains('चना')) return 'Chickpea';
       if (currentCrop.contains('Mustard') || currentCrop.contains('सरसों')) return 'Mustard';
+      if (currentCrop.contains('Maize') || currentCrop.contains('मक्का')) return 'Maize';
+      if (currentCrop.contains('Sugarcane') || currentCrop.contains('गन्ना')) return 'Sugarcane';
+      if (currentCrop.contains('Cotton') || currentCrop.contains('कपास')) return 'Cotton';
+      if (currentCrop.contains('Potato') || currentCrop.contains('आलू')) return 'Potato';
+      if (currentCrop.contains('Soybean') || currentCrop.contains('सोयाबीन')) return 'Soybean';
+      if (currentCrop.contains('Vegetables') || currentCrop.contains('सब्जियां')) return 'Vegetables';
       final clean = currentCrop.replaceAll(RegExp(r'[\u0900-\u097F]+'), '').replaceAll(RegExp(r'[()]'), '').trim();
-      return clean.isEmpty ? 'Soybean' : clean;
+      return clean.isEmpty ? currentCrop : clean;
     } else {
-      if (currentCrop.contains('Soybean') || currentCrop.contains('सोयाबीन')) return 'सोयाबीन';
       if (currentCrop.contains('Wheat') || currentCrop.contains('गेहूं')) return 'गेहूं';
-      if (currentCrop.contains('Chickpea') || currentCrop.contains('चना')) return 'चना';
+      if (currentCrop.contains('Paddy') || currentCrop.contains('Rice') || currentCrop.contains('धान')) return 'धान';
+      if (currentCrop.contains('Chickpea') || currentCrop.contains('Gram') || currentCrop.contains('चना')) return 'चना';
       if (currentCrop.contains('Mustard') || currentCrop.contains('सरसों')) return 'सरसों';
+      if (currentCrop.contains('Maize') || currentCrop.contains('मक्का')) return 'मक्का';
+      if (currentCrop.contains('Sugarcane') || currentCrop.contains('गन्ना')) return 'गन्ना';
+      if (currentCrop.contains('Cotton') || currentCrop.contains('कपास')) return 'कपास';
+      if (currentCrop.contains('Potato') || currentCrop.contains('आलू')) return 'आलू';
+      if (currentCrop.contains('Soybean') || currentCrop.contains('सोयाबीन')) return 'सोयाबीन';
+      if (currentCrop.contains('Vegetables') || currentCrop.contains('सब्जियां')) return 'सब्जियां';
       return currentCrop.replaceAll(RegExp(r'\s*\([A-Za-z\s-]+\)'), '').trim();
     }
   }

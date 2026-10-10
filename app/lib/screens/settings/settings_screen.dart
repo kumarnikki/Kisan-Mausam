@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import '../../l10n/app_strings.dart';
+import '../../models/farm_profile.dart';
 import '../../services/storage_service.dart';
 import '../../services/api_service.dart';
 import '../../services/update_service.dart';
+import '../onboarding/farm_setup_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   final VoidCallback onThemeChanged;
@@ -29,6 +31,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? _customBackendUrl;
   bool _isCheckingUpdate = false;
   int _developerTapCount = 0;
+  String? _userName;
+  String? _userPhone;
+  FarmProfile? _currentFarm;
 
   void _onFooterTapped() {
     _developerTapCount++;
@@ -111,13 +116,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final l = await StorageService.getLanguage();
     final hc = await StorageService.isHighContrast();
     final bUrl = await StorageService.getCustomBackendUrl();
+    final uName = await StorageService.getUserName();
+    final uPhone = await StorageService.getUserPhone();
+    final farms = await StorageService.getFarms();
+    final activeId = await StorageService.getActiveFarmId();
+    final activeFarm = farms.isNotEmpty
+        ? farms.firstWhere((f) => f.id == activeId, orElse: () => farms.first)
+        : null;
+
     if (mounted) {
       setState(() {
         _lang = l;
         _highContrast = hc;
         _customBackendUrl = bUrl;
+        _userName = uName;
+        _userPhone = uPhone;
+        _currentFarm = activeFarm;
       });
     }
+  }
+
+  void _openEditProfile() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (ctx) => FarmSetupScreen(
+          isEditing: true,
+          onBack: () => Navigator.pop(ctx),
+          onFarmCreated: () {
+            Navigator.pop(ctx);
+            _loadSettings();
+            widget.onLanguageChanged();
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    _lang == 'en'
+                        ? '✅ Farmer & Crop Profile updated!'
+                        : '✅ किसान व फसल प्रोफाइल अपडेट कर दी गई!',
+                  ),
+                  backgroundColor: const Color(0xFF1B5E20),
+                ),
+              );
+            }
+          },
+        ),
+      ),
+    );
   }
 
   void _toggleLanguage() async {
@@ -148,7 +193,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () async {
               Navigator.pop(ctx);
-              await StorageService.setOnboardingComplete(false);
+              await StorageService.logout();
               widget.onResetOnboarding();
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -313,6 +358,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isEn = _lang == 'en';
+    final displayName = (_userName != null && _userName!.isNotEmpty)
+        ? _userName!
+        : (isEn ? 'Farmer' : 'किसान');
+    final displayPhone = (_userPhone != null && _userPhone!.isNotEmpty)
+        ? '+91 $_userPhone'
+        : (isEn ? 'Not linked' : 'जुड़ा नहीं है');
+    final displayCrop = _currentFarm?.getCurrentCrop(_lang) ?? (isEn ? 'Wheat' : 'गेहूं');
+    final displayAcres = _currentFarm != null
+        ? '${_currentFarm!.landSizeAcres} ${isEn ? "Acres" : "एकड़"}'
+        : '2.5 ${isEn ? "Acres" : "एकड़"}';
+    final displayLocation = _currentFarm != null
+        ? '${_currentFarm!.getVillage(_lang)}, ${_currentFarm!.getDistrict(_lang)}'
+        : (isEn ? 'My Farm' : 'मेरा खेत');
+
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -325,6 +385,103 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: 12),
         children: [
+          // Section 0: Farmer & Crop Profile (Editable anytime)
+          _buildSectionHeader(isEn ? 'Farmer & Crop Profile' : 'किसान व फसल प्रोफाइल'),
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE8F5E9),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.green.shade300),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 22,
+                      backgroundColor: const Color(0xFF1B5E20),
+                      child: const Icon(Icons.person, color: Colors.white, size: 24),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            displayName,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1B5E20),
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '📱 $displayPhone • 📍 $displayLocation',
+                            style: TextStyle(fontSize: 12.5, color: Colors.grey.shade800),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.green.shade200),
+                      ),
+                      child: Text(
+                        '🌾 ${isEn ? "Crop" : "फसल"}: $displayCrop',
+                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF1B5E20)),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.green.shade200),
+                      ),
+                      child: Text(
+                        '📐 ${isEn ? "Land" : "भूमि"}: $displayAcres',
+                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF1B5E20)),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF1B5E20),
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size(double.infinity, 42),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onPressed: _openEditProfile,
+                    icon: const Icon(Icons.edit_note, size: 20),
+                    label: Text(
+                      isEn ? 'Edit Profile, Crops & Land Area' : 'प्रोफाइल, फसल व भूमि बदलें',
+                      style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(),
+
           // Section 1: Appearance & Accessibility
           _buildSectionHeader(AppStrings.get('settings_appearance', _lang)),
           ListTile(

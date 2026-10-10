@@ -36,6 +36,7 @@ class _KisanMausamAppState extends State<KisanMausamApp> {
   // 0: Login, 1: Language, 2: OTP, 3: Consent, 4: Farm
   int _onboardingStep = 0;
   bool _isSettingsOpen = false;
+  int _profileRevision = 0;
 
   @override
   void initState() {
@@ -46,16 +47,39 @@ class _KisanMausamAppState extends State<KisanMausamApp> {
   void _loadAppState() async {
     final lang = await StorageService.getLanguage();
     final hc = await StorageService.isHighContrast();
-    final done = await StorageService.isOnboardingComplete();
     final loggedIn = await StorageService.isLoggedIn();
+    final profileConfigured = await StorageService.isProfileConfigured();
     if (mounted) {
       setState(() {
         _language = lang;
         _isHighContrast = hc;
-        _isOnboardingDone = done || loggedIn;
-        _onboardingStep = loggedIn ? 1 : 0;
+        _profileRevision++;
+        if (loggedIn && profileConfigured) {
+          _isOnboardingDone = true;
+        } else if (loggedIn && !profileConfigured) {
+          // User logged in (e.g. via Continue with Phone OTP) -> ask for Name, Crops, Land Area, etc.
+          _isOnboardingDone = false;
+          _onboardingStep = 4;
+        } else {
+          _isOnboardingDone = false;
+          _onboardingStep = 0;
+        }
       });
     }
+  }
+
+  void _handlePostLogin() async {
+    final profileConfigured = await StorageService.isProfileConfigured();
+    if (!mounted) return;
+    setState(() {
+      if (profileConfigured) {
+        _isOnboardingDone = true;
+      } else {
+        // Always ask for Farmer Name, Crops, Land Area, etc. when setting up a new account
+        _isOnboardingDone = false;
+        _onboardingStep = 4;
+      }
+    });
   }
 
   @override
@@ -88,7 +112,12 @@ class _KisanMausamAppState extends State<KisanMausamApp> {
   Widget _buildCurrentScreen() {
     if (_isSettingsOpen) {
       return SettingsScreen(
-        onClose: () => setState(() => _isSettingsOpen = false),
+        onClose: () {
+          setState(() {
+            _isSettingsOpen = false;
+            _profileRevision++;
+          });
+        },
         onThemeChanged: _loadAppState,
         onLanguageChanged: _loadAppState,
         onResetOnboarding: () async {
@@ -98,6 +127,7 @@ class _KisanMausamAppState extends State<KisanMausamApp> {
             _isSettingsOpen = false;
             _isOnboardingDone = false;
             _onboardingStep = 0;
+            _profileRevision++;
           });
         },
       );
@@ -105,7 +135,7 @@ class _KisanMausamAppState extends State<KisanMausamApp> {
 
     if (_isOnboardingDone) {
       return WeatherHomeScreen(
-        key: ValueKey('home_${_language}_$_isHighContrast'),
+        key: ValueKey('home_${_language}_${_isHighContrast}_$_profileRevision'),
         onOpenSettings: () => setState(() => _isSettingsOpen = true),
       );
     }
@@ -113,9 +143,7 @@ class _KisanMausamAppState extends State<KisanMausamApp> {
     switch (_onboardingStep) {
       case 0: // Login / Sign-Up screen (first time)
         return LoginScreen(
-          onLoginSuccess: () => setState(() {
-            _isOnboardingDone = true;
-          }),
+          onLoginSuccess: _handlePostLogin,
         );
       case 1: // Language selection
         return LanguageScreen(
@@ -132,20 +160,24 @@ class _KisanMausamAppState extends State<KisanMausamApp> {
           onConsentAccepted: () => setState(() => _onboardingStep = 4),
           onBack: () => setState(() => _onboardingStep = 2),
         );
-      case 4: // Farm setup
+      case 4: // Farm & Farmer Profile setup
         return FarmSetupScreen(
-          onBack: () => setState(() => _onboardingStep = 3),
+          onBack: () async {
+            await StorageService.logout();
+            if (mounted) {
+              setState(() => _onboardingStep = 0);
+            }
+          },
           onFarmCreated: () {
             setState(() {
               _isOnboardingDone = true;
+              _profileRevision++;
             });
           },
         );
       default:
         return LoginScreen(
-          onLoginSuccess: () => setState(() {
-            _onboardingStep = 1;
-          }),
+          onLoginSuccess: _handlePostLogin,
         );
     }
   }

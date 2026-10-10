@@ -7,6 +7,7 @@ class StorageService {
   static const String _keyLanguage = 'selected_language';
   static const String _keyHighContrast = 'high_contrast_mode';
   static const String _keyOnboardingDone = 'onboarding_done';
+  static const String _keyProfileConfigured = 'profile_configured';
   static const String _keyFarms = 'saved_farms';
   static const String _keyActiveFarmId = 'active_farm_id';
   static const String _keyWeatherCache = 'weather_cache_';
@@ -42,15 +43,26 @@ class StorageService {
     await prefs.setBool(_keyOnboardingDone, value);
   }
 
+  static Future<bool> isProfileConfigured() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool(_keyProfileConfigured) == true) return true;
+    final raw = prefs.getString(_keyFarms);
+    return raw != null && raw.trim().isNotEmpty;
+  }
+
+  static Future<void> setProfileConfigured(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyProfileConfigured, value);
+  }
+
   static Future<List<FarmProfile>> getFarms() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_keyFarms);
     if (raw == null) {
-      // Return default sample farm for instant rich UI
       return [
         FarmProfile(
           id: 1,
-          name: 'बड़ा खेत',
+          name: 'मेरा खेत',
           latitude: 21.1458,
           longitude: 79.0882,
           village: 'उमरेड',
@@ -59,10 +71,10 @@ class StorageService {
           terrain: 'plain',
           soilType: 'black',
           irrigationType: 'tube-well',
-          landSizeAcres: 4.5,
-          currentCrop: 'सोयाबीन',
-          cropStage: 'flowering',
-          sowingDate: '2026-07-05',
+          landSizeAcres: 3.0,
+          currentCrop: 'गेहूं',
+          cropStage: 'vegetative',
+          sowingDate: '2026-10-01',
         )
       ];
     }
@@ -78,6 +90,7 @@ class StorageService {
     final prefs = await SharedPreferences.getInstance();
     final raw = jsonEncode(farms.map((f) => f.toJson()).toList());
     await prefs.setString(_keyFarms, raw);
+    await prefs.setBool(_keyProfileConfigured, true);
   }
 
   static Future<int> getActiveFarmId() async {
@@ -183,6 +196,9 @@ class StorageService {
     await prefs.remove(_keyUserEmail);
     await prefs.remove(_keyUserName);
     await prefs.remove(_keyUserPhone);
+    await prefs.remove(_keyProfileConfigured);
+    await prefs.remove(_keyOnboardingDone);
+    await prefs.remove(_keyFarms);
   }
 
   /// Alias for setLanguage (used by login screen language toggle)

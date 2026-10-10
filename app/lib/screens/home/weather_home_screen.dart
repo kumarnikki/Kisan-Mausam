@@ -569,9 +569,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                                             overflow: TextOverflow.ellipsis,
                                           ),
                                           Text(
-                                            _gpsLocationName != null
-                                                ? 'GPS • ${_gpsLat?.toStringAsFixed(2)}°N, ${_gpsLon?.toStringAsFixed(2)}°E'
-                                                : '${_currentFarm?.getVillage(_lang) ?? ""}, ${_currentFarm?.getDistrict(_lang) ?? ""}',
+                                            '🌾 ${_currentFarm?.getCurrentCrop(_lang) ?? (_lang == "en" ? "Wheat" : "गेहूं")} (${_currentFarm?.landSizeAcres ?? 2.5} ${_lang == "en" ? "Ac" : "एकड़"}) • ${_gpsLocationName != null ? "GPS ${_gpsLat?.toStringAsFixed(2)}°N" : "${_currentFarm?.getVillage(_lang) ?? ""}"}',
                                             style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
                                             overflow: TextOverflow.ellipsis,
                                           ),
@@ -1317,9 +1315,10 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Container(
-                padding: const EdgeInsets.all(7),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: hasHighRisk
                       ? Colors.red.withValues(alpha: 0.12)
@@ -1340,30 +1339,34 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                     Text(
                       AppStrings.get('risk_card_title', _lang),
                       style: TextStyle(
-                        fontSize: 18,
+                        fontSize: 17,
                         fontWeight: FontWeight.bold,
                         color: hasHighRisk ? Colors.red.shade900 : const Color(0xFF1B5E20),
                       ),
                     ),
+                    const SizedBox(height: 2),
                     Row(
                       children: [
                         Container(
-                          width: 6,
-                          height: 6,
+                          width: 7,
+                          height: 7,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             color: hasHighRisk ? Colors.red : Colors.green,
                           ),
                         ),
-                        const SizedBox(width: 5),
-                        Text(
-                          hasHighRisk
-                              ? (_lang == 'hi' ? 'सक्रिय चेतावनी' : 'Active Hazards')
-                              : AppStrings.get('risk_farm_safe', _lang),
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: hasHighRisk ? Colors.red.shade800 : Colors.green.shade800,
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            hasHighRisk
+                                ? (_lang == 'hi' ? 'सक्रिय चेतावनी' : 'Active Hazards')
+                                : AppStrings.get('risk_farm_safe', _lang),
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: hasHighRisk ? Colors.red.shade800 : Colors.green.shade800,
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ],
@@ -1371,32 +1374,45 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                   ],
                 ),
               ),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red.shade800,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-                  minimumSize: const Size(52, 34),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red.shade800,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                    minimumSize: const Size(0, 38),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: () => _triggerSimulation('sos'),
+                  icon: const Icon(Icons.sos_rounded, size: 17, color: Colors.white),
+                  label: const Text('SOS', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w900)),
                 ),
-                onPressed: () => _triggerSimulation('sos'),
-                icon: const Icon(Icons.sos_rounded, size: 15, color: Colors.white),
-                label: const Text('SOS', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900)),
               ),
-              const SizedBox(width: 6),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1B5E20),
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  minimumSize: const Size(60, 34),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1B5E20),
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                    minimumSize: const Size(0, 38),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: _showSimulationDialog,
+                  icon: const Icon(Icons.bolt, size: 17, color: Color(0xFFFFD54F)),
+                  label: Text(
+                    AppStrings.get('risk_test_btn', _lang),
+                    style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-                onPressed: _showSimulationDialog,
-                icon: const Icon(Icons.bolt, size: 16, color: Color(0xFFFFD54F)),
-                label: Text(AppStrings.get('risk_test_btn', _lang), style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
               ),
             ],
           ),

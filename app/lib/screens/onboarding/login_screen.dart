@@ -80,7 +80,6 @@ class _LoginScreenState extends State<LoginScreen> {
           await StorageService.saveUserPhone(mobile);
         }
         await AlertService.requestSmsPermission();
-        await StorageService.setOnboardingComplete(true);
         widget.onLoginSuccess();
         return;
       }
@@ -208,7 +207,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 final mobile = rawPhone.substring(rawPhone.length - 10);
                 await StorageService.saveUserPhone(mobile);
               }
-              await StorageService.setOnboardingComplete(true);
               if (mounted) widget.onLoginSuccess();
             },
           ),
@@ -264,9 +262,9 @@ class _LoginScreenState extends State<LoginScreen> {
           : '${mobileToSave ?? "farmer"}@kisanmausam.app';
 
       await StorageService.saveUserEmail(effectiveEmail);
-      await StorageService.saveUserName(
-        hasValidEmail ? emailOrPhone.split('@').first : (_lang == 'hi' ? 'किसान (+91 $mobileToSave)' : 'Farmer (+91 $mobileToSave)'),
-      );
+      if (hasValidEmail) {
+        await StorageService.saveUserName(emailOrPhone.split('@').first);
+      }
       if (mobileToSave != null && mobileToSave.length == 10) {
         await StorageService.saveUserPhone(mobileToSave);
         // Immediately dispatch welcome & climate monitoring SMS to the registered number
@@ -276,7 +274,6 @@ class _LoginScreenState extends State<LoginScreen> {
           message: 'KisanMausam: Your mobile +91$mobileToSave is now active for real-time GPS Weather, Climate Change & SOS SMS alerts.',
         );
       }
-      await StorageService.setOnboardingComplete(true);
       if (mounted) widget.onLoginSuccess();
     } catch (e) {
       if (mounted) {

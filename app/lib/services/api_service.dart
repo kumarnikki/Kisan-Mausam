@@ -852,8 +852,8 @@ class ApiService {
     final tempStr = currentTemp != null ? '${currentTemp.toStringAsFixed(1)}°C' : '28°C';
     final humStr = currentHumidity != null ? '${currentHumidity.toStringAsFixed(0)}%' : '55%';
     final windStr = currentWind != null ? '${currentWind.toStringAsFixed(1)} km/h' : '8 km/h';
-    final activeCrop = crop ?? (isEn ? 'Soybean' : 'सोयाबीन');
-    final activeStage = cropStage ?? (isEn ? 'Flowering stage' : 'फूल अवस्था');
+    final activeCrop = crop ?? (isEn ? 'Wheat' : 'गेहूं');
+    final activeStage = cropStage ?? (isEn ? 'Vegetative stage' : 'वानस्पतिक अवस्था');
     final activeCondition = condition ?? (isEn ? 'Clear weather' : 'साफ मौसम');
     final coords = (lat != null && lon != null) ? (isEn ? '(Lat: $lat, Lon: $lon)' : '(अक्षांश: $lat, देशांतर: $lon)') : '';
 
@@ -976,7 +976,7 @@ Strict Rules:
     final wind = currentWind ?? 5.0;
     final humidity = currentHumidity ?? 50.0;
     final weatherState = condition ?? (isEn ? 'Clear Sky' : 'साफ मौसम');
-    final activeCrop = crop ?? (isEn ? 'Soybean' : 'सोयाबीन');
+    final activeCrop = crop ?? (isEn ? 'Wheat' : 'गेहूं');
 
     String reply;
     List<String> tips;

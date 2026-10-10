@@ -132,7 +132,7 @@ class _KrishiSahayakScreenState extends State<KrishiSahayakScreen>
 
   void _initWelcomeMessage() {
     final isEn = _lang == 'en';
-    final crop = widget.farm?.currentCrop ?? (isEn ? 'Soybean' : 'सोयाबीन');
+    final crop = widget.farm?.getCurrentCrop(_lang) ?? (isEn ? 'Wheat' : 'गेहूं');
     final village = widget.locationName ?? widget.farm?.village ?? (isEn ? 'your area' : 'आपका क्षेत्र');
     final currentTemp = widget.weather?.current.temperature;
     final tempStr = currentTemp != null ? ' (${currentTemp.toStringAsFixed(1)}°C)' : '';
@@ -506,8 +506,8 @@ class _KrishiSahayakScreenState extends State<KrishiSahayakScreen>
 
   @override
   Widget build(BuildContext context) {
-    final village = widget.farm?.village ?? 'उमरेड';
-    final crop = widget.farm?.currentCrop ?? 'सोयाबीन';
+    final village = widget.farm?.village ?? (_lang == 'en' ? 'Umred' : 'उमरेड');
+    final crop = widget.farm?.getCurrentCrop(_lang) ?? (_lang == 'en' ? 'Wheat' : 'गेहूं');
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F7F4),

@@ -1,10 +1,10 @@
 {
-  "version": "1.1.3",
-  "versionCode": 13,
-  "releaseName": "Kisan Mausam v1.1.3 - Play Protect Safe & Concise AI Edition",
+  "version": "1.1.4",
+  "versionCode": 14,
+  "releaseName": "Kisan Mausam v1.1.4 - Custom Farmer & Crop Profile Setup + UI Fix Edition",
   "apkUrl": "https://github.com/kumarnikki/Kisan-Mausam/releases/download/v1.0.0/kisan-mausam-release.apk",
   "githubReleaseUrl": "https://github.com/kumarnikki/Kisan-Mausam/releases/latest",
-  "changelog": "• Removed SEND_SMS & SmsManager DEX calls so Chrome & Play Protect download/install with zero security warnings\n• Short, crisp, to-the-point AI Krishi Sahayak responses (1-2 sentences)\n• Removed OTP fallback on weather alerts (never sends OTP for weather changes)\n• Top Crop Advisory quick navigation & bottom-right Voice Assistant FAB",
+  "changelog": "• New Account Setup (including Phone OTP login) now prompts for Farmer Name, Crop selection (10 popular crops + custom), Land Area (Acres), Soil & Irrigation\n• Removed hardcoded Soybean default crop across the app\n• Added editable Farmer & Crop Profile card in Settings\n• Fixed squished Weather Risk & Early Warning header layout on Home screen",
   "minRequiredVersion": "1.0.0",
-  "publishedAt": "2026-10-10T12:15:00Z"
+  "publishedAt": "2026-10-10T18:22:00Z"
 }
