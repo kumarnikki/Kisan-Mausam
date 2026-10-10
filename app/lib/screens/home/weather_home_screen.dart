@@ -89,6 +89,13 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
       _currentFarm = current;
     });
 
+    // Ensure SMS & Notification permissions are requested if a phone number is registered
+    StorageService.getUserPhone().then((phone) {
+      if (phone != null && phone.isNotEmpty) {
+        AlertService.requestSmsPermission();
+      }
+    });
+
     await _fetchWeather(initialLat, initialLon, locationName: initialName);
 
     // Auto-fetch user's current GPS location immediately on app open (with IP fallback)
@@ -195,7 +202,12 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
     final savedPhone = await StorageService.getUserPhone();
     if (savedPhone == null || savedPhone.isEmpty) return;
     final loc = _gpsLocationName ?? _currentFarm?.village ?? 'Farm';
-    final msg = 'KisanMausam Climate Alert ($loc): ${r.titleEn.isNotEmpty ? r.titleEn : r.titleHi} (${r.expectedValue}). ${r.actionEn.isNotEmpty ? r.actionEn : r.actionHi}';
+    final isHi = _lang == 'hi';
+    final alertName = isHi ? r.titleHi : (r.titleEn.isNotEmpty ? r.titleEn : r.titleHi);
+    final actionText = isHi ? r.actionHi : (r.actionEn.isNotEmpty ? r.actionEn : r.actionHi);
+    final msg = isHi
+        ? '⚠️ किसान मौसम अलर्ट ($loc): $alertName (${r.expectedValue}, संभावना ${r.probability.round()}%)। सलाह: $actionText'
+        : '⚠️ KisanMausam Alert ($loc): $alertName (${r.expectedValue}, ${r.probability.round()}% risk). Action: $actionText';
     final sent = await _apiService.sendWeatherOrSosSms(
       phone: savedPhone,
       alertType: r.alertType,
@@ -207,9 +219,9 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
           backgroundColor: const Color(0xFF1B5E20),
           duration: const Duration(seconds: 3),
           content: Text(
-            _lang == 'hi'
-                ? '📲 मौसम परिवर्तन SMS +91 $savedPhone पर भेजा गया'
-                : '📲 Weather & Climate SMS sent to +91 $savedPhone',
+            isHi
+                ? '📲 मौसम अलर्ट SMS ($alertName) +91 $savedPhone पर भेजा गया'
+                : '📲 Weather Alert SMS ($alertName) sent to +91 $savedPhone',
           ),
         ),
       );
@@ -2178,14 +2190,14 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
       ),
     );
 
+    final loc = _gpsLocationName ?? _currentFarm?.village ?? (isHi ? 'आपके क्षेत्र' : 'your location');
     final res = await _apiService.simulateAlert(
       _currentFarm?.id ?? 1,
       scenario,
       phoneNumber: cleanPhone.isNotEmpty ? cleanPhone : null,
+      locationName: loc,
     );
     if (!mounted) return;
-
-    final loc = _gpsLocationName ?? _currentFarm?.village ?? (isHi ? 'आपके क्षेत्र' : 'your location');
     final titlesHi = {
       'sos': 'SOS आपातकालीन मौसम अलर्ट',
       'weather_change': 'अचानक मौसम परिवर्तन अलर्ट',

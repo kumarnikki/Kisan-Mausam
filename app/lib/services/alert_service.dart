@@ -8,36 +8,84 @@ import 'package:url_launcher/url_launcher.dart';
 /// Manages constant loud emergency sirens, continuous Android TTS voice warnings,
 /// heavy vibration feedback, and Android Native SOS (112) dispatch.
 class AlertService {
+  static const MethodChannel _nativeAlertChannel =
+      MethodChannel('in.kishanmausam.kisan_mausam/native_alert');
   static final AudioPlayer _player = AudioPlayer();
   static final FlutterTts _tts = FlutterTts();
   static bool _isSoundPlaying = false;
   static Timer? _vibrationTimer;
   static Timer? _voiceLoopTimer;
 
-  /// Play the constant high-volume emergency siren + repeating strong voice alarm + vibration.
+  /// Requests Android SEND_SMS & POST_NOTIFICATIONS permissions so weather change SMS dispatches automatically.
+  static Future<void> requestSmsPermission() async {
+    try {
+      await _nativeAlertChannel.invokeMethod('requestSmsPermission');
+    } catch (_) {}
+  }
+
+  /// Dispatches a real custom SMS directly from the device's SIM (and posts a high-priority system alert banner)
+  /// with the exact weather change or SOS alert message (NEVER an OTP).
+  static Future<bool> sendNativeDirectSms({
+    required String phone,
+    required String title,
+    required String message,
+  }) async {
+    try {
+      final res = await _nativeAlertChannel.invokeMethod<bool>(
+        'sendDirectAlertSms',
+        {
+          'phone': phone,
+          'title': title,
+          'message': message,
+        },
+      );
+      return res == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Play the constant MAX-VOLUME emergency siren + repeating strong voice alarm + vibration.
   static Future<void> playAlertSound({
     String? voiceText,
     String lang = 'hi',
   }) async {
     _isSoundPlaying = true;
 
-    // 1. Continuous heavy vibration pulse
+    // 1. Force Android hardware speaker volume (STREAM_ALARM + STREAM_MUSIC) to 100% MAX
+    //    and start native Android ToneGenerator emergency alarm + waveform vibration
+    try {
+      await _nativeAlertChannel.invokeMethod('boostAlarmVolumeAndSiren');
+    } catch (_) {}
+
+    // 2. Continuous heavy haptic impact backup
     _vibrationTimer?.cancel();
-    _vibrationTimer = Timer.periodic(const Duration(milliseconds: 600), (_) {
+    _vibrationTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
       if (_isSoundPlaying) {
         HapticFeedback.heavyImpact();
       }
     });
 
-    // 2. Constant looping loud emergency siren at 100% volume
+    // 3. Constant looping ultra-loud piezo emergency siren on Android ALARM audio stream at 100% volume
     try {
       await _player.stop();
+      await _player.setAudioContext(
+        AudioContext(
+          android: const AudioContextAndroid(
+            isSpeakerphoneOn: true,
+            stayAwake: true,
+            contentType: AndroidContentType.sonification,
+            usageType: AndroidUsageType.alarm,
+            audioFocus: AndroidAudioFocus.gain,
+          ),
+        ),
+      );
       await _player.setReleaseMode(ReleaseMode.loop);
       await _player.setVolume(1.0);
       await _player.play(AssetSource('sounds/alert.wav'), volume: 1.0);
     } catch (_) {}
 
-    // 3. Strong, constant Android TTS voice announcement loop
+    // 4. Strong, constant Android TTS voice announcement loop
     if (voiceText != null && voiceText.trim().isNotEmpty) {
       _startConstantVoiceLoop(voiceText, lang);
     }
@@ -65,13 +113,16 @@ class AlertService {
     } catch (_) {}
   }
 
-  /// Stop the constant siren, voice loop, and vibration.
+  /// Stop the constant siren, native hardware alarm, voice loop, and vibration.
   static Future<void> stopAlertSound() async {
     _isSoundPlaying = false;
     _vibrationTimer?.cancel();
     _vibrationTimer = null;
     _voiceLoopTimer?.cancel();
     _voiceLoopTimer = null;
+    try {
+      await _nativeAlertChannel.invokeMethod('stopAlarmAndRestoreVolume');
+    } catch (_) {}
     try {
       await _player.setReleaseMode(ReleaseMode.stop);
       await _player.stop();

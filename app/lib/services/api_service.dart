@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:dio/dio.dart';
 import '../models/weather_models.dart';
 import '../models/risk_models.dart';
+import 'alert_service.dart';
 import 'storage_service.dart';
 
 class ApiService {
@@ -666,7 +667,8 @@ class ApiService {
     return cleanCode == '123456';
   }
 
-  /// Dispatches an immediate SMS alert for severe weather change or SOS emergency via MessageCentral.
+  /// Dispatches an immediate SMS alert for severe weather change or SOS emergency
+  /// containing the exact alert details (never an OTP).
   Future<bool> sendWeatherOrSosSms({
     required String phone,
     required String alertType,
@@ -675,65 +677,34 @@ class ApiService {
     final mobile = _normalizeIndianMobile(phone);
     if (mobile.length < 10) return false;
 
-    // 1. Attempt custom transactional alert SMS via MessageCentral
-    try {
-      final resp = await _dio.post(
-        '$messageCentralBaseUrl/send',
-        queryParameters: {
-          'countryCode': '91',
-          'customerId': messageCentralCustomerId,
-          'senderId': 'UTOMOB',
-          'type': 'SMS',
-          'flowType': 'SMS',
-          'mobileNumber': mobile,
-          'message': message,
-          'messageType': 'TRANSACTION',
-        },
-        options: Options(
-          headers: {
-            'authToken': messageCentralAuthToken,
-            'Accept': 'application/json',
-          },
-          validateStatus: (status) => status != null && status < 600,
-        ),
-      );
-      if (resp.data is Map && resp.data['responseCode'] == 200) {
-        return true;
-      }
-    } catch (_) {}
+    final titleMap = {
+      'sos': '🚨 KisanMausam SOS Emergency Alert',
+      'heat_wave': '🔥 KisanMausam Severe Heat Wave Alert',
+      'heavy_rain': '🌧️ KisanMausam Heavy Rainfall Alert',
+      'frost': '❄️ KisanMausam Ground Frost Alert',
+      'weather_change': '🌦️ KisanMausam Weather Change Alert',
+      'account_active': '✅ KisanMausam Weather Alert Activated',
+    };
+    final alertTitle = titleMap[alertType] ?? '⚠️ KisanMausam Weather & Climate Alert';
 
-    // 2. Fallback to pre-approved DLT SMS flow so the farmer's phone always receives an immediate SMS alert
-    try {
-      final fallbackResp = await _dio.post(
-        '$messageCentralBaseUrl/send',
-        queryParameters: {
-          'countryCode': '91',
-          'customerId': messageCentralCustomerId,
-          'flowType': 'SMS',
-          'mobileNumber': mobile,
-        },
-        options: Options(
-          headers: {
-            'authToken': messageCentralAuthToken,
-            'Accept': 'application/json',
-          },
-          validateStatus: (status) => status != null && status < 600,
-        ),
-      );
-      if (fallbackResp.data is Map && fallbackResp.data['responseCode'] == 200) {
-        return true;
-      }
-    } catch (_) {}
+    // Dispatch real custom SMS with the exact alert message directly via Android SmsManager + High-Priority Alert Notification
+    final nativeSent = await AlertService.sendNativeDirectSms(
+      phone: mobile,
+      title: alertTitle,
+      message: message,
+    );
 
-    return false;
+    return nativeSent;
   }
 
   Future<Map<String, dynamic>?> simulateAlert(
     int farmId,
     String scenario, {
     String? phoneNumber,
+    String? locationName,
   }) async {
     final savedPhone = phoneNumber ?? await StorageService.getUserPhone();
+    final loc = (locationName != null && locationName.trim().isNotEmpty) ? locationName.trim() : 'Your Farm';
     Map<String, dynamic>? backendResult;
 
     try {
@@ -750,15 +721,19 @@ class ApiService {
       }
     } catch (_) {}
 
-    // If backend didn't already send the SMS (e.g., standalone APK mode) and we have a phone number, dispatch directly via MessageCentral
     bool smsSentDirect = false;
     if (savedPhone != null && savedPhone.isNotEmpty) {
       final msgMap = {
-        'frost': 'KisanMausam Alert: Ground Frost Warning (1.2C). Apply light evening irrigation.',
-        'heavy_rain': 'KisanMausam Alert: Heavy Rainfall Warning (145mm). Clear drainage channels immediately.',
-        'heat_wave': 'KisanMausam Alert: Severe Heat Wave Warning (44.5C). Irrigate in evening and mulch.',
-        'sos': 'KisanMausam SOS Emergency Alert activated for your farm. Kisan Helpline: 1800-180-1551.',
-        'weather_change': 'KisanMausam Alert: Sudden Weather Change detected. Secure harvested crops immediately.',
+        'frost':
+            '❄️ KisanMausam Alert ($loc): Ground Frost & Cold Wave Warning (1.2°C, 85% risk). Action: Apply light evening irrigation and smoke near bunds. Helpline: 1800-180-1551',
+        'heavy_rain':
+            '🌧️ KisanMausam Alert ($loc): Excessive Heavy Rainfall Warning (145mm, 90% risk). Action: Clear field drainage channels immediately and postpone spraying. Helpline: 1800-180-1551',
+        'heat_wave':
+            '🔥 KisanMausam Alert ($loc): Severe Heat Wave Warning (44.5°C, 88% risk). Action: Irrigate crops in the evening and apply straw mulch. Helpline: 1800-180-1551',
+        'sos':
+            '🚨 KisanMausam SOS EMERGENCY ($loc): Severe Farm Weather Hazard reported! Immediate protection required. Emergency: 112 | Kisan Helpline: 1800-180-1551',
+        'weather_change':
+            '🌦️ KisanMausam Alert ($loc): Sudden Weather & Climate Shift detected (82% probability). Action: Cover harvested crops and check soil moisture immediately.',
       };
       smsSentDirect = await sendWeatherOrSosSms(
         phone: savedPhone,

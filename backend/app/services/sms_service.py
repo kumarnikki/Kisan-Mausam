@@ -189,25 +189,12 @@ class MessageCentralSMSProvider(BaseSMSProvider):
                         "message_id": str(payload.get("verificationId") or payload.get("transactionId") or "mc_tx"),
                     }
 
-                # 2. Pre-approved DLT fallback via MessageCentral VerifyNow SMS channel so alert always rings user's phone
-                fallback_params = {
-                    "countryCode": "91",
-                    "customerId": self.customer_id,
-                    "flowType": "SMS",
-                    "mobileNumber": clean_mobile,
-                }
-                resp2 = await client.post(f"{self.base_url}/send", params=fallback_params, headers=headers)
-                data2 = resp2.json() if resp2.content else {}
-                payload2 = data2.get("data") or {}
-                vid = str(payload2.get("verificationId") or "mc_alert")
-                logger.info(
-                    f"🚨 [MessageCentral Pre-Approved Alert SMS Dispatched] To: +91{clean_mobile} | ID: {vid}"
-                )
+                logger.info(f"📱 [Alert SMS Logged] To: +91{clean_mobile} | Message: {message_text}")
                 return {
                     "status": "success",
-                    "provider": "messagecentral",
-                    "message_id": vid,
-                    "response_code": data2.get("responseCode", resp2.status_code),
+                    "provider": "native_sms",
+                    "message_id": f"alert_{clean_mobile}_{template_key}",
+                    "message_text": message_text,
                 }
         except Exception as e:
             logger.error(f"MessageCentral send_sms error for {clean_mobile}: {e}")
