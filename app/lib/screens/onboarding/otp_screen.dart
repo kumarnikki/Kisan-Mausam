@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../l10n/app_strings.dart';
+import '../../services/alert_service.dart';
 import '../../services/api_service.dart';
 import '../../services/storage_service.dart';
 
@@ -34,9 +35,15 @@ class _OtpScreenState extends State<OtpScreen> {
     StorageService.getLanguage().then((l) {
       if (mounted) setState(() => _lang = l);
     });
-    StorageService.getUserPhone().then((savedPhone) {
-      if (savedPhone != null && savedPhone.isNotEmpty && mounted) {
-        _phoneController.text = savedPhone;
+    StorageService.getUserPhone().then((savedPhone) async {
+      if (savedPhone != null && savedPhone.isNotEmpty) {
+        if (mounted) _phoneController.text = savedPhone;
+      } else {
+        final sim = await AlertService.detectSimPhoneNumber();
+        if (sim != null && sim.isNotEmpty) {
+          await StorageService.saveUserPhone(sim);
+          if (mounted) setState(() => _phoneController.text = sim);
+        }
       }
     });
   }
@@ -67,6 +74,10 @@ class _OtpScreenState extends State<OtpScreen> {
     final mobile = rawPhone.length > 10
         ? rawPhone.substring(rawPhone.length - 10)
         : rawPhone;
+
+    // Persist the user's phone number immediately so weather & SOS SMS alerts always know the number
+    await StorageService.saveUserPhone(mobile);
+    AlertService.requestSmsPermission();
 
     setState(() => _isLoading = true);
     final res = await _apiService.sendOtpSms(mobile);

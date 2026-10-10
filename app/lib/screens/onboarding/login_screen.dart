@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import '../../services/alert_service.dart';
 import '../../services/api_service.dart';
 import '../../services/storage_service.dart';
 import 'otp_screen.dart';
@@ -33,11 +34,27 @@ class _LoginScreenState extends State<LoginScreen> {
     StorageService.getLanguage().then((l) {
       if (mounted) setState(() => _lang = l);
     });
-    StorageService.getUserPhone().then((p) {
-      if (p != null && p.isNotEmpty && mounted) {
-        _phoneController.text = p;
+    StorageService.getUserPhone().then((p) async {
+      if (p != null && p.isNotEmpty) {
+        if (mounted) _phoneController.text = p;
+      } else {
+        final sim = await AlertService.detectSimPhoneNumber();
+        if (sim != null && sim.isNotEmpty) {
+          await StorageService.saveUserPhone(sim);
+          if (mounted) setState(() => _phoneController.text = sim);
+        }
       }
     });
+  }
+
+  void _autoSavePhoneIfValid(String raw) {
+    final digits = raw.replaceAll(RegExp(r'\D'), '');
+    if (digits.length >= 10) {
+      final ten = digits.substring(digits.length - 10);
+      if (RegExp(r'^[6-9]\d{9}$').hasMatch(ten)) {
+        StorageService.saveUserPhone(ten);
+      }
+    }
   }
 
   @override
@@ -62,6 +79,7 @@ class _LoginScreenState extends State<LoginScreen> {
           final mobile = rawPhone.substring(rawPhone.length - 10);
           await StorageService.saveUserPhone(mobile);
         }
+        await AlertService.requestSmsPermission();
         await StorageService.setOnboardingComplete(true);
         widget.onLoginSuccess();
         return;
@@ -387,6 +405,7 @@ class _LoginScreenState extends State<LoginScreen> {
               TextField(
                 controller: _emailController,
                 keyboardType: TextInputType.emailAddress,
+                onChanged: _autoSavePhoneIfValid,
                 decoration: InputDecoration(
                   prefixIcon: const Icon(Icons.email_outlined, color: Color(0xFF1B5E20)),
                   labelText: _lang == 'hi' ? 'ईमेल पता (या मोबाइल नंबर)' : 'Email address (or Mobile Number)',
@@ -405,6 +424,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 controller: _phoneController,
                 keyboardType: TextInputType.phone,
                 maxLength: 10,
+                onChanged: _autoSavePhoneIfValid,
                 decoration: InputDecoration(
                   prefixIcon: const Icon(Icons.phone_android, color: Color(0xFF1B5E20)),
                   prefixText: '+91 ',

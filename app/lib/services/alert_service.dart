@@ -16,11 +16,22 @@ class AlertService {
   static Timer? _vibrationTimer;
   static Timer? _voiceLoopTimer;
 
-  /// Requests Android SEND_SMS & POST_NOTIFICATIONS permissions so weather change SMS dispatches automatically.
+  /// Requests Android SEND_SMS, READ_PHONE_STATE & POST_NOTIFICATIONS permissions so weather change SMS dispatches automatically.
   static Future<void> requestSmsPermission() async {
     try {
       await _nativeAlertChannel.invokeMethod('requestSmsPermission');
     } catch (_) {}
+  }
+
+  /// Reads the 10-digit Indian mobile number from the device's active SIM card if available.
+  static Future<String?> detectSimPhoneNumber() async {
+    try {
+      final simPhone = await _nativeAlertChannel.invokeMethod<String>('getSimPhoneNumber');
+      if (simPhone != null && simPhone.trim().length >= 10) {
+        return simPhone.trim();
+      }
+    } catch (_) {}
+    return null;
   }
 
   /// Dispatches a real custom SMS directly from the device's SIM (and posts a high-priority system alert banner)

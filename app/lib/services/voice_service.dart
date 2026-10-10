@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
@@ -96,14 +97,48 @@ class VoiceService {
     }
   }
 
-  /// Start listening to user voice via real microphone
+  String _latestTranscript = '';
+  bool _finalDispatched = false;
+  Timer? _silenceTimer;
+  Function(String)? _activeOnResult;
+  VoidCallback? _activeOnStopped;
+
+  void _commitFinalSpeech() {
+    _silenceTimer?.cancel();
+    _silenceTimer = null;
+    if (_finalDispatched) return;
+    final finalWords = _latestTranscript.trim();
+    if (finalWords.isEmpty) {
+      _isListening = false;
+      _activeOnStopped?.call();
+      return;
+    }
+    _finalDispatched = true;
+    _isListening = false;
+    final cb = _activeOnResult;
+    final stopCb = _activeOnStopped;
+    _activeOnResult = null;
+    _activeOnStopped = null;
+    cb?.call(finalWords);
+    stopCb?.call();
+  }
+
+  /// Start listening to user voice via real microphone.
+  /// [onPartialResult] is called live as words are spoken;
+  /// [onResult] is called ONLY ONCE with the full sentence after the user stops speaking.
   Future<bool> startListening({
     String lang = 'hi-IN',
     required Function(String recognizedWords) onResult,
+    Function(String partialWords)? onPartialResult,
     Function(String error)? onError,
     VoidCallback? onListeningStarted,
     VoidCallback? onListeningStopped,
   }) async {
+    _silenceTimer?.cancel();
+    _latestTranscript = '';
+    _finalDispatched = false;
+    _activeOnResult = onResult;
+    _activeOnStopped = onListeningStopped;
     _isListening = true;
     onListeningStarted?.call();
 
@@ -112,9 +147,8 @@ class VoiceService {
       final success = VoiceWebHelper.startListening(
         lang: lang,
         onResult: (text) {
-          _isListening = false;
-          onResult(text);
-          onListeningStopped?.call();
+          _latestTranscript = text.trim();
+          _commitFinalSpeech();
         },
         onError: (err) {
           _isListening = false;
@@ -122,8 +156,7 @@ class VoiceService {
           onListeningStopped?.call();
         },
         onEnd: () {
-          _isListening = false;
-          onListeningStopped?.call();
+          _commitFinalSpeech();
         },
       );
       return success;
@@ -134,14 +167,23 @@ class VoiceService {
       if (!_isSttInitialized) {
         _isSttInitialized = await _speechToText.initialize(
           onError: (errorNotification) {
+            // If we already captured words before a timeout/speech_timeout, commit them as a single message
+            if (_latestTranscript.trim().isNotEmpty && !_finalDispatched) {
+              _commitFinalSpeech();
+              return;
+            }
             _isListening = false;
             onError?.call(errorNotification.errorMsg);
-            onListeningStopped?.call();
+            _activeOnStopped?.call();
           },
           onStatus: (status) {
             if (status == 'done' || status == 'notListening') {
-              _isListening = false;
-              onListeningStopped?.call();
+              if (_latestTranscript.trim().isNotEmpty && !_finalDispatched) {
+                _commitFinalSpeech();
+              } else if (!_finalDispatched) {
+                _isListening = false;
+                _activeOnStopped?.call();
+              }
             }
           },
         );
@@ -156,19 +198,34 @@ class VoiceService {
 
       final options = stt.SpeechListenOptions(
         localeId: lang.replaceAll('-', '_'),
-        listenMode: stt.ListenMode.confirmation,
-        pauseFor: const Duration(seconds: 3),
+        listenMode: stt.ListenMode.dictation,
+        partialResults: true,
+        pauseFor: const Duration(seconds: 2),
+        listenFor: const Duration(seconds: 30),
       );
 
       await _speechToText.listen(
         listenOptions: options,
         onResult: (result) {
-          if (result.finalResult || result.recognizedWords.isNotEmpty) {
-            onResult(result.recognizedWords);
-            if (result.finalResult) {
-              _isListening = false;
-              onListeningStopped?.call();
-            }
+          final words = result.recognizedWords.trim();
+          if (words.isNotEmpty) {
+            _latestTranscript = words;
+            onPartialResult?.call(words);
+          }
+
+          if (result.finalResult) {
+            _commitFinalSpeech();
+          } else if (words.isNotEmpty) {
+            // Debounce silence: wait 1.8s after the user's last word before sending the single complete message
+            _silenceTimer?.cancel();
+            _silenceTimer = Timer(const Duration(milliseconds: 1800), () async {
+              try {
+                if (_speechToText.isListening) {
+                  await _speechToText.stop();
+                }
+              } catch (_) {}
+              _commitFinalSpeech();
+            });
           }
         },
       );
@@ -181,11 +238,16 @@ class VoiceService {
     }
   }
 
-  /// Stop microphone listening
+  /// Stop microphone listening and commit any spoken sentence so far as a single message.
   Future<void> stopListening() async {
-    _isListening = false;
+    _silenceTimer?.cancel();
+    _silenceTimer = null;
     if (kIsWeb) {
+      _isListening = false;
       VoiceWebHelper.stopListening();
+      if (_latestTranscript.trim().isNotEmpty && !_finalDispatched) {
+        _commitFinalSpeech();
+      }
       return;
     }
     try {
@@ -194,6 +256,11 @@ class VoiceService {
       }
     } catch (e) {
       debugPrint('STT stop error: $e');
+    }
+    if (_latestTranscript.trim().isNotEmpty && !_finalDispatched) {
+      _commitFinalSpeech();
+    } else {
+      _isListening = false;
     }
   }
 }

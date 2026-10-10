@@ -1,9 +1,14 @@
 package `in`.kishanmausam.kisan_mausam
 
 import android.Manifest
+import android.app.Activity
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.media.ToneGenerator
@@ -15,6 +20,8 @@ import android.os.Vibrator
 import android.os.VibratorManager
 import android.telephony.SmsManager
 import android.telephony.SubscriptionManager
+import android.telephony.TelephonyManager
+import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
@@ -25,6 +32,7 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "in.kishanmausam.kisan_mausam/native_alert"
     private val SMS_PERMISSION_REQ_CODE = 9001
+    private val ACTION_SMS_SENT = "in.kishanmausam.kisan_mausam.SMS_SENT"
 
     private var toneGenerator: ToneGenerator? = null
     private val alarmHandler = Handler(Looper.getMainLooper())
@@ -47,6 +55,10 @@ class MainActivity : FlutterActivity() {
                     val granted = ensurePermissionsRequested()
                     result.success(granted)
                 }
+                "getSimPhoneNumber" -> {
+                    val simNumber = detectDeviceSimPhoneNumber()
+                    result.success(simNumber)
+                }
                 "boostAlarmVolumeAndSiren" -> {
                     startMaxVolumeHardwareSiren()
                     result.success(true)
@@ -67,10 +79,79 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    private fun extractTenDigitIndianMobile(raw: String?): String? {
+        if (raw.isNullOrBlank()) return null
+        val digits = raw.filter { it.isDigit() }
+        if (digits.length >= 10) {
+            val ten = digits.takeLast(10)
+            if (ten[0] in '6'..'9') {
+                return ten
+            }
+        }
+        return null
+    }
+
+    @Suppress("MissingPermission")
+    private fun detectDeviceSimPhoneNumber(): String? {
+        try {
+            val hasPhoneNumbersPerm = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_NUMBERS) == PackageManager.PERMISSION_GRANTED
+            } else {
+                false
+            }
+            val hasPhoneStatePerm = ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED
+
+            if (hasPhoneNumbersPerm || hasPhoneStatePerm) {
+                val subMgr = getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as? SubscriptionManager
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && subMgr != null) {
+                    val subIds = listOf(
+                        SubscriptionManager.getDefaultSmsSubscriptionId(),
+                        SubscriptionManager.getDefaultDataSubscriptionId(),
+                        SubscriptionManager.getDefaultVoiceSubscriptionId(),
+                        1,
+                        2
+                    ).filter { it != SubscriptionManager.INVALID_SUBSCRIPTION_ID && it > 0 }.distinct()
+                    for (sid in subIds) {
+                        try {
+                            val num = subMgr.getPhoneNumber(sid)
+                            val clean = extractTenDigitIndianMobile(num)
+                            if (clean != null) return clean
+                        } catch (_: Exception) {}
+                    }
+                }
+                if (subMgr != null) {
+                    try {
+                        val activeList = subMgr.activeSubscriptionInfoList
+                        if (activeList != null) {
+                            for (info in activeList) {
+                                @Suppress("DEPRECATION")
+                                val clean = extractTenDigitIndianMobile(info.number)
+                                if (clean != null) return clean
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
+                val tm = getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+                @Suppress("DEPRECATION")
+                val line1 = extractTenDigitIndianMobile(tm?.line1Number)
+                if (line1 != null) return line1
+            }
+        } catch (_: Exception) {}
+        return null
+    }
+
     private fun ensurePermissionsRequested(): Boolean {
         val needed = mutableListOf<String>()
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) {
             needed.add(Manifest.permission.SEND_SMS)
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) {
+            needed.add(Manifest.permission.READ_PHONE_STATE)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_NUMBERS) != PackageManager.PERMISSION_GRANTED) {
+                needed.add(Manifest.permission.READ_PHONE_NUMBERS)
+            }
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -94,7 +175,6 @@ class MainActivity : FlutterActivity() {
                 previousAlarmVolume = audioManager.getStreamVolume(AudioManager.STREAM_ALARM)
             }
 
-            // Force hardware speaker volumes to 100% MAXIMUM so SOS is physically as loud as the phone can get
             val maxAlarm = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM)
             val maxMusic = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
             val maxRing = audioManager.getStreamMaxVolume(AudioManager.STREAM_RING)
@@ -110,7 +190,6 @@ class MainActivity : FlutterActivity() {
             audioManager.isSpeakerphoneOn = true
         } catch (_: Exception) {}
 
-        // Start continuous hardware vibration waveform
         try {
             val pattern = longArrayOf(0, 600, 150, 600, 150, 900)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -128,7 +207,6 @@ class MainActivity : FlutterActivity() {
             }
         } catch (_: Exception) {}
 
-        // Start native Android STREAM_ALARM ToneGenerator overlay at 100% volume
         stopToneLoopOnly()
         isSirenActive = true
         try {
@@ -140,7 +218,6 @@ class MainActivity : FlutterActivity() {
             override fun run() {
                 if (!isSirenActive) return
                 try {
-                    // Rapidly alternate emergency alarm tones at max volume (100)
                     val tone = if (toggle) ToneGenerator.TONE_CDMA_EMERGENCY_RINGBACK else ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD
                     toneGenerator?.startTone(tone, 550)
                     toggle = !toggle
@@ -184,53 +261,183 @@ class MainActivity : FlutterActivity() {
         return if (ten.length == 10) "+91$ten" else raw
     }
 
-    private fun sendDirectSmsAndNotify(rawPhone: String, title: String, message: String): Boolean {
-        val destPhone = normalizePhone(rawPhone)
-        // Always post a high-priority heads-up notification with the exact alert details
-        showHighPriorityAlertNotification(title, message, destPhone)
+    /**
+     * Strips emoji surrogate pairs so Indian carriers (Jio / Airtel / Vi / BSNL)
+     * never drop the SMS or split it into broken UCS-2 chunks.
+     */
+    private fun sanitizeCarrierSmsText(rawMessage: String): String {
+        val cleaned = rawMessage
+            .replace("°C", "C")
+            .replace(Regex("[\\uD800-\\uDFFF]"), "")
+            .replace(Regex("[⚠️🚨🌧️❄️🔥📲✅🌾🌱🟡]"), "")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+        return cleaned
+    }
 
-        if (destPhone.length < 10 || message.isBlank()) return false
+    private fun sendDirectSmsAndNotify(rawPhone: String, title: String, message: String): Boolean {
+        val resolvedPhone = if (rawPhone.filter { it.isDigit() }.length >= 10) {
+            normalizePhone(rawPhone)
+        } else {
+            val sim = detectDeviceSimPhoneNumber()
+            if (sim != null) "+91$sim" else ""
+        }
+
+        if (resolvedPhone.length < 10 || message.isBlank()) return false
+
+        val cleanSmsText = sanitizeCarrierSmsText(message)
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED) {
-            return dispatchSmsNow(destPhone, message)
+            val ok = dispatchSmsMultiSim(resolvedPhone, cleanSmsText)
+            showHighPriorityAlertNotification(title, message, resolvedPhone)
+            return ok
         } else {
-            // Save pending SMS and request permission immediately; will auto-send in onRequestPermissionsResult
-            pendingSmsPhone = destPhone
-            pendingSmsMessage = message
+            pendingSmsPhone = resolvedPhone
+            pendingSmsMessage = cleanSmsText
             pendingSmsTitle = title
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(Manifest.permission.SEND_SMS),
-                SMS_PERMISSION_REQ_CODE
-            )
+            ensurePermissionsRequested()
+            // Retry requesting permission after 1.2s in case GPS location dialog was open at the same moment
+            alarmHandler.postDelayed({
+                if (pendingSmsPhone != null &&
+                    ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    ensurePermissionsRequested()
+                }
+            }, 1200)
             return true
         }
     }
 
-    private fun dispatchSmsNow(destPhone: String, message: String): Boolean {
-        return try {
-            val smsManager: SmsManager = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                getSystemService(SmsManager::class.java) ?: SmsManager.getDefault()
-            } else {
-                @Suppress("DEPRECATION")
-                val subId = SubscriptionManager.getDefaultSmsSubscriptionId()
-                if (subId != SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
-                    @Suppress("DEPRECATION")
-                    SmsManager.getSmsManagerForSubscriptionId(subId)
-                } else {
-                    @Suppress("DEPRECATION")
-                    SmsManager.getDefault()
+    @Suppress("MissingPermission")
+    private fun getCandidateSmsManagers(): List<SmsManager> {
+        val managers = mutableListOf<SmsManager>()
+        val subIds = mutableListOf<Int>()
+
+        try {
+            val defaultSms = SubscriptionManager.getDefaultSmsSubscriptionId()
+            if (defaultSms != SubscriptionManager.INVALID_SUBSCRIPTION_ID && defaultSms > 0) {
+                subIds.add(defaultSms)
+            }
+        } catch (_: Exception) {}
+
+        try {
+            val defaultData = SubscriptionManager.getDefaultDataSubscriptionId()
+            if (defaultData != SubscriptionManager.INVALID_SUBSCRIPTION_ID && defaultData > 0) {
+                subIds.add(defaultData)
+            }
+        } catch (_: Exception) {}
+
+        try {
+            val defaultVoice = SubscriptionManager.getDefaultVoiceSubscriptionId()
+            if (defaultVoice != SubscriptionManager.INVALID_SUBSCRIPTION_ID && defaultVoice > 0) {
+                subIds.add(defaultVoice)
+            }
+        } catch (_: Exception) {}
+
+        try {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) {
+                val subMgr = getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as? SubscriptionManager
+                val activeList = subMgr?.activeSubscriptionInfoList
+                if (activeList != null) {
+                    for (info in activeList) {
+                        if (info.subscriptionId > 0) {
+                            subIds.add(info.subscriptionId)
+                        }
+                    }
                 }
             }
-            val parts = smsManager.divideMessage(message)
-            if (parts.size > 1) {
-                smsManager.sendMultipartTextMessage(destPhone, null, parts, null, null)
-            } else {
-                smsManager.sendTextMessage(destPhone, null, message, null, null)
+        } catch (_: Exception) {}
+
+        subIds.add(1)
+        subIds.add(2)
+
+        for (sid in subIds.distinct()) {
+            try {
+                val mgr = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    getSystemService(SmsManager::class.java)?.createForSubscriptionId(sid)
+                } else {
+                    @Suppress("DEPRECATION")
+                    SmsManager.getSmsManagerForSubscriptionId(sid)
+                }
+                if (mgr != null) {
+                    managers.add(mgr)
+                }
+            } catch (_: Exception) {}
+        }
+
+        try {
+            @Suppress("DEPRECATION")
+            val defMgr = SmsManager.getDefault()
+            if (defMgr != null) {
+                managers.add(defMgr)
             }
-            true
+        } catch (_: Exception) {}
+
+        return managers
+    }
+
+    private fun dispatchSmsMultiSim(destPhone: String, message: String): Boolean {
+        val managers = getCandidateSmsManagers()
+        if (managers.isEmpty()) return false
+
+        sendWithManagerIndex(managers, 0, destPhone, message)
+        return true
+    }
+
+    private fun sendWithManagerIndex(
+        managers: List<SmsManager>,
+        index: Int,
+        destPhone: String,
+        message: String
+    ) {
+        if (index >= managers.size) return
+        val smsManager = managers[index]
+
+        val reqCode = (System.currentTimeMillis() % 100000).toInt() + index
+        val sentAction = "$ACTION_SMS_SENT.$reqCode"
+
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                try {
+                    unregisterReceiver(this)
+                } catch (_: Exception) {}
+                if (resultCode != Activity.RESULT_OK && index + 1 < managers.size) {
+                    // Automatically fallback to the next SIM slot SmsManager if this SIM slot failed
+                    sendWithManagerIndex(managers, index + 1, destPhone, message)
+                }
+            }
+        }
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(receiver, IntentFilter(sentAction), Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                registerReceiver(receiver, IntentFilter(sentAction))
+            }
+        } catch (_: Exception) {}
+
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
+        } else {
+            PendingIntent.FLAG_ONE_SHOT
+        }
+        val sentPI = PendingIntent.getBroadcast(this, reqCode, Intent(sentAction), flags)
+
+        try {
+            val parts = smsManager.divideMessage(message)
+            if (parts.size <= 1) {
+                smsManager.sendTextMessage(destPhone, null, message, sentPI, null)
+            } else {
+                val sentIntents = ArrayList<PendingIntent>()
+                for (i in parts.indices) {
+                    sentIntents.add(if (i == 0) sentPI else PendingIntent.getBroadcast(this, reqCode + 100 + i, Intent(sentAction), flags))
+                }
+                smsManager.sendMultipartTextMessage(destPhone, null, parts, sentIntents, null)
+            }
         } catch (e: Exception) {
-            false
+            if (index + 1 < managers.size) {
+                sendWithManagerIndex(managers, index + 1, destPhone, message)
+            }
         }
     }
 
@@ -243,13 +450,21 @@ class MainActivity : FlutterActivity() {
         if (requestCode == SMS_PERMISSION_REQ_CODE) {
             val phone = pendingSmsPhone
             val msg = pendingSmsMessage
-            if (phone != null && msg != null &&
-                ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED
-            ) {
-                pendingSmsPhone = null
-                pendingSmsMessage = null
-                pendingSmsTitle = null
-                dispatchSmsNow(phone, msg)
+            val title = pendingSmsTitle ?: "Kisan Mausam Weather Alert"
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED) {
+                if (phone != null && msg != null) {
+                    pendingSmsPhone = null
+                    pendingSmsMessage = null
+                    pendingSmsTitle = null
+                    dispatchSmsMultiSim(phone, msg)
+                    showHighPriorityAlertNotification(title, msg, phone)
+                }
+            } else {
+                Toast.makeText(
+                    this,
+                    "Please allow SMS permission in App Settings so Weather & SOS SMS alerts can be sent to your mobile.",
+                    Toast.LENGTH_LONG
+                ).show()
             }
         }
     }

@@ -315,6 +315,15 @@ class _KrishiSahayakScreenState extends State<KrishiSahayakScreen>
           });
         }
       },
+      onPartialResult: (partialWords) {
+        if (!mounted) return;
+        setState(() {
+          _textController.text = partialWords;
+          _textController.selection = TextSelection.fromPosition(
+            TextPosition(offset: _textController.text.length),
+          );
+        });
+      },
       onResult: (words) {
         if (!mounted) return;
         final recognized = words.trim();

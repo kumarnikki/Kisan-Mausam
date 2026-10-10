@@ -42,6 +42,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
   double? _gpsLat;
   double? _gpsLon;
   String? _gpsLocationName;
+  String? _userPhone;
   AppUpdateInfo? _availableUpdate;
   bool _updateBannerDismissed = false;
 
@@ -83,18 +84,33 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
       _gpsLocationName = initialName;
     }
 
+    final savedPhone = await StorageService.getUserPhone();
+
     setState(() {
       _lang = lang;
       _farms = farms;
       _currentFarm = current;
+      _userPhone = savedPhone;
     });
 
-    // Ensure SMS & Notification permissions are requested if a phone number is registered
-    StorageService.getUserPhone().then((phone) {
-      if (phone != null && phone.isNotEmpty) {
-        AlertService.requestSmsPermission();
+    // Asynchronously detect SIM phone number and request SMS permission without blocking initial render
+    () async {
+      if (_userPhone == null || _userPhone!.isEmpty) {
+        final simPhone = await AlertService.detectSimPhoneNumber();
+        if (simPhone != null && simPhone.isNotEmpty) {
+          await StorageService.saveUserPhone(simPhone);
+          if (mounted) setState(() => _userPhone = simPhone);
+        }
       }
-    });
+      await AlertService.requestSmsPermission();
+      if (_userPhone == null || _userPhone!.isEmpty) {
+        final simPhone = await AlertService.detectSimPhoneNumber();
+        if (simPhone != null && simPhone.isNotEmpty) {
+          await StorageService.saveUserPhone(simPhone);
+          if (mounted) setState(() => _userPhone = simPhone);
+        }
+      }
+    }();
 
     await _fetchWeather(initialLat, initialLon, locationName: initialName);
 
@@ -199,15 +215,22 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
   }
 
   Future<void> _autoSendRiskSms(DetectedRisk r) async {
-    final savedPhone = await StorageService.getUserPhone();
+    var savedPhone = _userPhone ?? await StorageService.getUserPhone();
+    if (savedPhone == null || savedPhone.isEmpty) {
+      savedPhone = await AlertService.detectSimPhoneNumber();
+      if (savedPhone != null && savedPhone.isNotEmpty) {
+        await StorageService.saveUserPhone(savedPhone);
+        if (mounted) setState(() => _userPhone = savedPhone);
+      }
+    }
     if (savedPhone == null || savedPhone.isEmpty) return;
     final loc = _gpsLocationName ?? _currentFarm?.village ?? 'Farm';
     final isHi = _lang == 'hi';
     final alertName = isHi ? r.titleHi : (r.titleEn.isNotEmpty ? r.titleEn : r.titleHi);
     final actionText = isHi ? r.actionHi : (r.actionEn.isNotEmpty ? r.actionEn : r.actionHi);
     final msg = isHi
-        ? '⚠️ किसान मौसम अलर्ट ($loc): $alertName (${r.expectedValue}, संभावना ${r.probability.round()}%)। सलाह: $actionText'
-        : '⚠️ KisanMausam Alert ($loc): $alertName (${r.expectedValue}, ${r.probability.round()}% risk). Action: $actionText';
+        ? 'किसान मौसम अलर्ट ($loc): $alertName (${r.expectedValue}, संभावना ${r.probability.round()}%)। सलाह: $actionText'
+        : 'KisanMausam Alert ($loc): $alertName (${r.expectedValue}, ${r.probability.round()}% risk). Action: $actionText';
     final sent = await _apiService.sendWeatherOrSosSms(
       phone: savedPhone,
       alertType: r.alertType,
@@ -1611,7 +1634,63 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
+          InkWell(
+            onTap: _showSimulationDialog,
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: (_userPhone != null && _userPhone!.isNotEmpty)
+                    ? const Color(0xFFE8F5E9)
+                    : Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: (_userPhone != null && _userPhone!.isNotEmpty)
+                      ? Colors.green.shade300
+                      : Colors.orange.shade300,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.sms_outlined,
+                    size: 15,
+                    color: (_userPhone != null && _userPhone!.isNotEmpty)
+                        ? const Color(0xFF1B5E20)
+                        : Colors.orange.shade900,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      (_userPhone != null && _userPhone!.isNotEmpty)
+                          ? (_lang == 'hi'
+                              ? 'SMS अलर्ट नंबर: +91 $_userPhone (बदलने के लिए टैप करें)'
+                              : 'SMS Alert Number: +91 $_userPhone (Tap to change)')
+                          : (_lang == 'hi'
+                              ? 'SMS अलर्ट प्राप्त करने के लिए यहाँ टैप करके मोबाइल नंबर जोड़ें'
+                              : 'Tap here to link your Mobile Number for Weather & SOS SMS'),
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        color: (_userPhone != null && _userPhone!.isNotEmpty)
+                            ? const Color(0xFF1B5E20)
+                            : Colors.orange.shade900,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    Icons.edit_outlined,
+                    size: 14,
+                    color: (_userPhone != null && _userPhone!.isNotEmpty)
+                        ? const Color(0xFF1B5E20)
+                        : Colors.orange.shade900,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
           if (hasHighRisk) ...[
             ...h1Risks.map((risk) => _buildDetectedRiskItem(risk)),
           ] else ...[
@@ -2047,7 +2126,14 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
 
   Future<void> _showSimulationDialog() async {
     final isHi = _lang == 'hi';
-    final savedPhone = await StorageService.getUserPhone();
+    var savedPhone = _userPhone ?? await StorageService.getUserPhone();
+    if (savedPhone == null || savedPhone.isEmpty) {
+      savedPhone = await AlertService.detectSimPhoneNumber();
+      if (savedPhone != null && savedPhone.isNotEmpty) {
+        await StorageService.saveUserPhone(savedPhone);
+        if (mounted) setState(() => _userPhone = savedPhone);
+      }
+    }
     final phoneCtrl = TextEditingController(text: savedPhone ?? '');
     if (!mounted) return;
 
@@ -2082,6 +2168,14 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                 controller: phoneCtrl,
                 keyboardType: TextInputType.phone,
                 maxLength: 10,
+                onChanged: (val) {
+                  final digits = val.replaceAll(RegExp(r'\D'), '');
+                  if (digits.length >= 10) {
+                    final ten = digits.substring(digits.length - 10);
+                    StorageService.saveUserPhone(ten);
+                    if (mounted) setState(() => _userPhone = ten);
+                  }
+                },
                 decoration: InputDecoration(
                   prefixText: '+91 ',
                   hintText: '9876543210',
@@ -2162,8 +2256,16 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(isHi ? 'रद्द करें' : 'Cancel'),
+            onPressed: () {
+              final digits = phoneCtrl.text.replaceAll(RegExp(r'\D'), '');
+              if (digits.length >= 10) {
+                final ten = digits.substring(digits.length - 10);
+                StorageService.saveUserPhone(ten);
+                if (mounted) setState(() => _userPhone = ten);
+              }
+              Navigator.pop(ctx);
+            },
+            child: Text(isHi ? 'सहेजें व बंद करें' : 'Save & Close'),
           ),
         ],
       ),
@@ -2172,20 +2274,34 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
 
   void _triggerSimulation(String scenario, {String? phoneNumber}) async {
     final isHi = _lang == 'hi';
-    final cleanPhone = phoneNumber?.replaceAll(RegExp(r'\D'), '') ?? '';
+    var cleanPhone = phoneNumber?.replaceAll(RegExp(r'\D'), '') ?? '';
     if (cleanPhone.length >= 10) {
-      await StorageService.saveUserPhone(
-        cleanPhone.length > 10 ? cleanPhone.substring(cleanPhone.length - 10) : cleanPhone,
-      );
+      cleanPhone = cleanPhone.substring(cleanPhone.length - 10);
+      await StorageService.saveUserPhone(cleanPhone);
+      if (mounted) setState(() => _userPhone = cleanPhone);
+    } else {
+      final stored = _userPhone ?? await StorageService.getUserPhone() ?? await AlertService.detectSimPhoneNumber();
+      if (stored != null && stored.length >= 10) {
+        cleanPhone = stored.substring(stored.length - 10);
+        await StorageService.saveUserPhone(cleanPhone);
+        if (mounted) setState(() => _userPhone = cleanPhone);
+      }
     }
+
     if (!mounted) return;
+
+    // If no phone number is linked yet, prompt the user to enter their 10-digit number first
+    if (cleanPhone.length < 10) {
+      _showSimulationDialog();
+      return;
+    }
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
           isHi
-              ? 'SMS एवं अलर्ट भेजा जा रहा है...'
-              : 'Sending SMS & hazard alert...',
+              ? '+91 $cleanPhone पर SMS एवं अलर्ट भेजा जा रहा है...'
+              : 'Sending SMS & hazard alert to +91 $cleanPhone...',
         ),
       ),
     );
@@ -2194,7 +2310,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
     final res = await _apiService.simulateAlert(
       _currentFarm?.id ?? 1,
       scenario,
-      phoneNumber: cleanPhone.isNotEmpty ? cleanPhone : null,
+      phoneNumber: cleanPhone,
       locationName: loc,
     );
     if (!mounted) return;
