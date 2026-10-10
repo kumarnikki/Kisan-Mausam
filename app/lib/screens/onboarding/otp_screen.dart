@@ -156,6 +156,11 @@ class _OtpScreenState extends State<OtpScreen> {
     await StorageService.saveUserName(
       _lang == 'en' ? 'Farmer (+91 $mobile)' : 'किसान (+91 $mobile)',
     );
+    _apiService.sendWeatherOrSosSms(
+      phone: mobile,
+      alertType: 'account_weather_active',
+      message: 'KisanMausam: Your mobile +91$mobile is now active for real-time GPS Weather, Climate Change & SOS SMS alerts.',
+    );
     await StorageService.setOnboardingComplete(true);
     if (!mounted) return;
     widget.onOtpVerified();

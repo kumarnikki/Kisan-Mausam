@@ -11,8 +11,6 @@ import '../../services/alert_service.dart';
 import '../../widgets/mic_button.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/realistic_weather_visual.dart';
-import '../../widgets/temp_range_bar.dart';
-import '../../widgets/oni_gauge_meter.dart';
 import '../crops/crop_recommender_screen.dart';
 import '../chat/krishi_sahayak_screen.dart';
 import '../../services/update_service.dart';
@@ -33,7 +31,6 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
   FarmProfile? _currentFarm;
   WeatherData? _weather;
   FarmRiskData? _riskData;
-  EnsoSummary? _ensoData;
   bool _isLoading = true;
   bool _isLocating = false; // GPS location fetch in progress
   String _lang = 'hi';
@@ -43,6 +40,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
   double? _gpsLon;
   String? _gpsLocationName;
   String? _userPhone;
+  String? _lastWeatherSmsLocationKey;
   AppUpdateInfo? _availableUpdate;
   bool _updateBannerDismissed = false;
 
@@ -93,29 +91,31 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
       _userPhone = savedPhone;
     });
 
-    // Asynchronously detect SIM phone number and request SMS permission without blocking initial render
-    () async {
-      if (_userPhone == null || _userPhone!.isEmpty) {
-        final simPhone = await AlertService.detectSimPhoneNumber();
-        if (simPhone != null && simPhone.isNotEmpty) {
-          await StorageService.saveUserPhone(simPhone);
-          if (mounted) setState(() => _userPhone = simPhone);
-        }
-      }
-      await AlertService.requestSmsPermission();
-      if (_userPhone == null || _userPhone!.isEmpty) {
-        final simPhone = await AlertService.detectSimPhoneNumber();
-        if (simPhone != null && simPhone.isNotEmpty) {
-          await StorageService.saveUserPhone(simPhone);
-          if (mounted) setState(() => _userPhone = simPhone);
-        }
-      }
-    }();
-
     await _fetchWeather(initialLat, initialLon, locationName: initialName);
 
-    // Auto-fetch user's current GPS location immediately on app open (with IP fallback)
-    _autoFetchGPSLocation();
+    // Auto-fetch user's current GPS location first, then request SMS permission so Android permission dialogs never collide
+    await _autoFetchGPSLocation();
+
+    if (!mounted) return;
+    await _initSmsPhoneAndPermission();
+  }
+
+  Future<void> _initSmsPhoneAndPermission() async {
+    if (_userPhone == null || _userPhone!.isEmpty) {
+      final simPhone = await AlertService.detectSimPhoneNumber();
+      if (simPhone != null && simPhone.isNotEmpty) {
+        await StorageService.saveUserPhone(simPhone);
+        if (mounted) setState(() => _userPhone = simPhone);
+      }
+    }
+    await AlertService.requestSmsPermission();
+    if (_userPhone == null || _userPhone!.isEmpty) {
+      final simPhone = await AlertService.detectSimPhoneNumber();
+      if (simPhone != null && simPhone.isNotEmpty) {
+        await StorageService.saveUserPhone(simPhone);
+        if (mounted) setState(() => _userPhone = simPhone);
+      }
+    }
   }
 
   /// Automatically fetch live GPS location on app start without blocking initial view
@@ -148,7 +148,15 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
       final cacheKey = '${lat.toStringAsFixed(2)}_${lon.toStringAsFixed(2)}';
       final cachedTs = await StorageService.getWeatherCachedTime(cacheKey);
 
-      // Fetch risks & ENSO in parallel with active location coordinates, name & live weather
+      if (mounted) {
+        setState(() {
+          _weather = data;
+          _cachedTime = cachedTs ?? DateTime.now();
+          _isLoading = false;
+        });
+      }
+
+      // Fetch risks with active location coordinates, name & live weather
       _apiService.getFarmRisks(
         _currentFarm?.id ?? 1,
         lat: lat,
@@ -158,20 +166,9 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
       ).then((r) {
         if (mounted && r != null) {
           setState(() => _riskData = r);
-          _checkAndShowAlertPopup(r);
+          _checkAndShowAlertPopup(r, weather: data, locKey: cacheKey);
         }
       });
-      _apiService.getEnsoStatus().then((e) {
-        if (mounted && e != null) setState(() => _ensoData = e);
-      });
-
-      if (mounted) {
-        setState(() {
-          _weather = data;
-          _cachedTime = cachedTs ?? DateTime.now();
-          _isLoading = false;
-        });
-      }
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -181,8 +178,8 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
     }
   }
 
-  /// Called when risk data loads — pops up an alert dialog for red risks and sends SMS for weather/climate risks.
-  void _checkAndShowAlertPopup(FarmRiskData risk) {
+  /// Called when risk data loads — pops up an alert dialog for red risks and sends SMS for weather/climate changes.
+  void _checkAndShowAlertPopup(FarmRiskData risk, {WeatherData? weather, String? locKey}) {
     final redRisks = risk.horizon1.risks.where((r) => r.severity == 'red').toList();
     final orangeRisks = risk.horizon1.risks.where((r) => r.severity == 'orange').toList();
     final activeLoc = _gpsLocationName ?? _currentFarm?.village ?? (_lang == 'hi' ? 'आपके क्षेत्र' : 'your location');
@@ -211,6 +208,48 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
     } else if (orangeRisks.isNotEmpty) {
       final r = orangeRisks.first;
       _autoSendRiskSms(r);
+    } else if (weather != null && locKey != null && _lastWeatherSmsLocationKey != locKey) {
+      _lastWeatherSmsLocationKey = locKey;
+      _autoSendWeatherSummarySms(weather);
+    }
+  }
+
+  Future<void> _autoSendWeatherSummarySms(WeatherData weather) async {
+    var savedPhone = _userPhone ?? await StorageService.getUserPhone();
+    if (savedPhone == null || savedPhone.isEmpty) {
+      savedPhone = await AlertService.detectSimPhoneNumber();
+      if (savedPhone != null && savedPhone.isNotEmpty) {
+        await StorageService.saveUserPhone(savedPhone);
+        if (mounted) setState(() => _userPhone = savedPhone);
+      }
+    }
+    if (savedPhone == null || savedPhone.isEmpty) return;
+
+    final locEn = _gpsLocationName ?? _currentFarm?.getVillage('en') ?? 'Farm';
+    final temp = weather.current.temperature.round();
+    final condEn = _getWeatherConditionText(weather.current.weatherCode, 'en');
+    final wind = weather.current.windSpeed.round();
+    final hum = weather.current.relativeHumidity.round();
+    final msg = 'KisanMausam Weather ($locEn): Temp ${temp}C, $condEn, Wind ${wind}km/h, Humidity $hum%. Farm weather is currently safe.';
+
+    final sent = await _apiService.sendWeatherOrSosSms(
+      phone: savedPhone,
+      alertType: 'weather_change',
+      message: msg,
+    );
+    if (sent && mounted) {
+      final isHi = _lang == 'hi';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: const Color(0xFF1B5E20),
+          duration: const Duration(seconds: 3),
+          content: Text(
+            isHi
+                ? '📲 मौसम अपडेट SMS +91 $savedPhone पर भेजा गया'
+                : '📲 Weather Update SMS sent to +91 $savedPhone',
+          ),
+        ),
+      );
     }
   }
 
@@ -224,13 +263,12 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
       }
     }
     if (savedPhone == null || savedPhone.isEmpty) return;
-    final loc = _gpsLocationName ?? _currentFarm?.village ?? 'Farm';
+    final loc = _gpsLocationName ?? _currentFarm?.getVillage('en') ?? 'Farm';
     final isHi = _lang == 'hi';
-    final alertName = isHi ? r.titleHi : (r.titleEn.isNotEmpty ? r.titleEn : r.titleHi);
-    final actionText = isHi ? r.actionHi : (r.actionEn.isNotEmpty ? r.actionEn : r.actionHi);
-    final msg = isHi
-        ? 'किसान मौसम अलर्ट ($loc): $alertName (${r.expectedValue}, संभावना ${r.probability.round()}%)। सलाह: $actionText'
-        : 'KisanMausam Alert ($loc): $alertName (${r.expectedValue}, ${r.probability.round()}% risk). Action: $actionText';
+    final alertNameDisplay = isHi ? r.titleHi : (r.titleEn.isNotEmpty ? r.titleEn : r.titleHi);
+    final alertNameAscii = r.titleEn.isNotEmpty ? r.titleEn : 'Weather Hazard Alert';
+    final actionAscii = r.actionEn.isNotEmpty ? r.actionEn : 'Take immediate crop protection measures.';
+    final msg = 'KisanMausam Alert ($loc): $alertNameAscii (${r.expectedValue}, ${r.probability.round()}% risk). Action: $actionAscii';
     final sent = await _apiService.sendWeatherOrSosSms(
       phone: savedPhone,
       alertType: r.alertType,
@@ -243,8 +281,8 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
           duration: const Duration(seconds: 3),
           content: Text(
             isHi
-                ? '📲 मौसम अलर्ट SMS ($alertName) +91 $savedPhone पर भेजा गया'
-                : '📲 Weather Alert SMS ($alertName) sent to +91 $savedPhone',
+                ? '📲 मौसम अलर्ट SMS ($alertNameDisplay) +91 $savedPhone पर भेजा गया'
+                : '📲 Weather Alert SMS ($alertNameDisplay) sent to +91 $savedPhone',
           ),
         ),
       );
@@ -415,22 +453,32 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
     return lang == 'hi' ? 'सामान्य मौसम' : 'Fair Weather';
   }
 
-  IconData _getWeatherIcon(int code) {
-    if (code == 0) return Icons.wb_sunny;
-    if (code >= 1 && code <= 3) return Icons.cloud_queue;
-    if (code == 45 || code == 48) return Icons.cloud;
-    if (code >= 51 && code <= 65) return Icons.water_drop;
-    if (code >= 80 && code <= 82) return Icons.umbrella;
-    if (code >= 95) return Icons.flash_on;
-    return Icons.wb_cloudy;
-  }
-
   String _formatLastUpdated() {
     if (_cachedTime == null) return '';
     final diff = DateTime.now().difference(_cachedTime!);
     if (diff.inMinutes < 1) return _lang == 'hi' ? 'अभी-अभी' : 'Just now';
     if (diff.inMinutes < 60) return _lang == 'hi' ? '${diff.inMinutes} मिनट पहले' : '${diff.inMinutes}m ago';
     return _lang == 'hi' ? '${diff.inHours} घंटे पहले' : '${diff.inHours}h ago';
+  }
+
+  void _openCropRecommender() {
+    final isHi = _lang == 'hi';
+    final activeLoc = _gpsLocationName ?? _currentFarm?.getVillage(_lang) ?? (isHi ? 'उमरेड' : 'Umred');
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CropRecommenderScreen(
+          farmId: _currentFarm?.id ?? 1,
+          farmName: _currentFarm?.getName(_lang) ?? (isHi ? 'मेरा खेत' : 'My Farm'),
+          village: activeLoc,
+          farm: _currentFarm,
+          lang: _lang,
+          latitude: _gpsLat ?? _currentFarm?.latitude,
+          longitude: _gpsLon ?? _currentFarm?.longitude,
+          weather: _weather,
+        ),
+      ),
+    );
   }
 
   @override
@@ -556,11 +604,16 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                   ),
                 ),
 
+                // 1.5 Top Crop Advisory Navigation Button (Moved to top for easy 1-tap navigation)
+                SliverToBoxAdapter(
+                  child: _buildTopCropAdvisoryButton(),
+                ),
+
                 // In-App Update Banner (shows when newer APK/version is released)
                 if (_availableUpdate != null && _availableUpdate!.hasUpdate && !_updateBannerDismissed)
                   SliverToBoxAdapter(
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                       child: Container(
                         decoration: BoxDecoration(
                           gradient: const LinearGradient(
@@ -673,102 +726,77 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                     ),
                   ),
 
-              if (_isLoading)
-                const SliverFillRemaining(
-                  child: Center(
-                    child: CircularProgressIndicator(color: Color(0xFF1B5E20)),
-                  ),
-                )
-              else if (_weather != null) ...[
-                // 2. Large Current Conditions Hero Header
-                SliverToBoxAdapter(
-                  child: _buildCurrentWeatherHero(_weather!.current),
-                ),
-
-                // Voice Assistant Hero Banner (One-time prominent entry point per Point 1)
-                SliverToBoxAdapter(
-                  child: _buildVoiceHeroBanner(),
-                ),
-
-                // 2.2 Risk Early Warnings Hero Section
-                SliverToBoxAdapter(
-                  child: _buildRiskWarningsCard(),
-                ),
-
-                // 2.4 Monthly ENSO Status Card
-                SliverToBoxAdapter(
-                  child: _buildEnsoStatusCard(),
-                ),
-
-                // 2.5 Crop Recommender Entry Card
-                SliverToBoxAdapter(
-                  child: _buildCropRecommenderEntryCard(),
-                ),
-
-                // 3. Hourly 48-Hour Strip
-                SliverToBoxAdapter(
-                  child: _buildHourlyForecastStrip(_weather!.hourly),
-                ),
-
-                // 4. Soil Health & Root Zone Tile
-                SliverToBoxAdapter(
-                  child: _buildSoilHealthTile(_weather!.current),
-                ),
-
-                // 5. Sun Cycle Tile (Sunrise/Sunset)
-                if (_weather!.daily.isNotEmpty)
+                if (_isLoading)
+                  const SliverFillRemaining(
+                    child: Center(
+                      child: CircularProgressIndicator(color: Color(0xFF1B5E20)),
+                    ),
+                  )
+                else if (_weather != null) ...[
+                  // 2. Large Current Conditions Hero Header (Voice banner below it removed per user request)
                   SliverToBoxAdapter(
-                    child: _buildSunCycleTile(_weather!.daily.first),
+                    child: _buildCurrentWeatherHero(_weather!.current),
                   ),
 
-                // 6. 10-Day Daily Forecast Section (Unified list row container per Point 9)
-                if (_weather!.daily.isNotEmpty)
+                  // 3. Risk Early Warnings & Mobile SMS Section
                   SliverToBoxAdapter(
-                    child: _buildDailyForecastSection(_weather!.daily),
+                    child: _buildRiskWarningsCard(),
                   ),
 
-                // 7. Open-Meteo CC BY 4.0 Attribution Footer
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 32),
-                    child: Column(
-                      children: [
-                        Text(
-                          _weather!.attribution,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'KisanMausam v1.0 • Hindi-First Agri Weather App',
-                          style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
-                        ),
-                        const SizedBox(height: 84), // 84px clearance so FAB never overlaps content
-                      ],
+                  // 4. Soil Health & Root Zone Tile
+                  SliverToBoxAdapter(
+                    child: _buildSoilHealthTile(_weather!.current),
+                  ),
+
+                  // 5. Sun Cycle Tile (Sunrise/Sunset)
+                  if (_weather!.daily.isNotEmpty)
+                    SliverToBoxAdapter(
+                      child: _buildSunCycleTile(_weather!.daily.first),
+                    ),
+
+                  // 6. Open-Meteo CC BY 4.0 Attribution Footer
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 32),
+                      child: Column(
+                        children: [
+                          Text(
+                            _weather!.attribution,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'KisanMausam v1.0 • Hindi-First Agri Weather App',
+                            style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                          ),
+                          const SizedBox(height: 84), // 84px clearance so bottom-right voice FAB never overlaps content
+                        ],
+                      ),
                     ),
                   ),
-                ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
 
-  Widget _buildVoiceHeroBanner() {
+  Widget _buildTopCropAdvisoryButton() {
     final isHi = _lang == 'hi';
+    final liveTemp = _weather?.current.temperature.toStringAsFixed(1);
+    final liveSoilRaw = _weather?.current.soilMoisture ?? 0.24;
+    final liveSoilPct = (liveSoilRaw <= 1.0 ? liveSoilRaw * 100 : liveSoilRaw).round();
+    final activeLoc = _gpsLocationName ?? _currentFarm?.getVillage(_lang) ?? (isHi ? 'उमरेड' : 'Umred');
+
     return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Colors.black.withValues(alpha: 0.08),
-          width: 1.0,
-        ),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.08), width: 1.0),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.04),
@@ -781,73 +809,86 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
-          onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => KrishiSahayakScreen(
-                  farm: _currentFarm,
-                  locationName: _gpsLocationName ?? _currentFarm?.village,
-                  latitude: _gpsLat ?? _weather?.latitude ?? _currentFarm?.latitude,
-                  longitude: _gpsLon ?? _weather?.longitude ?? _currentFarm?.longitude,
-                  weather: _weather,
-                  lang: _lang,
-                ),
-              ),
-            );
-          },
+          onTap: _openCropRecommender,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Container(
-                  width: 44,
-                  height: 44,
+                  padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
                     color: const Color(0xFF1B5E20).withValues(alpha: 0.12),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.mic, color: Color(0xFF1B5E20), size: 24),
+                  child: const Icon(Icons.agriculture, color: Color(0xFF1B5E20), size: 22),
                 ),
-                const SizedBox(width: 14),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        isHi ? 'बोलकर पूछें' : 'Voice Assistant',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1B5E20),
-                        ),
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              AppStrings.get('crop_recommender_title', _lang),
+                              style: const TextStyle(
+                                fontSize: 15.5,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF1B5E20),
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.amber.shade100,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              AppStrings.get('rabi_season', _lang),
+                              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.brown),
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        isHi ? 'मौसम या खेती संबंधी सवाल पूछें' : 'Ask weather or farming questions',
-                        style: TextStyle(
-                          fontSize: 12.5,
-                          color: Colors.grey.shade700,
-                        ),
+                        liveTemp != null
+                            ? (isHi
+                                ? 'GPS ($activeLoc): $liveTemp°C • नमी $liveSoilPct% • गेहूं, चना, सरसों'
+                                : 'GPS ($activeLoc): $liveTemp°C • Moisture $liveSoilPct% • Wheat, Chickpea')
+                            : AppStrings.get('crop_recommender_subtitle', _lang),
+                        style: TextStyle(fontSize: 11.5, color: Colors.grey.shade700),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 8),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
                     color: const Color(0xFF1B5E20),
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Text(
-                    isHi ? 'बोलें' : 'Tap to Talk',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                    ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        isHi ? 'फसल सुझाव' : 'Crops',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 15),
+                    ],
                   ),
                 ),
               ],
@@ -1083,136 +1124,6 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
     );
   }
 
-  Widget _buildHourlyForecastStrip(List<HourlyForecast> hourly) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(5),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1B5E20).withValues(alpha: 0.12),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.schedule, color: Color(0xFF1B5E20), size: 18),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                AppStrings.get('hourly_forecast', _lang),
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-            ],
-          ),
-        ),
-        SizedBox(
-          height: 152,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            itemCount: hourly.length,
-            itemBuilder: (context, index) {
-              final item = hourly[index];
-              final isNow = index == 0;
-              final hourStr = item.time.length >= 16 ? item.time.substring(11, 16) : item.time;
-
-              return Container(
-                width: 82,
-                margin: const EdgeInsets.symmetric(horizontal: 5, vertical: 6),
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                decoration: BoxDecoration(
-                  gradient: isNow
-                      ? const LinearGradient(
-                          colors: [Color(0xFF1B5E20), Color(0xFF2E7D32)],
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                        )
-                      : LinearGradient(
-                          colors: [
-                            Colors.white.withValues(alpha: 0.92),
-                            Colors.white.withValues(alpha: 0.75),
-                          ],
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                        ),
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(
-                    color: isNow ? Colors.white.withValues(alpha: 0.4) : Colors.white.withValues(alpha: 0.8),
-                    width: 1.2,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: isNow
-                          ? const Color(0xFF1B5E20).withValues(alpha: 0.35)
-                          : Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    Text(
-                      isNow ? AppStrings.get('now', _lang) : hourStr,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                        color: isNow ? Colors.white : Colors.black87,
-                      ),
-                    ),
-                    Icon(
-                      _getWeatherIcon(item.weatherCode),
-                      size: 26,
-                      color: isNow ? const Color(0xFFFFF176) : const Color(0xFF1B5E20),
-                    ),
-                    Text(
-                      '${item.temperature.round()}°',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                        color: isNow ? Colors.white : Colors.black87,
-                      ),
-                    ),
-                    if (item.precipitationProbability > 0)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: isNow
-                              ? Colors.white.withValues(alpha: 0.25)
-                              : Colors.blue.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.water_drop, size: 9, color: isNow ? Colors.lightBlueAccent : Colors.blue),
-                            const SizedBox(width: 2),
-                            Text(
-                              '${item.precipitationProbability}%',
-                              style: TextStyle(
-                                fontSize: 10.5,
-                                fontWeight: FontWeight.bold,
-                                color: isNow ? Colors.white : Colors.blue.shade800,
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    else
-                      const SizedBox(height: 14),
-                  ],
-                ),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _buildSoilHealthTile(CurrentWeather current) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -1379,151 +1290,6 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
     );
   }
 
-  String _formatDayLabel(String rawDate) {
-    try {
-      final dt = DateTime.parse(rawDate);
-      final now = DateTime.now();
-      if (dt.year == now.year && dt.month == now.month && dt.day == now.day) {
-        return _lang == 'hi' ? 'आज' : 'Today';
-      }
-      final monthsHi = ['', 'जन', 'फ़र', 'मार्च', 'अप्रै', 'मई', 'जून', 'जुलाई', 'अग', 'सित', 'अक्तू', 'नव', 'दिस'];
-      final monthsEn = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      final m = _lang == 'hi' ? monthsHi[dt.month] : monthsEn[dt.month];
-      return '${dt.day} $m';
-    } catch (_) {
-      return rawDate.length >= 5 ? rawDate.substring(5) : rawDate;
-    }
-  }
-
-  Widget _buildDailyForecastSection(List<DailyForecast> daily) {
-    double weekMin = 50;
-    double weekMax = -20;
-    for (final d in daily) {
-      if (d.tempMin < weekMin) weekMin = d.tempMin;
-      if (d.tempMax > weekMax) weekMax = d.tempMax;
-    }
-
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.black.withValues(alpha: 0.08), width: 1.0),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(5),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1B5E20).withValues(alpha: 0.12),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.calendar_month, color: Color(0xFF1B5E20), size: 18),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  AppStrings.get('daily_forecast', _lang),
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-          ),
-          const Divider(height: 1, thickness: 0.8),
-          ListView.separated(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            itemCount: daily.length,
-            separatorBuilder: (context, index) => Divider(
-              height: 16,
-              thickness: 0.8,
-              indent: 16,
-              endIndent: 16,
-              color: Colors.black.withValues(alpha: 0.06),
-            ),
-            itemBuilder: (context, index) {
-              final day = daily[index];
-              return _buildDailyForecastRow(day, weekMin, weekMax);
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDailyForecastRow(DailyForecast day, double weekMin, double weekMax) {
-    final icon = _getWeatherIcon(day.weatherCode);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: Row(
-        children: [
-          // Date
-          SizedBox(
-            width: 72,
-            child: Text(
-              _formatDayLabel(day.date),
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
-            ),
-          ),
-          // Weather Icon
-          Icon(icon, size: 22, color: const Color(0xFF1B5E20)),
-          const SizedBox(width: 6),
-          // Rain chance pill
-          SizedBox(
-            width: 48,
-            child: day.precipitationProbabilityMax > 0
-                ? Row(
-                    children: [
-                      const Icon(Icons.water_drop, size: 11, color: Colors.blue),
-                      const SizedBox(width: 1),
-                      Text(
-                        '${day.precipitationProbabilityMax}%',
-                        style: const TextStyle(fontSize: 11, color: Colors.blue, fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  )
-                : const SizedBox.shrink(),
-          ),
-          const SizedBox(width: 6),
-          // Min Temp
-          Text(
-            '${day.tempMin.round()}°',
-            style: TextStyle(fontSize: 13, color: Colors.grey.shade600, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(width: 8),
-          // Temperature Spectrum Range Bar
-          Expanded(
-            child: TempRangeBar(
-              minTemp: day.tempMin,
-              maxTemp: day.tempMax,
-              overallMin: (weekMin - 1),
-              overallMax: (weekMax + 1),
-            ),
-          ),
-          const SizedBox(width: 8),
-          // Max Temp
-          Text(
-            '${day.tempMax.round()}°',
-            style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w900),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildRiskWarningsCard() {
     final h1Risks = _riskData?.horizon1.risks ?? [];
     final h3Risks = _riskData?.horizon3.risks ?? [];
@@ -1639,7 +1405,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
             onTap: _showSimulationDialog,
             borderRadius: BorderRadius.circular(8),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
               decoration: BoxDecoration(
                 color: (_userPhone != null && _userPhone!.isNotEmpty)
                     ? const Color(0xFFE8F5E9)
@@ -1655,7 +1421,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                 children: [
                   Icon(
                     Icons.sms_outlined,
-                    size: 15,
+                    size: 16,
                     color: (_userPhone != null && _userPhone!.isNotEmpty)
                         ? const Color(0xFF1B5E20)
                         : Colors.orange.shade900,
@@ -1665,11 +1431,11 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                     child: Text(
                       (_userPhone != null && _userPhone!.isNotEmpty)
                           ? (_lang == 'hi'
-                              ? 'SMS अलर्ट नंबर: +91 $_userPhone (बदलने के लिए टैप करें)'
-                              : 'SMS Alert Number: +91 $_userPhone (Tap to change)')
+                              ? 'SMS नंबर: +91 $_userPhone (बदलने हेतु टैप करें)'
+                              : 'SMS Number: +91 $_userPhone (Tap to edit)')
                           : (_lang == 'hi'
-                              ? 'SMS अलर्ट प्राप्त करने के लिए यहाँ टैप करके मोबाइल नंबर जोड़ें'
-                              : 'Tap here to link your Mobile Number for Weather & SOS SMS'),
+                              ? 'SMS अलर्ट हेतु यहाँ टैप करके मोबाइल नंबर जोड़ें'
+                              : 'Tap here to link Mobile Number for Weather & SOS SMS'),
                       style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w600,
@@ -1679,13 +1445,30 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                       ),
                     ),
                   ),
-                  Icon(
-                    Icons.edit_outlined,
-                    size: 14,
-                    color: (_userPhone != null && _userPhone!.isNotEmpty)
-                        ? const Color(0xFF1B5E20)
-                        : Colors.orange.shade900,
-                  ),
+                  if (_userPhone != null && _userPhone!.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 6),
+                      child: InkWell(
+                        onTap: () => _triggerSimulation('weather_change', phoneNumber: _userPhone),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1B5E20),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            _lang == 'hi' ? 'SMS भेजें' : 'Send SMS',
+                            style: const TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    Icon(
+                      Icons.edit_outlined,
+                      size: 14,
+                      color: Colors.orange.shade900,
+                    ),
                 ],
               ),
             ),
@@ -1851,278 +1634,6 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
   }
 
   String rActionFallback(DetectedRisk risk) => risk.actionEn.isNotEmpty ? risk.actionEn : risk.actionHi;
-
-  Widget _buildEnsoStatusCard() {
-    final enso = _ensoData;
-    final isHi = _lang == 'hi';
-    final phaseText = isHi
-        ? (enso != null
-            ? enso.phaseHi.replaceAll(RegExp(r'\s*\([A-Za-z\s-ñÑíÍ/]+\)'), '').trim()
-            : 'तटस्थ')
-        : (enso != null ? enso.phase : 'Neutral');
-    final oniVal = enso?.oniValue ?? -0.2;
-
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.black.withValues(alpha: 0.08), width: 1.0),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(7),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0277BD).withValues(alpha: 0.12),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.public, color: Color(0xFF0277BD), size: 22),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      AppStrings.get('enso_title', _lang),
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF01579B)),
-                    ),
-                    Text(
-                      'Oceanic Nino Index (ONI)',
-                      style: TextStyle(fontSize: 11.5, color: Colors.blue.shade800),
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF0288D1), Color(0xFF01579B)],
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF0288D1).withValues(alpha: 0.25),
-                      blurRadius: 6,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Text(
-                  phaseText,
-                  style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          // Interactive ONI Gauge Meter
-          OniGaugeMeter(oniValue: oniVal, lang: _lang),
-          const SizedBox(height: 12),
-          Text(
-            isHi
-                ? (enso != null && enso.explanationHi.isNotEmpty
-                    ? enso.explanationHi.replaceAll(RegExp(r'\s*\([A-Za-z\s-ñÑíÍ/]+\)'), '').trim()
-                    : 'अल नीनो व ला नीना प्रशांत महासागर का समुद्री तापमान चक्र है। वर्तमान में तटस्थ स्थिति है। यह एक वैश्विक सूचकांक है; अपने स्थानीय खेत के लिए 30-दिवसीय वर्षा पूर्वानुमान देखें।')
-                : 'El Niño and La Niña represent ocean surface temperature cycles. Currently in Neutral phase. Check 30-day outlook for local rainfall.',
-            style: const TextStyle(fontSize: 13.5, color: Colors.black87, height: 1.35),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  'ONI Index: ${oniVal >= 0 ? "+" : ""}$oniVal°C',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: Colors.blue.shade900),
-                ),
-              ),
-              Text(
-                AppStrings.get('enso_source', _lang),
-                style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontWeight: FontWeight.w500),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCropRecommenderEntryCard() {
-    final isHi = _lang == 'hi';
-    final liveTemp = _weather?.current.temperature.toStringAsFixed(1);
-    final liveSoilRaw = _weather?.current.soilMoisture ?? 0.24;
-    final liveSoilPct = (liveSoilRaw <= 1.0 ? liveSoilRaw * 100 : liveSoilRaw).round();
-    final activeLoc = _gpsLocationName ?? _currentFarm?.getVillage(_lang) ?? (isHi ? 'उमरेड' : 'Umred');
-
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.black.withValues(alpha: 0.08), width: 1.0),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(7),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1B5E20).withValues(alpha: 0.12),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.psychology_alt, color: Color(0xFF1B5E20), size: 24),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  AppStrings.get('crop_recommender_title', _lang),
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF1B5E20),
-                  ),
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.amber.shade100,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  AppStrings.get('rabi_season', _lang),
-                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.brown),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text(
-            AppStrings.get('crop_recommender_subtitle', _lang),
-            style: const TextStyle(fontSize: 13.5, color: Colors.black87, height: 1.35),
-          ),
-          if (liveTemp != null) ...[
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.my_location, size: 13, color: Colors.blue.shade800),
-                  const SizedBox(width: 5),
-                  Flexible(
-                    child: Text(
-                      isHi
-                          ? 'GPS स्थिति ($activeLoc): $liveTemp°C • मिट्टी नमी $liveSoilPct%'
-                          : 'GPS Conditions ($activeLoc): $liveTemp°C • Soil Moisture $liveSoilPct%',
-                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Colors.blue.shade900),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-          const SizedBox(height: 10),
-          // Suggested crop teaser badges
-          Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            children: isHi
-                ? [
-                    _buildCropTeaserChip('🌾 गेहूं'),
-                    _buildCropTeaserChip('🌱 चना'),
-                    _buildCropTeaserChip('🟡 सरसों'),
-                  ]
-                : [
-                    _buildCropTeaserChip('🌾 Wheat'),
-                    _buildCropTeaserChip('🌱 Chickpea'),
-                    _buildCropTeaserChip('🟡 Mustard'),
-                  ],
-          ),
-          const SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF1B5E20),
-                foregroundColor: Colors.white,
-                minimumSize: const Size(double.infinity, 46),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                elevation: 0,
-              ),
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => CropRecommenderScreen(
-                      farmId: _currentFarm?.id ?? 1,
-                      farmName: _currentFarm?.getName(_lang) ?? (isHi ? 'मेरा खेत' : 'My Farm'),
-                      village: activeLoc,
-                      farm: _currentFarm,
-                      lang: _lang,
-                      latitude: _gpsLat ?? _currentFarm?.latitude,
-                      longitude: _gpsLon ?? _currentFarm?.longitude,
-                      weather: _weather,
-                    ),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.arrow_forward, size: 18),
-              label: Text(AppStrings.get('crop_recommender_btn', _lang), style: const TextStyle(fontWeight: FontWeight.bold)),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCropTeaserChip(String label) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: const Color(0xFFE8F5E9),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF1B5E20)),
-      ),
-    );
-  }
 
   Future<void> _showSimulationDialog() async {
     final isHi = _lang == 'hi';
@@ -2360,11 +1871,11 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
           content: Text(
             smsSent
                 ? (isHi
-                    ? '✅ SMS एवं अलर्ट सफलतापूर्वक भेजा गया!'
-                    : '✅ SMS & Alert dispatched successfully!')
+                    ? '✅ +91 $cleanPhone पर SMS एवं अलर्ट सफलतापूर्वक भेजा गया!'
+                    : '✅ SMS & Alert dispatched to +91 $cleanPhone!')
                 : (isHi
-                    ? '✅ अलर्ट सक्रिय किया गया (SMS हेतु 10 अंकों का मोबाइल नंबर दर्ज करें)'
-                    : '✅ Alert activated (enter 10-digit mobile number for SMS)'),
+                    ? '✅ अलर्ट सक्रिय (SMS अनुमति स्वीकार करने पर तुरंत SMS भेजा जाएगा)'
+                    : '✅ Alert active (SMS will dispatch once SMS permission is allowed)'),
           ),
           duration: const Duration(seconds: 4),
         ),

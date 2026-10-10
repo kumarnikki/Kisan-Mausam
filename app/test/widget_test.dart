@@ -139,15 +139,15 @@ void main() {
     expect(created, isTrue);
   });
 
-  testWidgets('Test 6: WeatherHomeScreen displays current conditions, GPS & search buttons', (WidgetTester tester) async {
+  testWidgets('Test 6: WeatherHomeScreen displays top crop advisory button, bottom-right mic FAB, GPS & search buttons', (WidgetTester tester) async {
     await tester.pumpWidget(MaterialApp(
       home: WeatherHomeScreen(onOpenSettings: () {}),
     ));
     await tester.pump(const Duration(milliseconds: 200));
 
-    // Verify Prominent Mic Button / Hero Voice Banner is visible
-    expect(find.text('बोलकर पूछें'), findsOneWidget);
-    expect(find.byIcon(Icons.mic), findsWidgets);
+    // Verify bottom-right Mic FAB and Top Crop Advisory button are visible
+    expect(find.byIcon(Icons.mic), findsOneWidget);
+    expect(find.text('फसल सुझाव'), findsOneWidget);
 
     // Verify Top Bar elements: Settings button and Location button
     expect(find.byIcon(Icons.settings), findsOneWidget);

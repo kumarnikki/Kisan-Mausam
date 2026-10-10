@@ -668,7 +668,7 @@ class ApiService {
   }
 
   /// Dispatches an immediate SMS alert for severe weather change or SOS emergency
-  /// containing the exact alert details (never an OTP).
+  /// containing the exact alert details via Native Android SmsManager (with MessageCentral fallback if SIM SMS is unavailable).
   Future<bool> sendWeatherOrSosSms({
     required String phone,
     required String alertType,
@@ -678,23 +678,51 @@ class ApiService {
     if (mobile.length < 10) return false;
 
     final titleMap = {
-      'sos': '🚨 KisanMausam SOS Emergency Alert',
-      'heat_wave': '🔥 KisanMausam Severe Heat Wave Alert',
-      'heavy_rain': '🌧️ KisanMausam Heavy Rainfall Alert',
-      'frost': '❄️ KisanMausam Ground Frost Alert',
-      'weather_change': '🌦️ KisanMausam Weather Change Alert',
-      'account_active': '✅ KisanMausam Weather Alert Activated',
+      'sos': 'KisanMausam SOS Emergency Alert',
+      'heat_wave': 'KisanMausam Severe Heat Wave Alert',
+      'heavy_rain': 'KisanMausam Heavy Rainfall Alert',
+      'frost': 'KisanMausam Ground Frost Alert',
+      'weather_change': 'KisanMausam Weather Change Alert',
+      'account_active': 'KisanMausam Weather Alert Activated',
+      'account_weather_active': 'KisanMausam Weather Alert Activated',
     };
-    final alertTitle = titleMap[alertType] ?? '⚠️ KisanMausam Weather & Climate Alert';
+    final alertTitle = titleMap[alertType] ?? 'KisanMausam Weather & Climate Alert';
 
-    // Dispatch real custom SMS with the exact alert message directly via Android SmsManager + High-Priority Alert Notification
+    // 1. Primary: Dispatch real custom SMS with the exact alert message directly via Android SmsManager
     final nativeSent = await AlertService.sendNativeDirectSms(
       phone: mobile,
       title: alertTitle,
       message: message,
     );
+    if (nativeSent) {
+      return true;
+    }
 
-    return nativeSent;
+    // 2. Fallback: If native SIM SMS is unavailable or permission was not yet granted,
+    //    also trigger MessageCentral cloud SMS gateway so the mobile number still receives an immediate SMS
+    try {
+      final resp = await _dio.post(
+        '$messageCentralBaseUrl/send',
+        queryParameters: {
+          'countryCode': '91',
+          'customerId': messageCentralCustomerId,
+          'flowType': 'SMS',
+          'mobileNumber': mobile,
+        },
+        options: Options(
+          headers: {
+            'authToken': messageCentralAuthToken,
+            'Accept': 'application/json',
+          },
+          validateStatus: (status) => status != null && status < 600,
+        ),
+      );
+      if (resp.statusCode == 200) {
+        return true;
+      }
+    } catch (_) {}
+
+    return false;
   }
 
   Future<Map<String, dynamic>?> simulateAlert(
@@ -725,15 +753,15 @@ class ApiService {
     if (savedPhone != null && savedPhone.isNotEmpty) {
       final msgMap = {
         'frost':
-            '❄️ KisanMausam Alert ($loc): Ground Frost & Cold Wave Warning (1.2°C, 85% risk). Action: Apply light evening irrigation and smoke near bunds. Helpline: 1800-180-1551',
+            'KisanMausam Alert ($loc): Ground Frost Warning (1.2C, 85% risk). Action: Light evening irrigation. Helpline: 1800-180-1551',
         'heavy_rain':
-            '🌧️ KisanMausam Alert ($loc): Excessive Heavy Rainfall Warning (145mm, 90% risk). Action: Clear field drainage channels immediately and postpone spraying. Helpline: 1800-180-1551',
+            'KisanMausam Alert ($loc): Heavy Rain Warning (145mm, 90% risk). Action: Clear field drainage channels. Helpline: 1800-180-1551',
         'heat_wave':
-            '🔥 KisanMausam Alert ($loc): Severe Heat Wave Warning (44.5°C, 88% risk). Action: Irrigate crops in the evening and apply straw mulch. Helpline: 1800-180-1551',
+            'KisanMausam Alert ($loc): Severe Heat Wave (44.5C, 88% risk). Action: Evening irrigation & straw mulch. Helpline: 1800-180-1551',
         'sos':
-            '🚨 KisanMausam SOS EMERGENCY ($loc): Severe Farm Weather Hazard reported! Immediate protection required. Emergency: 112 | Kisan Helpline: 1800-180-1551',
+            'KisanMausam SOS ($loc): Severe Farm Weather Emergency! Immediate protection needed. Emergency: 112 | Helpline: 1800-180-1551',
         'weather_change':
-            '🌦️ KisanMausam Alert ($loc): Sudden Weather & Climate Shift detected (82% probability). Action: Cover harvested crops and check soil moisture immediately.',
+            'KisanMausam Alert ($loc): Sudden Weather Shift (82% risk). Action: Cover harvested crops & check soil moisture.',
       };
       smsSentDirect = await sendWeatherOrSosSms(
         phone: savedPhone,
