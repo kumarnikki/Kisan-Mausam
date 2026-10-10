@@ -40,7 +40,24 @@ class ResendEmailProvider(BaseEmailProvider):
             resp.raise_for_status()
             return resp.json()
 
+class AWSSESProvider(BaseEmailProvider):
+    """
+    Amazon Simple Email Service (AWS SES) Transactional Email Provider (ap-south-1).
+    """
+    async def send_email(self, to_email: str, subject: str, html_content: str) -> Dict[str, Any]:
+        from app.services.aws_cloud_service import aws_cloud_service
+
+        return await aws_cloud_service.send_transactional_email(
+            to_email=to_email,
+            subject=subject,
+            html_content=html_content,
+        )
+
+
 def get_email_provider() -> BaseEmailProvider:
-    if settings.EMAIL_PROVIDER.lower() == "resend":
+    provider = settings.EMAIL_PROVIDER.lower()
+    if provider == "aws_ses":
+        return AWSSESProvider()
+    if provider == "resend":
         return ResendEmailProvider()
     return MockEmailProvider()

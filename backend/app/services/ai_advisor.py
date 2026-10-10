@@ -131,7 +131,21 @@ class AIAdvisorService:
                 except Exception as e:
                     logger.error(f"Gemini API error for model {m}: {e}. Trying next model if available.")
 
-        # 2. Resilient Grounded Intelligent Fallback (ICAR Rule-Engine Based)
+        # 2. Amazon Bedrock (Claude 3 Haiku / Amazon Titan Text Express) Cloud AI Fallback
+        try:
+            from app.services.aws_cloud_service import aws_cloud_service
+            bedrock_reply = await aws_cloud_service.invoke_bedrock_advisor(
+                user_message=user_message,
+                system_instruction=system_instruction,
+                max_tokens=160,
+                temperature=0.2,
+            )
+            if bedrock_reply and len(bedrock_reply.strip()) > 0:
+                return self._format_response(bedrock_reply, farm_profile)
+        except Exception as e:
+            logger.debug(f"Amazon Bedrock fallback skipped: {e}")
+
+        # 3. Resilient Grounded Intelligent Fallback (ICAR Rule-Engine Based)
         return self._generate_grounded_fallback_advice(
             user_message, farm_profile, weather_data, risk_data, enso_data
         )
@@ -217,7 +231,7 @@ class AIAdvisorService:
             tips = ["क्रांतिक अवस्था पर ड्रिप सिंचाई करें", "उथली गुड़ाई कर नमी बचाएं"]
 
         elif any(w in msg_lower for w in ["कीट", "दवा", "कीटनाशक", "खाद", "रोग", "बीमारी", "pest", "spray", "इल्ली", "सुंडी", "माहू"]):
-            reply = f"{crop} में कीट नियंत्रण हेतु नीम तेल (5 मिली/लीटर) का स्प्रे करें और 5-6 पीले ट्रैप लगाएं। रासायनिक खुराक हेतु KVK 1800-180-1551 पर पूछें।"
+            reply = f"{crop} में कीट नियंत्रण हेतु नीम तेल (5 मिली/लीटर) का स्प्रे करें और 5-6 पीले ट्रैप लगाएं। ICAR रासायनिक मात्रा हेतु KVK 1800-180-1551 पर पूछें।"
             tips = ["नीम तेल 5ml/L स्प्रे करें", "KVK हेल्पलाइन: 1800-180-1551"]
 
         elif any(w in msg_lower for w in ["गेहूं", "wheat"]):
@@ -244,7 +258,7 @@ class AIAdvisorService:
             tips = ["72 घंटे में 14447 पर कॉल करें", "ऐप पर फोटो अपलोड करें"]
 
         elif any(w in msg_lower for w in ["पानी", "सिंचाई", "water", "irrigation", "नमी"]):
-            reply = f"2-3 इंच गहराई पर मिट्टी की नमी जांचें; सूखी होने पर केवल शाम को हल्की सिंचाई करें और पुआल की मल्चिंग करें।"
+            reply = f"{village} में {crop} हेतु 2-3 इंच गहराई पर नमी जांचें; सूखी होने पर केवल शाम को हल्की सिंचाई करें और मल्चिंग करें।"
             tips = ["शाम को हल्की सिंचाई करें", "2-3 इंच गहराई पर नमी जांचें"]
 
         else:

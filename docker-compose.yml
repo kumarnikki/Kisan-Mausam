@@ -12,6 +12,18 @@ services:
       - HOST=0.0.0.0
       - PORT=8000
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - AWS_REGION=${AWS_REGION:-ap-south-1}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_S3_BUCKET=${AWS_S3_BUCKET:-kisan-mausam-telemetry-ap-south-1}
+      - AWS_DYNAMODB_WEATHER_TABLE=${AWS_DYNAMODB_WEATHER_TABLE:-kisan_mausam_weather_cache}
+      - AWS_DYNAMODB_SOS_TABLE=${AWS_DYNAMODB_SOS_TABLE:-kisan_mausam_sos_events}
+      - AWS_SNS_TOPIC_ARN=${AWS_SNS_TOPIC_ARN:-arn:aws:sns:ap-south-1:000000000000:KisanMausamHazardTopic}
+      - AWS_SNS_SENDER_ID=${AWS_SNS_SENDER_ID:-KSNMSM}
+      - AWS_SES_SENDER_EMAIL=${AWS_SES_SENDER_EMAIL:-alerts@kisanmausam.in}
+      - AWS_BEDROCK_MODEL_ID=${AWS_BEDROCK_MODEL_ID:-anthropic.claude-3-haiku-20240307-v1:0}
+      - AWS_POLLY_VOICE_ID=${AWS_POLLY_VOICE_ID:-Kajal}
+      - AWS_CLOUDWATCH_NAMESPACE=${AWS_CLOUDWATCH_NAMESPACE:-KisanMausam/AgriCloud}
     volumes:
       - kisan_data:/app/data
     healthcheck:

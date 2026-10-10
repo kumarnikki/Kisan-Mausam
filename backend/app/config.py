@@ -56,6 +56,20 @@ class Settings(BaseSettings):
     OPEN_METEO_SEASONAL_URL: str = "https://seasonal-api.open-meteo.com/v1/seasonal"
     OPEN_METEO_API_KEY: Optional[str] = None
 
+    # Amazon Web Services (AWS) Cloud Configuration (ap-south-1 Mumbai Region)
+    AWS_REGION: str = "ap-south-1"
+    AWS_ACCESS_KEY_ID: Optional[str] = None
+    AWS_SECRET_ACCESS_KEY: Optional[str] = None
+    AWS_S3_BUCKET: str = "kisan-mausam-telemetry-ap-south-1"
+    AWS_DYNAMODB_WEATHER_TABLE: str = "kisan_mausam_weather_cache"
+    AWS_DYNAMODB_SOS_TABLE: str = "kisan_mausam_sos_events"
+    AWS_SNS_TOPIC_ARN: str = "arn:aws:sns:ap-south-1:000000000000:KisanMausamHazardTopic"
+    AWS_SNS_SENDER_ID: str = "KSNMSM"
+    AWS_SES_SENDER_EMAIL: str = "alerts@kisanmausam.in"
+    AWS_BEDROCK_MODEL_ID: str = "anthropic.claude-3-haiku-20240307-v1:0"
+    AWS_POLLY_VOICE_ID: str = "Kajal"
+    AWS_CLOUDWATCH_NAMESPACE: str = "KisanMausam/AgriCloud"
+
     class Config:
         env_file = ".env"
         extra = "ignore"

@@ -230,6 +230,39 @@ class AlertDispatcher:
         for log in logs:
             await self.db.refresh(log)
 
+        # Emit AWS CloudWatch Metric, S3 Audit Snapshot & SNS Topic Broadcast
+        try:
+            from app.services.aws_cloud_service import aws_cloud_service
+            await aws_cloud_service.put_custom_metric(
+                metric_name="HazardsDispatched",
+                value=float(len(logs)),
+                unit="Count",
+                dimensions=[
+                    {"Name": "Severity", "Value": severity},
+                    {"Name": "AlertType", "Value": alert_type},
+                ],
+            )
+            await aws_cloud_service.archive_weather_telemetry(
+                farm_id=farm_id,
+                telemetry_type=f"hazard_{alert_type}",
+                payload=hazard,
+            )
+            if severity == "red" or alert_type == "sos_emergency":
+                await aws_cloud_service.broadcast_hazard_topic(
+                    subject=f"KisanMausam RED ALERT: {title_en} ({village})",
+                    hazard_payload={
+                        "farm_id": farm_id,
+                        "village": village,
+                        "crop": crop,
+                        "alert_type": alert_type,
+                        "severity": severity,
+                        "probability": probability,
+                        "message": sms_text,
+                    },
+                )
+        except Exception as aws_err:
+            logger.debug(f"AWS telemetry hook non-fatal warning: {aws_err}")
+
         return logs
 
     async def dispatch_weekly_digest(self, farm: Farm) -> Dict[str, Any]:

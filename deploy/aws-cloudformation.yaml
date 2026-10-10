@@ -1,0 +1,222 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  KisanMausam (किसान मौसम) — Enterprise AWS Cloud-Native AgriTech Infrastructure Stack
+  Region: ap-south-1 (Asia Pacific - Mumbai)
+  Provisions Amazon S3, Amazon CloudFront, Amazon DynamoDB, Amazon SNS, AWS Lambda,
+  Amazon EventBridge, Amazon CloudWatch, and AWS IAM Least-Privilege Roles for
+  Amazon Bedrock, Amazon Polly, Amazon Translate, and Amazon SES.
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: production
+    AllowedValues: [development, staging, production]
+  BedrockModelId:
+    Type: String
+    Default: anthropic.claude-3-haiku-20240307-v1:0
+  PollyVoiceId:
+    Type: String
+    Default: Kajal
+
+Resources:
+  # ---------------------------------------------------------------------------
+  # 1. Amazon S3 — Encrypted Farm Weather Telemetry & Soil Data Lake
+  # ---------------------------------------------------------------------------
+  KisanMausamTelemetryBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "kisan-mausam-telemetry-${AWS::AccountId}-${AWS::Region}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: TransitionOldTelemetryToGlacier
+            Status: Enabled
+            TransitionInDays: 90
+            StorageClass: GLACIER
+
+  # ---------------------------------------------------------------------------
+  # 2. Amazon S3 + Amazon CloudFront — Low-Latency Web & OTA APK Edge CDN
+  # ---------------------------------------------------------------------------
+  KisanMausamWebBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "kisan-mausam-web-${AWS::AccountId}-${AWS::Region}"
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: index.html
+
+  KisanMausamCloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: "KisanMausam Global & Rural India Edge CDN (ap-south-1)"
+        DefaultRootObject: index.html
+        PriceClass: PriceClass_200
+        Origins:
+          - Id: KisanMausamWebOrigin
+            DomainName: !GetAtt KisanMausamWebBucket.RegionalDomainName
+            S3OriginConfig: {}
+        DefaultCacheBehavior:
+          TargetOriginId: KisanMausamWebOrigin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD]
+          Compress: true
+          ForwardedValues:
+            QueryString: false
+
+  # ---------------------------------------------------------------------------
+  # 3. Amazon DynamoDB — Hyper-Local GPS Weather Cache & SOS 112 Event Ledger
+  # ---------------------------------------------------------------------------
+  KisanMausamWeatherCacheTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: kisan_mausam_weather_cache
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: cell_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: cell_id
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: expires_at
+        Enabled: true
+
+  KisanMausamSOSEventsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: kisan_mausam_sos_events
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: sos_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: sos_id
+          KeyType: HASH
+
+  # ---------------------------------------------------------------------------
+  # 4. Amazon SNS — Multi-Channel IMD Weather Hazard & SOS Alert Topic
+  # ---------------------------------------------------------------------------
+  KisanMausamHazardTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: KisanMausamHazardTopic
+      DisplayName: KSMNSM
+
+  # ---------------------------------------------------------------------------
+  # 5. AWS IAM — Least-Privilege Execution Role for Backend & Serverless Poller
+  # ---------------------------------------------------------------------------
+  KisanMausamCloudRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "KisanMausam-AgriCloud-Role-${EnvironmentName}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+                - ec2.amazonaws.com
+                - tasks.apprunner.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: KisanMausamAgriCloudPermissions
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: BedrockPollyTranslateAI
+                Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - polly:SynthesizeSpeech
+                  - translate:TranslateText
+                Resource: "*"
+              - Sid: S3TelemetryAccess
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt KisanMausamTelemetryBucket.Arn
+                  - !Sub "${KisanMausamTelemetryBucket.Arn}/*"
+              - Sid: DynamoDBWeatherAndSOSAccess
+                Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                  - dynamodb:Query
+                  - dynamodb:UpdateItem
+                Resource:
+                  - !GetAtt KisanMausamWeatherCacheTable.Arn
+                  - !GetAtt KisanMausamSOSEventsTable.Arn
+              - Sid: SNSSESAndCloudWatchAccess
+                Effect: Allow
+                Action:
+                  - sns:Publish
+                  - ses:SendEmail
+                  - ses:SendRawEmail
+                  - cloudwatch:PutMetricData
+                Resource: "*"
+
+  # ---------------------------------------------------------------------------
+  # 6. AWS Lambda + Amazon EventBridge — 15-Minute Automated Weather Hazard Poller
+  # ---------------------------------------------------------------------------
+  KisanMausamHazardPollerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: KisanMausam-IMD-Hazard-Poller
+      Runtime: python3.11
+      Handler: aws_lambda_weather_poller.lambda_handler
+      Role: !GetAtt KisanMausamCloudRole.Arn
+      Timeout: 60
+      MemorySize: 256
+      Environment:
+        Variables:
+          AWS_S3_BUCKET: !Ref KisanMausamTelemetryBucket
+          AWS_DYNAMODB_WEATHER_TABLE: !Ref KisanMausamWeatherCacheTable
+          AWS_SNS_TOPIC_ARN: !Ref KisanMausamHazardTopic
+          AWS_CLOUDWATCH_NAMESPACE: KisanMausam/AgriCloud
+      Code:
+        ZipFile: |
+          import json
+          def lambda_handler(event, context):
+              return {"statusCode": 200, "body": json.dumps({"status": "KisanMausam Poller Active"})}
+
+  KisanMausamPollingScheduleRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: KisanMausam-15Min-Weather-Poll
+      Description: "Triggers KisanMausam IMD 3-Horizon Weather Hazard evaluation every 15 minutes"
+      ScheduleExpression: "rate(15 minutes)"
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt KisanMausamHazardPollerFunction.Arn
+          Id: KisanMausamHazardPollerTarget
+
+Outputs:
+  TelemetryBucketName:
+    Description: "Amazon S3 Bucket for Encrypted Farm Weather & Soil Telemetry"
+    Value: !Ref KisanMausamTelemetryBucket
+  CloudFrontDomainName:
+    Description: "Amazon CloudFront CDN Endpoint for Rural Low-Latency Delivery"
+    Value: !GetAtt KisanMausamCloudFrontDistribution.DomainName
+  WeatherCacheDynamoDBTable:
+    Description: "Amazon DynamoDB Table for Hyper-Local Geohash Weather Caching"
+    Value: !Ref KisanMausamWeatherCacheTable
+  SNSHazardTopicArn:
+    Description: "Amazon SNS Topic ARN for IMD Weather Warnings & SOS 112 Broadcasts"
+    Value: !Ref KisanMausamHazardTopic

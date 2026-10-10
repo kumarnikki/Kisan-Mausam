@@ -217,8 +217,49 @@ class MSG91SMSProvider(BaseSMSProvider):
             return resp.json()
 
 
+class AWSSNSProvider(BaseSMSProvider):
+    """
+    Amazon Simple Notification Service (AWS SNS) Transactional SMS Provider
+    configured for India (ap-south-1 Mumbai Region) with TRAI DLT Sender ID attributes.
+    """
+    async def send_sms(self, phone_number: str, template_key: str, params: Dict[str, Any]) -> Dict[str, Any]:
+        from app.services.aws_cloud_service import aws_cloud_service
+
+        village = params.get("village", "आपके क्षेत्र")
+        crop = params.get("crop", "फसल")
+        prob = params.get("probability", "85")
+        action = params.get("action", "तत्काल सुरक्षा उपाय करें।")
+        custom_msg = params.get("message")
+
+        message_text = custom_msg or (
+            f"किसान मौसम चेतावनी ({template_key.upper()}): {village} ({crop}) - "
+            f"संभावना {prob}%। सलाह: {action} हेल्पलाइन: 1800-180-1551"
+        )
+        return await aws_cloud_service.publish_hazard_sms(
+            phone_number=phone_number,
+            message=message_text,
+            sender_id=settings.AWS_SNS_SENDER_ID,
+        )
+
+    async def send_otp(self, phone_number: str, otp: str) -> Dict[str, Any]:
+        from app.services.aws_cloud_service import aws_cloud_service
+
+        otp_text = f"किसान मौसम (KisanMausam): आपका लॉगिन ओटीपी {otp} है। यह 10 मिनट के लिए मान्य है।"
+        res = await aws_cloud_service.publish_hazard_sms(
+            phone_number=phone_number,
+            message=otp_text,
+            sender_id=settings.AWS_SNS_SENDER_ID,
+        )
+        return {
+            **res,
+            "verification_id": res.get("message_id", f"sns_otp_{phone_number}"),
+        }
+
+
 def get_sms_provider() -> BaseSMSProvider:
     provider = settings.SMS_PROVIDER.lower()
+    if provider == "aws_sns":
+        return AWSSNSProvider()
     if provider == "messagecentral" or (settings.MESSAGECENTRAL_AUTH_TOKEN and settings.MESSAGECENTRAL_CUSTOMER_ID):
         return MessageCentralSMSProvider()
     if provider == "msg91":
