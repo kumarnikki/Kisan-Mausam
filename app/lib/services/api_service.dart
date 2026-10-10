@@ -668,7 +668,7 @@ class ApiService {
   }
 
   /// Dispatches an immediate SMS alert for severe weather change or SOS emergency
-  /// containing the exact alert details via Native Android SmsManager (with MessageCentral fallback if SIM SMS is unavailable).
+  /// containing the exact alert details via Native Android SmsManager (never sends OTP).
   Future<bool> sendWeatherOrSosSms({
     required String phone,
     required String alertType,
@@ -688,41 +688,13 @@ class ApiService {
     };
     final alertTitle = titleMap[alertType] ?? 'KisanMausam Weather & Climate Alert';
 
-    // 1. Primary: Dispatch real custom SMS with the exact alert message directly via Android SmsManager
-    final nativeSent = await AlertService.sendNativeDirectSms(
+    // Dispatch real custom SMS with the exact weather/SOS alert text directly via Android SmsManager.
+    // Never fall back to MessageCentral VerifyNow here, because VerifyNow sends an OTP instead of custom alert text.
+    return await AlertService.sendNativeDirectSms(
       phone: mobile,
       title: alertTitle,
       message: message,
     );
-    if (nativeSent) {
-      return true;
-    }
-
-    // 2. Fallback: If native SIM SMS is unavailable or permission was not yet granted,
-    //    also trigger MessageCentral cloud SMS gateway so the mobile number still receives an immediate SMS
-    try {
-      final resp = await _dio.post(
-        '$messageCentralBaseUrl/send',
-        queryParameters: {
-          'countryCode': '91',
-          'customerId': messageCentralCustomerId,
-          'flowType': 'SMS',
-          'mobileNumber': mobile,
-        },
-        options: Options(
-          headers: {
-            'authToken': messageCentralAuthToken,
-            'Accept': 'application/json',
-          },
-          validateStatus: (status) => status != null && status < 600,
-        ),
-      );
-      if (resp.statusCode == 200) {
-        return true;
-      }
-    } catch (_) {}
-
-    return false;
   }
 
   Future<Map<String, dynamic>?> simulateAlert(
@@ -881,38 +853,26 @@ class ApiService {
     final humStr = currentHumidity != null ? '${currentHumidity.toStringAsFixed(0)}%' : '55%';
     final windStr = currentWind != null ? '${currentWind.toStringAsFixed(1)} km/h' : '8 km/h';
     final activeCrop = crop ?? (isEn ? 'Soybean' : 'सोयाबीन');
-    final activeStage = cropStage ?? (isEn ? 'Flowering and pod filling stage' : 'फूल आने व फली भराव अवस्था');
+    final activeStage = cropStage ?? (isEn ? 'Flowering stage' : 'फूल अवस्था');
     final activeCondition = condition ?? (isEn ? 'Clear weather' : 'साफ मौसम');
     final coords = (lat != null && lon != null) ? (isEn ? '(Lat: $lat, Lon: $lon)' : '(अक्षांश: $lat, देशांतर: $lon)') : '';
 
     final systemInstruction = isEn
         ? '''
-You are the "Kisan Mausam Agri-Assistant" — a senior agronomy and weather advisor grounded in the scientific standards of the Indian Council of Agricultural Research (ICAR) and India Meteorological Department (IMD).
-
-【Strict Real-Time Grounding Context】:
-- Location/Region: $village $coords
-- Current Crop: $activeCrop (Stage: $activeStage)
-- Current Weather: Temperature $tempStr, Condition: $activeCondition, Humidity: $humStr, Wind: $windStr
-
-【Mandatory Guidelines】:
-1. Provide your response entirely in fluent, professional, clear English. Do not mix Hindi or devanagari script.
-2. Answer specifically for $village, the current crop ($activeCrop), and real-time temperature ($tempStr).
-3. Recommend organic and biological methods (e.g. neem oil, trichoderma) as first line of defense; advise calling Kisan Call Center (KVK) toll-free 1800-180-1551 for precise chemical dosages.
-4. Conclude with 2-3 concise, bulleted Actionable Steps.
+You are the "Kisan Mausam Agri-Assistant" (ICAR & IMD advisor).
+Context: Location: $village $coords | Crop: $activeCrop ($activeStage) | Weather: $tempStr, $activeCondition, Humidity: $humStr, Wind: $windStr.
+Strict Rules:
+1. Keep your answer VERY SHORT and TO THE POINT: maximum 2 short sentences (under 35 words total). No greetings, no filler, no long paragraphs.
+2. Answer in plain English specifically for $village ($tempStr) and $activeCrop.
+3. Recommend safe organic measures first (e.g., neem oil); refer chemical dosages to KVK 1800-180-1551.
 '''
         : '''
-आप "किसान मौसम कृषि सहायक" हैं — भारतीय कृषि अनुसंधान परिषद (ICAR) और भारत मौसम विज्ञान विभाग (IMD) के वैज्ञानिक मानकों पर आधारित वरिष्ठ कृषि वैज्ञानिक व सलाहकार।
-
-【खेत, स्थान व मौसम की वास्तविक स्थिति (Strict Grounding Data)】:
-- स्थान/क्षेत्र: $village $coords
-- वर्तमान फसल: $activeCrop (अवस्था: $activeStage)
-- वर्तमान मौसम: तापमान $tempStr, स्थिति: $activeCondition, आर्द्रता: $humStr, हवा: $windStr
-
-【अनिवार्य दिशानिर्देश】:
-1. किसान के सवाल का उत्तर उनके दिए गए स्थान ($village), फसल ($activeCrop) और वास्तविक तापमान ($tempStr) के सटीक संदर्भ में दें।
-2. उत्तर अत्यंत व्यावहारिक, आत्मीय और स्पष्ट हिंदी में दें।
-3. रासायनिक दवाओं का अंधाधुंध नुस्खा न दें; जैविक विकल्प (नीम तेल आदि) बताएं और रासायनिक खुराक हेतु किसान कॉल सेंटर (KVK) टोल-फ्री 1800-180-1551 पर कॉल करने की सलाह दें।
-4. मुख्य उत्तर के साथ अंत में 2-3 बुलेट पॉइंट्स में तुरंत करने योग्य कार्य (Actionable Steps) अवश्य दें।
+आप "किसान मौसम कृषि सहायक" (ICAR व IMD सलाहकार) हैं।
+संदर्भ: स्थान: $village $coords | फसल: $activeCrop ($activeStage) | मौसम: $tempStr, $activeCondition, नमी: $humStr, हवा: $windStr।
+अनिवार्य नियम:
+1. उत्तर अत्यंत संक्षिप्त, सीधा और टू-द-पॉइंट दें: अधिकतम 2 छोटे वाक्य (35 शब्दों के भीतर)। लंबी भूमिका या पैराग्राफ बिल्कुल न लिखें।
+2. $village ($tempStr) और $activeCrop के अनुसार सरल हिंदी में सीधा उपाय बताएं।
+3. जैविक उपाय (जैसे नीम तेल) को प्राथमिकता दें; रासायनिक मात्रा हेतु KVK 1800-180-1551 बताएं।
 ''';
 
     final modelsToTry = ['gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-flash-latest'];
@@ -934,8 +894,8 @@ You are the "Kisan Mausam Agri-Assistant" — a senior agronomy and weather advi
             ]
           },
           'generationConfig': {
-            'temperature': 0.3,
-            'maxOutputTokens': 800,
+            'temperature': 0.2,
+            'maxOutputTokens': 160,
           }
         };
 
@@ -964,7 +924,7 @@ You are the "Kisan Mausam Agri-Assistant" — a senior agronomy and weather advi
                   final trimmed = line.trim();
                   if (trimmed.startsWith('*') || trimmed.startsWith('-') || RegExp(r'^\d+\.').hasMatch(trimmed)) {
                     final cleanTip = trimmed.replaceAll(RegExp(r'^[\*\-\d\.]+\s*'), '').replaceAll(RegExp(r'\*\*'), '').trim();
-                    if (cleanTip.isNotEmpty && cleanTip.length < 90 && tips.length < 4) {
+                    if (cleanTip.isNotEmpty && cleanTip.length < 80 && tips.length < 2) {
                       tips.add(cleanTip);
                     }
                   }
@@ -975,11 +935,13 @@ You are the "Kisan Mausam Agri-Assistant" — a senior agronomy and weather advi
                   'actionable_tips': tips.isNotEmpty
                       ? tips
                       : [
-                          'स्थान $village अनुसार मौसम सुरक्षा अपनाएं',
-                          'KVK हेल्पलाइन 1800-180-1551 पर संपर्क करें',
+                          isEn ? 'Monitor $activeCrop moisture at $tempStr' : '$tempStr पर $activeCrop की नमी जांचें',
+                          isEn ? 'KVK Helpline: 1800-180-1551' : 'KVK हेल्पलाइन: 1800-180-1551',
                         ],
-                  'kvk_contact': '1800-180-1551 (Kisan Call Centre Toll-Free)',
-                  'disclaimer': 'यह सलाह ICAR एवं IMD वैज्ञानिक मार्गदर्शिकाओं पर आधारित है। रासायनिक उपचार हेतु स्थानीय KVK से परामर्श लें।',
+                  'kvk_contact': '1800-180-1551',
+                  'disclaimer': isEn
+                      ? 'ICAR/IMD advisory. Call KVK 1800-180-1551 for chemical dosages.'
+                      : 'ICAR/IMD मानक सलाह। रासायनिक मात्रा हेतु KVK 1800-180-1551 पर पूछें।',
                   'grounding_summary': {
                     'crop': activeCrop,
                     'village': village,
@@ -1021,214 +983,79 @@ You are the "Kisan Mausam Agri-Assistant" — a senior agronomy and weather advi
 
     if (isEn) {
       if (msg.contains('hello') || msg.contains('hi') || msg.contains('namaste') || msg.contains('greetings')) {
-        reply =
-            'Hello Farmer friend! I am your KisanMausam Agricultural Assistant. Current temperature in $village is ${temp.toStringAsFixed(1)}°C with $weatherState.\n\n'
-            'I can assist you with weather alerts, irrigation scheduling, and organic pest control for your crop ($activeCrop).';
-        tips = [
-          'Current Temp: ${temp.toStringAsFixed(1)}°C ($weatherState)',
-          'Schedule farm activities per weather',
-          'Call KVK Toll-Free: 1800-180-1551'
-        ];
+        reply = 'Hello! $village is at ${temp.toStringAsFixed(1)}°C ($weatherState). Ask me anything about $activeCrop, irrigation, or weather alerts.';
+        tips = ['Temp: ${temp.toStringAsFixed(1)}°C ($weatherState)', 'KVK: 1800-180-1551'];
       } else if (msg.contains('temperature') || msg.contains('temp') || msg.contains('weather')) {
-        reply =
-            'Current temperature in $village is ${temp.toStringAsFixed(1)}°C.\n\n'
-            '• Condition: $weatherState\n'
-            '• Wind Speed: $wind km/h\n'
-            '• Relative Humidity: $humidity%\n\n'
-            'Advisory: Temperature is conducive for $activeCrop. Maintain adequate soil moisture.';
-        tips = [
-          'Check soil moisture at 2-3 inches depth',
-          'Avoid chemical spraying during peak sunlight',
-          'Contact KVK: 1800-180-1551'
-        ];
+        reply = '$village is currently ${temp.toStringAsFixed(1)}°C ($weatherState, wind $wind km/h, humidity $humidity%). Conditions are good for $activeCrop; maintain light soil moisture.';
+        tips = ['Check soil moisture at 2-3 inches', 'Avoid mid-day spraying'];
       } else if (msg.contains('rain') || msg.contains('precipitation') || msg.contains('shower')) {
-        reply =
-            'In $village, the weather is expected to remain largely dry and clear today. No immediate heavy rainfall hazard is detected.\n\n'
-            'Recommendation: Light irrigation may be provided in the evening if required. Ensure drainage channels are clear.';
-        tips = [
-          'Light evening irrigation recommended',
-          'Keep drainage ditches clear',
-          'Check forecasts before spraying'
-        ];
+        reply = 'No heavy rain hazard in $village right now. Give light evening irrigation if topsoil is dry and keep drainage clear.';
+        tips = ['Light evening irrigation', 'Keep field drains clear'];
       } else if (msg.contains('wind') || msg.contains('storm') || msg.contains('gust')) {
-        reply =
-            'Current wind speed in $village is $wind km/h. Spraying agrochemicals is safe when wind speeds are below 15 km/h.';
-        tips = [
-          'Wind speed: $wind km/h',
-          'Do not spray if winds exceed 15 km/h'
-        ];
+        reply = 'Wind in $village is $wind km/h. Spraying is safe below 15 km/h; stake tall crops if gusts increase.';
+        tips = ['Wind: $wind km/h', 'Spray only below 15 km/h'];
       } else if (msg.contains('frost') || msg.contains('cold') || msg.contains('freeze')) {
-        reply =
-            'To protect crops against ground frost (0°C to 4°C), follow these ICAR recommendations:\n\n'
-            '1. Provide light irrigation in the evening to elevate soil temperature by 1-2°C.\n'
-            '2. Create a protective smoke blanket along northwest field boundaries using dry biomass.\n'
-            '3. Spray 0.1% soluble sulphur to enhance crop cold tolerance.\n'
-            '4. Contact Kisan Call Center (1800-180-1551) for exact dosage.';
-        tips = [
-          'Light evening irrigation',
-          'Smoke blanket on field borders',
-          'Soluble sulphur spray'
-        ];
+        reply = 'For frost protection (0-4°C), apply light evening irrigation to raise field temperature by 1-2°C and spray 0.1% soluble sulphur.';
+        tips = ['Light evening irrigation', '0.1% soluble sulphur spray'];
       } else if (msg.contains('heat') || msg.contains('sun') || msg.contains('hot')) {
-        reply =
-            'To safeguard crops against heatwave (>40°C), follow scientific recommendations:\n\n'
-            '1. Irrigate only after 5 PM or during early morning hours via drip or sprinkler.\n'
-            '2. Apply crop straw mulching to conserve root zone soil moisture.\n'
-            '3. Use 50% green agro-shade nets over vegetable nurseries.';
-        tips = [
-          'Irrigate only in evening or early morning',
-          'Mulch with straw to retain moisture',
-          'Avoid pesticide sprays in hot sun'
-        ];
+        reply = 'For heatwave protection (>40°C), irrigate only after 5 PM and apply straw mulch to conserve root moisture.';
+        tips = ['Irrigate after 5 PM only', 'Apply straw mulching'];
       } else if (msg.contains('water') || msg.contains('irrigat') || msg.contains('moisture')) {
-        reply =
-            'Irrigation advisory based on current soil and weather conditions:\n\n'
-            '1. Check moisture at 2-3 inches soil depth by squeezing a handful. If a firm ball forms, defer irrigation.\n'
-            '2. Avoid water stagnation during flowering stage.\n'
-            '3. Use straw mulching to prevent surface evaporation.';
-        tips = [
-          'Light evening irrigation',
-          'Check moisture at 2-3 inches depth',
-          'Use mulching'
-        ];
+        reply = 'Check soil at 2-3 inches depth; irrigate lightly in the evening only if dry, and avoid water stagnation during flowering.';
+        tips = ['Light evening irrigation', 'Use straw mulching'];
       } else if (msg.contains('pest') || msg.contains('disease') || msg.contains('spray') || msg.contains('insect')) {
-        reply =
-            'Per ICAR and CIB&RC guidelines, prescribing synthetic chemicals without site inspection may harm crops.\n\n'
-            'Safe biological remedies:\n'
-            '1. Spray neem seed kernel extract or neem oil (5 ml/L water) for sucking pests.\n'
-            '2. Install 5-6 yellow sticky traps or pheromone traps per acre.\n'
-            '3. Call Kisan Call Center (1800-180-1551) toll-free for authorized chemical recommendations.';
-        tips = [
-          'Use neem-based organic pesticide',
-          'Install yellow sticky traps',
-          'Consult KVK Helpline: 1800-180-1551'
-        ];
+        reply = 'Spray neem oil (5 ml/L) and install 5-6 sticky traps per acre for $activeCrop pests. Call KVK 1800-180-1551 for chemical dosages.';
+        tips = ['Neem oil 5 ml/L spray', 'Call KVK: 1800-180-1551'];
       } else {
-        reply =
-            'Hello Farmer friend! I am your KisanMausam Agricultural Assistant. Current temperature in $village is ${temp.toStringAsFixed(1)}°C with fair weather.\n\n'
-            'Ask me anything about weather risks (frost, heat, rain), irrigation scheduling, organic pest control, or crop insurance (PMFBY).';
-        tips = [
-          'Check weather forecasts before farm operations',
-          'Use neem oil for organic pest control',
-          'Insure crops under PMFBY scheme'
-        ];
+        reply = '$village is at ${temp.toStringAsFixed(1)}°C ($weatherState). For $activeCrop, check topsoil moisture and irrigate lightly in the evening if needed.';
+        tips = ['Check weather before spraying', 'KVK Helpline: 1800-180-1551'];
       }
 
       return {
         'reply_text': reply,
         'actionable_tips': tips,
-        'kvk_contact': '1800-180-1551 (Kisan Call Center Toll-Free)',
-        'disclaimer': 'Guidance based on ICAR and IMD scientific standards. Consult local KVK for chemical dosages.',
+        'kvk_contact': '1800-180-1551',
+        'disclaimer': 'ICAR/IMD advisory. Call KVK 1800-180-1551 for chemical dosages.',
         'grounding_summary': {'crop': activeCrop, 'village': village}
       };
     } else {
-      // Pure Hindi responses
       if (msg.contains('नमस्ते') || msg.contains('राम-राम') || msg.contains('hello') || msg.contains('hi') || msg.contains('kaise ho')) {
-        reply =
-            'राम-राम किसान भाई! मैं आपका किसान मौसम कृषि सहायक हूँ। आपके क्षेत्र ($village) में इस समय तापमान ${temp.toStringAsFixed(1)}°C है और मौसम $weatherState है।\n\n'
-            'मैं आपकी फसल ($activeCrop) की मौसम सुरक्षा, तापमान, बारिश, सिंचाई और जैविक कीट नियंत्रण में पूरी सहायता कर सकता हूँ।';
-        tips = [
-          'वर्तमान तापमान: ${temp.toStringAsFixed(1)}°C ($weatherState)',
-          'मौसम अनुसार कृषि कार्य तय करें',
-          'KVK हेल्पलाइन 1800-180-1551'
-        ];
+        reply = 'राम-राम! $village में अभी ${temp.toStringAsFixed(1)}°C ($weatherState) है। $activeCrop, सिंचाई या मौसम सुरक्षा पर सीधा सवाल पूछें।';
+        tips = ['तापमान: ${temp.toStringAsFixed(1)}°C ($weatherState)', 'KVK: 1800-180-1551'];
       } else if (msg.contains('temperature') || msg.contains('temp') || msg.contains('तापमान') || msg.contains('weather') || msg.contains('मौसम') || msg.contains('kitna') || msg.contains('हाल')) {
-        reply =
-            'किसान भाई, $village में वर्तमान समय का तापमान ${temp.toStringAsFixed(1)}°C है।\n\n'
-            '• मौसम की स्थिति: $weatherState\n'
-            '• हवा की गति: $wind km/h\n'
-            '• सापेक्ष आर्द्रता: $humidity%\n\n'
-            'कृषि परामर्श: तापमान $activeCrop के लिए अनुकूल है। आवश्यकतानुसार खेत में नमी बनाए रखें।';
-        tips = [
-          'वर्तमान तापमान ${temp.toStringAsFixed(1)}°C अनुसार नमी परखें',
-          'दोपहर की धूप में दवा छिड़काव न करें',
-          'KVK 1800-180-1551 पर संपर्क करें'
-        ];
+        reply = '$village में तापमान ${temp.toStringAsFixed(1)}°C ($weatherState, हवा $wind km/h, नमी $humidity%) है। यह $activeCrop के लिए अनुकूल है; शाम को हल्की नमी बनाए रखें।';
+        tips = ['2-3 इंच गहराई पर नमी जांचें', 'तेज धूप में छिड़काव न करें'];
       } else if (msg.contains('बारिश') || msg.contains('rain') || msg.contains('वर्षा') || msg.contains('बरसात')) {
-        reply =
-            'किसान भाई, $village में आज मौसम मुख्यतः शुष्क व साफ रहने का अनुमान है। भारी वर्षा का तात्कालिक खतरा नहीं है।\n\n'
-            'सुझाव: शाम के समय आवश्यकता अनुसार हल्की सिंचाई कर सकते हैं। जल निकासी की नालियां तैयार रखें।';
-        tips = [
-          'हल्की सिंचाई की जा सकती है',
-          'नालियों को साफ रखें',
-          'मौसम पूर्वानुमान देखकर ही छिड़काव करें'
-        ];
+        reply = '$village में अभी भारी बारिश का खतरा नहीं है। मिट्टी सूखी हो तो शाम को हल्की सिंचाई करें और नालियां साफ रखें।';
+        tips = ['शाम को हल्की सिंचाई करें', 'जल निकासी नालियां साफ रखें'];
       } else if (msg.contains('हवा') || msg.contains('wind') || msg.contains('आंधी')) {
-        reply =
-            'किसान भाई, $village में वर्तमान हवा की गति $wind km/h है। यदि हवा की गति 15 km/h से कम है तो छिड़काव सुरक्षित है।';
-        tips = [
-          'हवा की गति: $wind km/h',
-          '15 km/h से तेज हवा में छिड़काव न करें'
-        ];
+        reply = '$village में हवा की गति $wind km/h है। 15 km/h से कम हवा में छिड़काव सुरक्षित है।';
+        tips = ['हवा: $wind km/h', '15 km/h से तेज हवा में स्प्रे न करें'];
       } else if (msg.contains('पाला') || msg.contains('पाले') || msg.contains('ठंड') || msg.contains('frost') || msg.contains('शीत')) {
-        reply =
-            'राम-राम किसान भाई! पाला व शीतलहर (0°C से 4°C) से फसल के फूल, पत्तियों व फलियों को बचाने हेतु ICAR के प्रमुख उपाय:\n\n'
-            '1. शाम के समय हल्की सिंचाई करें, जिससे खेत का तापमान 1-2°C बढ़ जाता है।\n'
-            '2. रात को खेत की उत्तर-पश्चिम मेड़ों पर खरपतवार व उपले जलाकर धुएं की चादर बनाएं।\n'
-            '3. 0.1% घुलनशील गंधक का छिड़काव फसल की पाले से सहनशीलता बढ़ाता है।\n'
-            '4. रासायनिक मात्रा हेतु KVK (1800-180-1551) से परामर्श लें।';
-        tips = [
-          'शाम को खेत में हल्की सिंचाई करें',
-          'उत्तर-पश्चिम मेड़ों पर शाम को धुआं करें',
-          'घुलनशील गंधक का छिड़काव करें'
-        ];
+        reply = 'पाले (0-4°C) से बचाव हेतु शाम को हल्की सिंचाई करें और उत्तर-पश्चिम मेड़ पर धुआं या 0.1% घुलनशील गंधक का स्प्रे करें।';
+        tips = ['शाम को हल्की सिंचाई करें', '0.1% घुलनशील गंधक का स्प्रे'];
       } else if (msg.contains('लू') || msg.contains('गर्मी') || msg.contains('heat')) {
-        reply =
-            'किसान भाई, तेज धूप व लू से फसल को बचाने हेतु वैज्ञानिक सलाह:\n\n'
-            '1. सिंचाई केवल शाम 5 बजे के बाद या तड़के स्प्रिंकलर या ड्रिप से करें।\n'
-            '2. पुआल की मल्चिंग करें ताकि मिट्टी की नमी का वाष्पीकरण रुके।\n'
-            '3. सब्जियों व नर्सरी पर 50% ग्रीन शेड नेट का प्रयोग करें।';
-        tips = [
-          'सिंचाई केवल शाम या रात में करें',
-          'पुआल मल्चिंग से नमी बचाएं',
-          'कड़ी धूप में कीटनाशक छिड़काव न करें'
-        ];
+        reply = 'लू (>40°C) से बचाव हेतु केवल शाम 5 बजे बाद सिंचाई करें और खेत में पुआल की मल्चिंग बिछाएं।';
+        tips = ['शाम 5 बजे बाद सिंचाई करें', 'पुआल की मल्चिंग करें'];
       } else if (msg.contains('पानी') || msg.contains('सिंचाई') || msg.contains('water') || msg.contains('नमी')) {
-        reply =
-            'किसान भाई, वर्तमान मौसम के अनुसार सिंचाई परामर्श:\n\n'
-            '1. मिट्टी में 2-3 इंच गहराई पर मुट्ठी बांधकर नमी जांचें। यदि लड्डू बनता है तो सिंचाई टालें।\n'
-            '2. फूल आने की अवस्था में अधिक पानी न भरें। शाम के समय हल्की सिंचाई सबसे उपयुक्त है।\n'
-            '3. वाष्पीकरण रोकने हेतु फसल अवशेषों की मल्चिंग करें।';
-        tips = [
-          'शाम के समय हल्की सिंचाई करें',
-          'मिट्टी की 2-3 इंच गहराई पर नमी जांचें',
-          'मल्चिंग का उपयोग करें'
-        ];
+        reply = 'मिट्टी में 2-3 इंच गहराई पर नमी जांचें; सूखी होने पर केवल शाम को हल्की सिंचाई करें और फूल अवस्था में जलभराव न होने दें।';
+        tips = ['शाम को हल्की सिंचाई करें', 'मल्चिंग से नमी बचाएं'];
       } else if (msg.contains('कीट') || msg.contains('दवा') || msg.contains('कीटनाशक') || msg.contains('pest') || msg.contains('रोग')) {
-        reply =
-            'किसान भाई, ICAR एवं CIB&RC मानकों के अनुसार बिना वैज्ञानिक परीक्षण के रासायनिक कीटनाशक की मात्रा बताना फसल के लिए हानिकारक हो सकता है।\n\n'
-            'जैविक व सुरक्षित उपाय:\n'
-            '1. रस चूसक कीटों हेतु नीम तेल (5 मिली प्रति लीटर पानी) का छिड़काव करें।\n'
-            '2. प्रति एकड़ 5-6 फेरोमोन या पीले चिपचिपे ट्रैप लगाएं।\n'
-            '3. रासायनिक खुराक हेतु किसान कॉल सेंटर (1800-180-1551) पर निःशुल्क संपर्क करें।';
-        tips = [
-          'नीम आधारित जैविक कीटनाशक का प्रयोग करें',
-          'पीले चिपचिपे ट्रैप लगाएं',
-          'KVK हेल्पलाइन 1800-180-1551 पर संपर्क करें'
-        ];
+        reply = '$activeCrop में कीट नियंत्रण हेतु नीम तेल (5 मिली/लीटर) का स्प्रे करें और 5-6 पीले ट्रैप लगाएं। रासायनिक मात्रा हेतु KVK 1800-180-1551 पर कॉल करें।';
+        tips = ['नीम तेल 5 मिली/लीटर स्प्रे', 'KVK हेल्पलाइन: 1800-180-1551'];
       } else if (msg.contains('बीमा') || msg.contains('pmfby') || msg.contains('मुआवजा')) {
-        reply =
-            'किसान भाई, प्रधानमंत्री फसल बीमा योजना (PMFBY) के तहत किसी भी प्राकृतिक आपदा (ओलावृष्टि, सूखा, जलभराव) के 72 घंटे के भीतर टोल-फ्री 14447 अथवा फसल बीमा ऐप पर दावा दर्ज कराएं।';
-        tips = [
-          'आपदा के 72 घंटे के भीतर टोल-फ्री 14447 पर सूचना दें',
-          'क्रॉप इंश्योरेंस ऐप से फोटो अपलोड करें'
-        ];
+        reply = 'फसल नुकसान के 72 घंटे के भीतर PMFBY टोल-फ्री 14447 या क्रॉप इंश्योरेंस ऐप पर फोटो सहित दावा दर्ज करें।';
+        tips = ['72 घंटे में 14447 पर सूचना दें', 'ऐप पर खेत की फोटो अपलोड करें'];
       } else {
-        reply =
-            'राम-राम किसान भाई! मैं आपका किसान मौसम कृषि सहायक हूँ। आपके क्षेत्र ($village) में वर्तमान तापमान ${temp.toStringAsFixed(1)}°C है और मौसम सामान्य है।\n\n'
-            'आप मुझसे मौसम आपदा सुरक्षा (पाला, लू, भारी बारिश), सिंचाई, जैविक कीट नियंत्रण अथवा फसल बीमा पर कोई भी सवाल पूछ सकते हैं।';
-        tips = [
-          'मौसम पूर्वानुमान देखकर ही कृषि कार्य करें',
-          'जैविक कीट नियंत्रण हेतु नीम तेल का प्रयोग करें',
-          'PMFBY योजना से अपनी फसल सुरक्षित रखें'
-        ];
+        reply = '$village में अभी ${temp.toStringAsFixed(1)}°C ($weatherState) है। $activeCrop में नमी जांचकर शाम को हल्की सिंचाई करें व कीटों हेतु नीम तेल अपनाएं।';
+        tips = ['मौसम देखकर ही स्प्रे व सिंचाई करें', 'KVK हेल्पलाइन: 1800-180-1551'];
       }
 
       return {
         'reply_text': reply,
         'actionable_tips': tips,
-        'kvk_contact': '1800-180-1551 (Kisan Call Centre Toll-Free)',
-        'disclaimer': 'यह सलाह ICAR एवं IMD वैज्ञानिक मार्गदर्शिकाओं पर आधारित है। रासायनिक उपचार हेतु स्थानीय KVK से परामर्श लें।',
+        'kvk_contact': '1800-180-1551',
+        'disclaimer': 'ICAR/IMD मानक सलाह। रासायनिक मात्रा हेतु KVK 1800-180-1551 पर पूछें।',
         'grounding_summary': {'crop': activeCrop, 'village': village}
       };
     }

@@ -135,16 +135,12 @@ class _KrishiSahayakScreenState extends State<KrishiSahayakScreen>
     final crop = widget.farm?.currentCrop ?? (isEn ? 'Soybean' : 'सोयाबीन');
     final village = widget.locationName ?? widget.farm?.village ?? (isEn ? 'your area' : 'आपका क्षेत्र');
     final currentTemp = widget.weather?.current.temperature;
-    final tempStr = currentTemp != null
-        ? (isEn ? ' (current temperature ${currentTemp.toStringAsFixed(1)}°C)' : ' (वर्तमान तापमान ${currentTemp.toStringAsFixed(1)}°C)')
-        : '';
+    final tempStr = currentTemp != null ? ' (${currentTemp.toStringAsFixed(1)}°C)' : '';
     _messages.add(
       ChatMessage(
         text: isEn
-            ? 'Hello Farmer friend! I am your KisanMausam Agricultural Assistant. Ask me any question by voice or text about the weather and crop protection for $village$tempStr and crop $crop.\n\n'
-                'I provide guidance grounded in the scientific standards of the Indian Council of Agricultural Research (ICAR) and India Meteorological Department (IMD).'
-            : 'राम-राम किसान भाई! मैं आपका किसान मौसम कृषि सहायक हूँ। आपके क्षेत्र ($village)$tempStr और फसल ($crop) के मौसम व सुरक्षा पर कोई भी सवाल बोलकर या लिखकर पूछें।\n\n'
-                'मैं भारतीय कृषि अनुसंधान परिषद (ICAR) एवं मौसम विज्ञान विभाग (IMD) के वैज्ञानिक मानकों पर आधारित सलाह देता हूँ।',
+            ? 'Hello! $village$tempStr | Crop: $crop. Ask me any question about weather, irrigation, or crop protection.'
+            : 'राम-राम! $village$tempStr | फसल: $crop। मौसम, सिंचाई या फसल सुरक्षा पर अपना सवाल पूछें।',
         isUser: false,
         kvkContact: '1800-180-1551',
         timestamp: _formatTime(),

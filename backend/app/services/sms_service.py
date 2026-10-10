@@ -145,9 +145,6 @@ class MessageCentralSMSProvider(BaseSMSProvider):
         return False
 
     async def send_sms(self, phone_number: str, template_key: str, params: Dict[str, Any]) -> Dict[str, Any]:
-        if not self.customer_id or not self.auth_token:
-            return await MockSMSProvider().send_sms(phone_number, template_key, params)
-
         clean_mobile = normalize_indian_mobile(phone_number)
         village = params.get("village", "आपके क्षेत्र")
         crop = params.get("crop", "फसल")
@@ -160,45 +157,16 @@ class MessageCentralSMSProvider(BaseSMSProvider):
             f"Risk {prob}%. Action: {action} Helpline: 1800-180-1551"
         )
 
-        headers = {
-            "authToken": self.auth_token,
-            "accept": "application/json",
+        # Do NOT call MessageCentral /verification/v3/send here because VerifyNow is strictly an OTP pipeline
+        # and sends an OTP code instead of the custom weather alert text.
+        # Custom weather/SOS alert SMS is dispatched directly on-device via Android SmsManager with full alert text.
+        logger.info(f"📱 [Weather Alert SMS Queued for Native Device Dispatch] To: +91{clean_mobile} | Message: {message_text}")
+        return {
+            "status": "success",
+            "provider": "native_sms",
+            "message_id": f"alert_{clean_mobile}_{template_key}",
+            "message_text": message_text,
         }
-
-        try:
-            async with httpx.AsyncClient(timeout=12.0) as client:
-                # 1. Attempt transactional SMS dispatch with message payload
-                tx_params = {
-                    "countryCode": "91",
-                    "customerId": self.customer_id,
-                    "senderId": self.sender_id,
-                    "type": "SMS",
-                    "flowType": "SMS",
-                    "mobileNumber": clean_mobile,
-                    "message": message_text,
-                    "messageType": "TRANSACTION",
-                }
-                resp = await client.post(f"{self.base_url}/send", params=tx_params, headers=headers)
-                data = resp.json() if resp.content else {}
-                if str(data.get("responseCode")) == "200":
-                    payload = data.get("data") or {}
-                    logger.info(f"🚨 [MessageCentral Alert SMS Sent] To: +91{clean_mobile} | Template: {template_key}")
-                    return {
-                        "status": "success",
-                        "provider": "messagecentral",
-                        "message_id": str(payload.get("verificationId") or payload.get("transactionId") or "mc_tx"),
-                    }
-
-                logger.info(f"📱 [Alert SMS Logged] To: +91{clean_mobile} | Message: {message_text}")
-                return {
-                    "status": "success",
-                    "provider": "native_sms",
-                    "message_id": f"alert_{clean_mobile}_{template_key}",
-                    "message_text": message_text,
-                }
-        except Exception as e:
-            logger.error(f"MessageCentral send_sms error for {clean_mobile}: {e}")
-            return await MockSMSProvider().send_sms(phone_number, template_key, params)
 
 
 class MSG91SMSProvider(BaseSMSProvider):

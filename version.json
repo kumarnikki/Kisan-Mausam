@@ -1,10 +1,10 @@
 {
-  "version": "1.1.0",
-  "versionCode": 10,
-  "releaseName": "Kisan Mausam v1.1.0 - Streamlined Home & Cloud SMS Edition",
+  "version": "1.1.2",
+  "versionCode": 12,
+  "releaseName": "Kisan Mausam v1.1.2 - Concise AI & Direct Weather SMS Edition",
   "apkUrl": "https://github.com/kumarnikki/Kisan-Mausam/releases/download/v1.0.0/kisan-mausam-release.apk",
   "githubReleaseUrl": "https://github.com/kumarnikki/Kisan-Mausam/releases/latest",
-  "changelog": "• Complete UI/UX cleanup pass: decluttered top bar, unified card design system\n• Non-intrusive 56px voice FAB & prominent hero voice assistant banner\n• Unified 10-day forecast continuous list view with daily divider lines\n• Pure language separation (Hindi/English) throughout the app\n• Hidden developer settings (7 taps) keeping farmer settings simple & clean\n• Improved scroll breathing room and card elevation hierarchy",
+  "changelog": "• Short, crisp, to-the-point AI Krishi Sahayak responses (1-2 sentences)\n• Direct Weather & SOS Alert SMS text dispatch (never sends OTP for weather alerts)\n• Top Crop Advisory quick navigation & bottom-right Voice Assistant FAB\n• Play Protect safe manifest permissions",
   "minRequiredVersion": "1.0.0",
-  "publishedAt": "2026-10-10T11:45:00Z"
+  "publishedAt": "2026-10-10T12:00:00Z"
 }
