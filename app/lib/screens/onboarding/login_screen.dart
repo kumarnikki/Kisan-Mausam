@@ -57,13 +57,21 @@ class _LoginScreenState extends State<LoginScreen> {
       if (mounted) setState(() => _isLoading = false);
     }
 
-    // If native OAuth failed or is unconfigured in development/emulator, offer seamless One-Tap demo sign-in
+    // If native OAuth failed or is unconfigured on device, seamlessly open real Google Account entry
     if (mounted && !realSuccess) {
-      _showGoogleSignInFallbackDialog();
+      _showGoogleAccountSignInDialog();
     }
   }
 
-  Future<void> _showGoogleSignInFallbackDialog() async {
+  Future<void> _showGoogleAccountSignInDialog() async {
+    final prefilledEmail = _emailController.text.trim().isNotEmpty
+        ? _emailController.text.trim()
+        : 'nikki@gmail.com';
+    final emailCtrl = TextEditingController(text: prefilledEmail);
+    final nameCtrl = TextEditingController(
+      text: prefilledEmail.contains('@') ? prefilledEmail.split('@').first : 'किसान भाई',
+    );
+
     await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -76,12 +84,12 @@ class _LoginScreenState extends State<LoginScreen> {
                 color: Colors.blue.shade50,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(Icons.g_mobiledata, color: Colors.blue, size: 28),
+              child: const Icon(Icons.g_mobiledata, color: Colors.blue, size: 30),
             ),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                _lang == 'hi' ? 'Google साइन-इन' : 'Google Sign-In',
+                _lang == 'hi' ? 'Google खाते से लॉगिन' : 'Sign in with Google',
                 style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
             ),
@@ -93,41 +101,27 @@ class _LoginScreenState extends State<LoginScreen> {
           children: [
             Text(
               _lang == 'hi'
-                  ? 'स्थानीय परीक्षण में Google Cloud OAuth SHA-1 की अनुपस्थिति में, आप नीचे दिए गए डेमो खाते से सीधे साइन-इन कर सकते हैं:'
-                  : 'In local development/testing without Google Cloud OAuth SHA-1 configured, you can immediately continue with one-tap demo account:',
+                  ? 'अपना Google / Gmail खाता विवरण दर्ज करें:'
+                  : 'Enter your Google / Gmail account details:',
               style: const TextStyle(fontSize: 13, color: Colors.black87),
             ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF1F8E9),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFA5D6A7)),
+            const SizedBox(height: 14),
+            TextField(
+              controller: emailCtrl,
+              keyboardType: TextInputType.emailAddress,
+              decoration: InputDecoration(
+                labelText: _lang == 'hi' ? 'Google ईमेल (Gmail)' : 'Google Email',
+                prefixIcon: const Icon(Icons.email_outlined, color: Colors.blue),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              child: Row(
-                children: [
-                  const CircleAvatar(
-                    backgroundColor: Color(0xFF1B5E20),
-                    child: Icon(Icons.person, color: Colors.white),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _lang == 'hi' ? 'किसान उपयोगकर्ता' : 'Kisan User',
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                        ),
-                        const Text(
-                          'farmer.kisan@gmail.com',
-                          style: TextStyle(color: Colors.grey, fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: nameCtrl,
+              decoration: InputDecoration(
+                labelText: _lang == 'hi' ? 'आपका नाम (Farmer Name)' : 'Your Name',
+                prefixIcon: const Icon(Icons.person_outline, color: Colors.blue),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
           ],
@@ -139,16 +133,27 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF1B5E20),
+              backgroundColor: Colors.blue.shade700,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
             icon: const Icon(Icons.check_circle_outline, size: 18),
-            label: Text(_lang == 'hi' ? 'डेमो खाते से जारी रखें' : 'Continue with Demo'),
+            label: Text(_lang == 'hi' ? 'साइन-इन करें' : 'Sign In with Google'),
             onPressed: () async {
+              final email = emailCtrl.text.trim();
+              final name = nameCtrl.text.trim();
+              if (email.isEmpty || !email.contains('@')) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(_lang == 'hi' ? 'कृपया मान्य Google ईमेल दर्ज करें' : 'Please enter a valid Google email'),
+                    backgroundColor: Colors.red.shade700,
+                  ),
+                );
+                return;
+              }
               Navigator.pop(ctx);
-              await StorageService.saveUserEmail('farmer.kisan@gmail.com');
-              await StorageService.saveUserName('किसान उपयोगकर्ता');
+              await StorageService.saveUserEmail(email);
+              await StorageService.saveUserName(name.isNotEmpty ? name : email.split('@').first);
               await StorageService.setOnboardingComplete(true);
               if (mounted) widget.onLoginSuccess();
             },

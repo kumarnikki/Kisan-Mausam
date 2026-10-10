@@ -193,4 +193,21 @@ class StorageService {
     }
     return null;
   }
+
+  // ── Custom Cloud Backend URL (e.g. AWS EC2 IP) ──────────────────────────
+  static const String _keyBackendUrl = 'custom_backend_url';
+
+  static Future<void> saveCustomBackendUrl(String url) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (url.trim().isEmpty) {
+      await prefs.remove(_keyBackendUrl);
+    } else {
+      await prefs.setString(_keyBackendUrl, url.trim());
+    }
+  }
+
+  static Future<String?> getCustomBackendUrl() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyBackendUrl);
+  }
 }

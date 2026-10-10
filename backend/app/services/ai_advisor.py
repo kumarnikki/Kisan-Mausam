@@ -47,7 +47,7 @@ SYSTEM_PROMPT_TEMPLATE = """
 class AIAdvisorService:
     def __init__(self):
         self.api_key = os.environ.get("GEMINI_API_KEY") or settings.GEMINI_API_KEY
-        self.model = "gemini-2.0-flash"
+        self.model = "gemini-3.5-flash-lite"
         self.base_url = "https://generativelanguage.googleapis.com/v1beta/models"
 
     def _build_grounded_prompt(
@@ -95,39 +95,42 @@ class AIAdvisorService:
     ) -> Dict[str, Any]:
         system_instruction = self._build_grounded_prompt(farm_profile, weather_data, risk_data, enso_data)
 
-        # 1. Real Gemini 2.0 Flash API Call if key is set via client request, .env, or env variable
+        # 1. Real Gemini API Call if key is set via client request, .env, or env variable
         effective_key = client_api_key or self.api_key or os.environ.get("GEMINI_API_KEY") or settings.GEMINI_API_KEY
         if effective_key and str(effective_key).strip() and str(effective_key).strip() != "mock_key":
-            try:
-                url = f"{self.base_url}/{self.model}:generateContent?key={str(effective_key).strip()}"
-                payload = {
-                    "contents": [
-                        {
-                            "role": "user",
-                            "parts": [{"text": user_message}]
+            clean_key = str(effective_key).strip()
+            models_to_try = [self.model, "gemini-3.8-flash", "gemini-flash-latest"]
+            for m in models_to_try:
+                try:
+                    url = f"{self.base_url}/{m}:generateContent?key={clean_key}"
+                    payload = {
+                        "contents": [
+                            {
+                                "role": "user",
+                                "parts": [{"text": user_message}]
+                            }
+                        ],
+                        "systemInstruction": {
+                            "parts": [{"text": system_instruction}]
+                        },
+                        "generationConfig": {
+                            "temperature": 0.3,
+                            "maxOutputTokens": 800
                         }
-                    ],
-                    "systemInstruction": {
-                        "parts": [{"text": system_instruction}]
-                    },
-                    "generationConfig": {
-                        "temperature": 0.3,
-                        "maxOutputTokens": 700
                     }
-                }
-                async with httpx.AsyncClient(timeout=15.0) as client:
-                    resp = await client.post(url, json=payload)
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        candidates = data.get("candidates", [])
-                        if candidates:
-                            reply_text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                            if reply_text and len(reply_text.strip()) > 0:
-                                return self._format_response(reply_text, farm_profile)
-                    else:
-                        logger.warning(f"Gemini API returned status {resp.status_code}: {resp.text}")
-            except Exception as e:
-                logger.error(f"Gemini API error: {e}. Falling back to comprehensive grounded rule advisor.")
+                    async with httpx.AsyncClient(timeout=15.0) as client:
+                        resp = await client.post(url, json=payload)
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            candidates = data.get("candidates", [])
+                            if candidates:
+                                reply_text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                                if reply_text and len(reply_text.strip()) > 0:
+                                    return self._format_response(reply_text, farm_profile)
+                        else:
+                            logger.warning(f"Gemini API model {m} returned status {resp.status_code}: {resp.text}")
+                except Exception as e:
+                    logger.error(f"Gemini API error for model {m}: {e}. Trying next model if available.")
 
         # 2. Resilient Grounded Intelligent Fallback (ICAR Rule-Engine Based)
         return self._generate_grounded_fallback_advice(

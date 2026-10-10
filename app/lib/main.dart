@@ -10,8 +10,14 @@ import 'screens/onboarding/farm_setup_screen.dart';
 import 'screens/home/weather_home_screen.dart';
 import 'screens/settings/settings_screen.dart';
 
+import 'services/api_service.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  final customUrl = await StorageService.getCustomBackendUrl();
+  if (customUrl != null) {
+    ApiService.setCustomBackendUrl(customUrl);
+  }
   runApp(const KisanMausamApp());
 }
 

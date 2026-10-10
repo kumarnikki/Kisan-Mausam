@@ -5,6 +5,7 @@ import '../../services/voice_service.dart';
 import '../../services/storage_service.dart';
 import '../../models/farm_profile.dart';
 import '../../models/weather_models.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class ChatMessage {
   final String text;
@@ -71,6 +72,12 @@ class _KrishiSahayakScreenState extends State<KrishiSahayakScreen>
       vsync: this,
       duration: const Duration(milliseconds: 900),
     );
+
+    StorageService.getGeminiApiKey().then((k) {
+      if (k == null || k.isEmpty) {
+        StorageService.saveGeminiApiKey(ApiService.defaultGeminiApiKey);
+      }
+    });
 
     _initWelcomeMessage();
   }
@@ -432,26 +439,47 @@ class _KrishiSahayakScreenState extends State<KrishiSahayakScreen>
     );
   }
 
-  void _callKvk() {
+  Future<void> _callKvk([String? customNumber]) async {
+    final rawNumber = customNumber ?? '1800-180-1551';
+    final cleanDigits = rawNumber.replaceAll(RegExp(r'[^0-9+]'), '');
+    final Uri callUri = Uri(scheme: 'tel', path: cleanDigits.isNotEmpty ? cleanDigits : '18001801551');
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: const Row(
+        content: Row(
           children: [
-            Icon(Icons.call, color: Colors.white, size: 20),
-            SizedBox(width: 10),
+            const Icon(Icons.call, color: Colors.white, size: 20),
+            const SizedBox(width: 10),
             Expanded(
               child: Text(
-                'किसान कॉल सेंटर (KVK) टोल-फ्री 1800-180-1551 पर कॉल किया जा रहा है...',
-                style: TextStyle(fontWeight: FontWeight.bold),
+                'किसान कॉल सेंटर ($rawNumber) डायलर खोला जा रहा है...',
+                style: const TextStyle(fontWeight: FontWeight.bold),
               ),
             ),
           ],
         ),
         backgroundColor: const Color(0xFF1B5E20),
+        duration: const Duration(seconds: 2),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
+
+    try {
+      final launched = await launchUrl(callUri, mode: LaunchMode.externalApplication);
+      if (!launched) {
+        await launchUrl(callUri);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('डायलर खोलने में असमर्थ ($e), कृपया मैन्युअली $rawNumber डायल करें'),
+            backgroundColor: Colors.orange.shade800,
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -1370,7 +1398,7 @@ class _KrishiSahayakScreenState extends State<KrishiSahayakScreen>
                     if (msg.kvkContact != null)
                       Expanded(
                         child: InkWell(
-                          onTap: _callKvk,
+                          onTap: () => _callKvk(msg.kvkContact),
                           child: Text(
                             '📞 KVK: ${msg.kvkContact}',
                             maxLines: 1,

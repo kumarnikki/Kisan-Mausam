@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 import '../../l10n/app_strings.dart';
 import '../../services/storage_service.dart';
+import '../../services/api_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   final VoidCallback onThemeChanged;
@@ -23,6 +25,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   String _lang = 'hi';
   bool _highContrast = false;
+  String? _customBackendUrl;
 
   @override
   void initState() {
@@ -33,10 +36,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _loadSettings() async {
     final l = await StorageService.getLanguage();
     final hc = await StorageService.isHighContrast();
+    final bUrl = await StorageService.getCustomBackendUrl();
     if (mounted) {
       setState(() {
         _lang = l;
         _highContrast = hc;
+        _customBackendUrl = bUrl;
       });
     }
   }
@@ -86,6 +91,145 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  void _showServerConfigDialog() {
+    final controller = TextEditingController(text: _customBackendUrl ?? '');
+    String? pingStatus;
+    bool isPinging = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (dlgCtx, setDlgState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Row(
+            children: [
+              Icon(Icons.cloud_sync, color: Color(0xFF1B5E20)),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text('AWS EC2 / क्लाउड सर्वर', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'अपने लाइव AWS EC2 या क्लाउड सर्वर का IP/URL दर्ज करें ताकि ऐप सीधे आपके बैकएंड व डेटाबेस से जुड़े:',
+                style: TextStyle(fontSize: 13, color: Colors.black87),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                decoration: InputDecoration(
+                  hintText: 'http://<EC2-PUBLIC-IP>:8000',
+                  labelText: 'सर्वर बेस URL',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  prefixIcon: const Icon(Icons.link),
+                ),
+              ),
+              const SizedBox(height: 8),
+              if (pingStatus != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Text(
+                    pingStatus!,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: pingStatus!.startsWith('✅') ? Colors.green.shade800 : Colors.red.shade800,
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  OutlinedButton.icon(
+                    icon: isPinging
+                        ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.network_ping, size: 16),
+                    label: const Text('कनेक्शन जांचें (Ping)'),
+                    onPressed: isPinging
+                        ? null
+                        : () async {
+                            final target = controller.text.trim().replaceAll(RegExp(r'/+$'), '');
+                            if (target.isEmpty) {
+                              setDlgState(() => pingStatus = '⚠️ कृपया पहले सर्वर URL दर्ज करें');
+                              return;
+                            }
+                            setDlgState(() {
+                              isPinging = true;
+                              pingStatus = 'जांच हो रही है...';
+                            });
+                            try {
+                              final dio = Dio(BaseOptions(
+                                connectTimeout: const Duration(milliseconds: 3500),
+                                receiveTimeout: const Duration(milliseconds: 3500),
+                              ));
+                              final res = await dio.get('$target/docs');
+                              if (res.statusCode == 200 || res.statusCode == 404) {
+                                setDlgState(() {
+                                  pingStatus = '✅ लाइव सर्वर सक्रिय और कनेक्टेड!';
+                                  isPinging = false;
+                                });
+                              } else {
+                                setDlgState(() {
+                                  pingStatus = '⚠️ सर्वर कोड ${res.statusCode} लौटा रहा है';
+                                  isPinging = false;
+                                });
+                              }
+                            } catch (e) {
+                              setDlgState(() {
+                                pingStatus = '❌ कनेक्ट नहीं हो सका (जांचें कि EC2 पर पोर्ट 8000 खुला है)';
+                                isPinging = false;
+                              });
+                            }
+                          },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'ℹ️ खाली रखने पर ऐप ऑटो-मोड (Open-Meteo व डायरेक्ट Gemini क्लाउड) में चलता रहेगा।',
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('रद्द करें'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF1B5E20),
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () async {
+                final messenger = ScaffoldMessenger.of(context);
+                final url = controller.text.trim();
+                Navigator.pop(ctx);
+                await StorageService.saveCustomBackendUrl(url);
+                ApiService.setCustomBackendUrl(url);
+                if (!mounted) return;
+                setState(() => _customBackendUrl = url.isEmpty ? null : url);
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: Text(url.isEmpty
+                        ? 'डिफ़ॉल्ट क्लाउड मोड सक्रिय'
+                        : '✅ सर्वर URL अपडेट हो गया: $url'),
+                    backgroundColor: const Color(0xFF1B5E20),
+                  ),
+                );
+              },
+              child: const Text('सुरक्षित करें'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -117,6 +261,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
             subtitle: const Text('खेत में धूप के दौरान स्पष्टता हेतु गहरा काला व सफेद बॉर्डर'),
             value: _highContrast,
             onChanged: _toggleHighContrast,
+          ),
+          const Divider(),
+
+          // Section 1.5: Cloud Backend & AWS Server
+          _buildSectionHeader('क्लाउड बैकएंड व डेटाबेस (AWS EC2 / Server)'),
+          ListTile(
+            leading: const Icon(Icons.cloud_sync, color: Color(0xFF1B5E20)),
+            title: const Text('बैकएंड सर्वर URL (Backend API)', style: TextStyle(fontWeight: FontWeight.bold)),
+            subtitle: Text(
+              _customBackendUrl != null && _customBackendUrl!.isNotEmpty
+                  ? 'लाइव सर्वर: $_customBackendUrl'
+                  : 'डिफ़ॉल्ट: ${ApiService.backendBaseUrl} (ऑटो-क्लाउड फॉलबैक सक्रिय)',
+            ),
+            trailing: const Icon(Icons.edit, color: Color(0xFF1B5E20)),
+            onTap: _showServerConfigDialog,
           ),
           const Divider(),
 
