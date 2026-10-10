@@ -29,8 +29,8 @@ class AppUpdateInfo {
 }
 
 class UpdateService {
-  static const String currentVersion = '1.0.0';
-  static const int currentVersionCode = 1;
+  static const String currentVersion = '1.1.0';
+  static const int currentVersionCode = 10;
 
   static const String rawVersionJsonUrl =
       'https://raw.githubusercontent.com/kumarnikki/Kisan-Mausam/main/version.json';
