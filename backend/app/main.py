@@ -66,3 +66,17 @@ async def root():
         "attribution": "Open-Meteo.com (CC BY 4.0)",
         "dpdp_compliant": True
     }
+
+@app.get("/api/v1/app/version", tags=["App Updates"])
+async def get_app_version():
+    return {
+        "version": "1.0.0",
+        "versionCode": 1,
+        "releaseName": "Kisan Mausam v1.0.0",
+        "apkUrl": "https://github.com/kumarnikki/Kisan-Mausam/releases/download/v1.0.0/kisan-mausam-release.apk",
+        "githubReleaseUrl": "https://github.com/kumarnikki/Kisan-Mausam/releases/latest",
+        "changelog": "• Real-time Gemini 3.5 Flash-lite AI Krishi Sahayak\n• Live GPS & hyper-local weather grounding\n• Direct KVK 1800-180-1551 phone dialer\n• One-click AWS EC2 cloud backend config\n• In-app seamless updates",
+        "minRequiredVersion": "1.0.0",
+        "publishedAt": "2026-10-10T08:30:00Z"
+    }
+

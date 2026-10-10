@@ -15,6 +15,7 @@ import '../../widgets/temp_range_bar.dart';
 import '../../widgets/oni_gauge_meter.dart';
 import '../crops/crop_recommender_screen.dart';
 import '../chat/krishi_sahayak_screen.dart';
+import '../../services/update_service.dart';
 
 class WeatherHomeScreen extends StatefulWidget {
   final VoidCallback onOpenSettings;
@@ -41,11 +42,22 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
   double? _gpsLat;
   double? _gpsLon;
   String? _gpsLocationName;
+  AppUpdateInfo? _availableUpdate;
+  bool _updateBannerDismissed = false;
 
   @override
   void initState() {
     super.initState();
     _loadData();
+    _checkAppUpdateSilently();
+  }
+
+  void _checkAppUpdateSilently() {
+    UpdateService.checkForUpdate().then((info) {
+      if (mounted && info.hasUpdate) {
+        setState(() => _availableUpdate = info);
+      }
+    }).catchError((_) {});
   }
 
   Future<void> _loadData() async {
@@ -524,6 +536,80 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                     ),
                   ),
                 ),
+
+                // In-App Update Banner (shows when newer APK/version is released)
+                if (_availableUpdate != null && _availableUpdate!.hasUpdate && !_updateBannerDismissed)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF1B5E20), Color(0xFF2E7D32)],
+                          ),
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.green.withValues(alpha: 0.25),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: const BoxDecoration(
+                                color: Colors.white,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.system_update_alt, color: Color(0xFF1B5E20), size: 18),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'नया ऐप अपडेट उपलब्ध: v${_availableUpdate!.latestVersion}',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                  const Text(
+                                    '1-टैप में नया संस्करण डाउनलोड व इंस्टॉल करें',
+                                    style: TextStyle(color: Colors.white70, fontSize: 11),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.white,
+                                foregroundColor: const Color(0xFF1B5E20),
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                minimumSize: Size.zero,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              ),
+                              onPressed: () => UpdateService.showUpdateDialog(context, _availableUpdate!),
+                              child: const Text('अपडेट करें', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                            ),
+                            const SizedBox(width: 4),
+                            IconButton(
+                              icon: const Icon(Icons.close, color: Colors.white70, size: 18),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                              onPressed: () => setState(() => _updateBannerDismissed = true),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
 
                 // Offline / Last Updated Notice Bar (Floating Glass Pill)
                 if (_cachedTime != null)

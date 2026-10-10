@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import '../../l10n/app_strings.dart';
 import '../../services/storage_service.dart';
 import '../../services/api_service.dart';
+import '../../services/update_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   final VoidCallback onThemeChanged;
@@ -26,6 +27,50 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _lang = 'hi';
   bool _highContrast = false;
   String? _customBackendUrl;
+  bool _isCheckingUpdate = false;
+
+  Future<void> _checkAppUpdate() async {
+    setState(() => _isCheckingUpdate = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final info = await UpdateService.checkForUpdate();
+      if (!mounted) return;
+      setState(() => _isCheckingUpdate = false);
+      if (info.hasUpdate) {
+        UpdateService.showUpdateDialog(context, info);
+      } else {
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Row(
+              children: [
+                Icon(Icons.check_circle, color: Color(0xFF1B5E20)),
+                SizedBox(width: 8),
+                Text('ऐप अपडेट है', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            content: Text(
+              'आपका किसान मौसम ऐप नवीनतम संस्करण (v${UpdateService.currentVersion}) पर चल रहा है। कोई नया अपडेट लंबित नहीं है।',
+              style: const TextStyle(fontSize: 14),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('ठीक है'),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isCheckingUpdate = false);
+      messenger.showSnackBar(
+        const SnackBar(content: Text('अपडेट की जांच करने में विफल। इंटरनेट जांचें।')),
+      );
+    }
+  }
 
   @override
   void initState() {
@@ -303,7 +348,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const Divider(),
 
-          // Section 3: About & Attribution
+          // Section 3: In-App Updates
+          _buildSectionHeader('ऐप अपडेट (In-App Updates)'),
+          ListTile(
+            leading: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1B5E20).withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.system_update_alt, color: Color(0xFF1B5E20), size: 20),
+            ),
+            title: const Text('नया अपडेट जांचें (Check for Updates)'),
+            subtitle: Text('वर्तमान संस्करण: v${UpdateService.currentVersion} • 1-टैप ऑटो अपडेट'),
+            trailing: _isCheckingUpdate
+                ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2.2, color: Color(0xFF1B5E20)),
+                  )
+                : const Icon(Icons.chevron_right),
+            onTap: _isCheckingUpdate ? null : _checkAppUpdate,
+          ),
+          const Divider(),
+
+          // Section 4: About & Attribution
           _buildSectionHeader('स्रोत एवं लाइसेंस (Attribution & About)'),
           ListTile(
             leading: const Icon(Icons.info_outline, color: Color(0xFF1B5E20)),
