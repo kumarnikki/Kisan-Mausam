@@ -448,23 +448,14 @@ void main() {
         await tester.pump(const Duration(milliseconds: 350));
         expect(tester.takeException(), isNull);
 
-        // Verify multiple hazards badge (+1 more) at scroll 0
+        // Verify multiple hazards badge (+1 more) and 'This season' directly below warning at scroll 0
         expect(find.textContaining('+1 more'), findsWidgets);
+        expect(find.text('This season'), findsOneWidget);
 
         // Scroll past 80dp so pinned warning collapses to compact 48dp bar
         await tester.drag(find.byType(CustomScrollView), const Offset(0, -160));
         await tester.pump(const Duration(milliseconds: 300));
         expect(tester.takeException(), isNull);
-
-        // Scroll until "This season" section is visible (handles 320x640 at 1.3x)
-        await tester.scrollUntilVisible(
-          find.text('This season'),
-          120.0,
-          scrollable: find.byType(Scrollable).first,
-        );
-        await tester.pump(const Duration(milliseconds: 200));
-        expect(tester.takeException(), isNull);
-        expect(find.text('This season'), findsOneWidget);
 
         // Scroll until "30-day seasonal outlook" card is visible
         await tester.scrollUntilVisible(

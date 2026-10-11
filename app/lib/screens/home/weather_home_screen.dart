@@ -1418,7 +1418,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                         ),
                       )
                     else if (effectiveWeather != null) ...[
-                      // 2a) Weather hero card (saturated weather gradient, white text, inner white-10% metrics panel)
+                      // 2a) Section label "This season" with El Niño season card + 30-day outlook card (placed directly after warning / weather shift advisory)
                       SliverToBoxAdapter(
                         child: _StaggeredEntrance(
                           index: 0,
@@ -1426,51 +1426,6 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                             padding: const EdgeInsets.fromLTRB(
                               AppTheme.s16,
                               AppTheme.s8,
-                              AppTheme.s16,
-                              AppTheme.s16,
-                            ),
-                            child: _buildWeatherHero(
-                              context,
-                              effectiveWeather.current,
-                              effectiveCode: effectiveCode,
-                              effectiveIsDay: effectiveIsDay,
-                              effectiveTemp: effectiveTemp,
-                              sunrise: sunrise,
-                              sunset: sunset,
-                              forceOffline:
-                                  debugOverride?.forceOfflineCached == true,
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      // 2b) Field conditions: ONE card with four cells in a 2x2 grid with hairline dividers
-                      SliverToBoxAdapter(
-                        child: _StaggeredEntrance(
-                          index: 1,
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(
-                              AppTheme.s16,
-                              0,
-                              AppTheme.s16,
-                              AppTheme.s16,
-                            ),
-                            child: _buildFieldConditionsCard(
-                              context,
-                              effectiveWeather,
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      // 2c) Section label "This season" with El Niño season card + 30-day outlook card
-                      SliverToBoxAdapter(
-                        child: _StaggeredEntrance(
-                          index: 2,
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(
-                              AppTheme.s16,
-                              0,
                               AppTheme.s16,
                               AppTheme.s16,
                             ),
@@ -1489,6 +1444,51 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                                   effectiveWeather,
                                 ),
                               ],
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // 2b) Weather hero card (saturated weather gradient, white text, inner white-10% metrics panel)
+                      SliverToBoxAdapter(
+                        child: _StaggeredEntrance(
+                          index: 1,
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(
+                              AppTheme.s16,
+                              0,
+                              AppTheme.s16,
+                              AppTheme.s16,
+                            ),
+                            child: _buildWeatherHero(
+                              context,
+                              effectiveWeather.current,
+                              effectiveCode: effectiveCode,
+                              effectiveIsDay: effectiveIsDay,
+                              effectiveTemp: effectiveTemp,
+                              sunrise: sunrise,
+                              sunset: sunset,
+                              forceOffline:
+                                  debugOverride?.forceOfflineCached == true,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // 2c) Field conditions: ONE card with four cells in a 2x2 grid with hairline dividers
+                      SliverToBoxAdapter(
+                        child: _StaggeredEntrance(
+                          index: 2,
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(
+                              AppTheme.s16,
+                              0,
+                              AppTheme.s16,
+                              AppTheme.s16,
+                            ),
+                            child: _buildFieldConditionsCard(
+                              context,
+                              effectiveWeather,
                             ),
                           ),
                         ),
