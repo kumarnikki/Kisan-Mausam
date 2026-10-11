@@ -29,15 +29,15 @@ class AppUpdateInfo {
 }
 
 class UpdateService {
-  static const String currentVersion = '1.3.0';
-  static const int currentVersionCode = 17;
+  static const String currentVersion = '1.4.0';
+  static const int currentVersionCode = 18;
 
   static const String rawVersionJsonUrl =
       'https://raw.githubusercontent.com/kumarnikki/Kisan-Mausam/main/version.json';
   static const String githubApiLatestUrl =
       'https://api.github.com/repos/kumarnikki/Kisan-Mausam/releases/latest';
   static const String defaultFallbackApkUrl =
-      'https://github.com/kumarnikki/Kisan-Mausam/releases/download/v1.3.0/kisan-mausam-release.apk';
+      'https://github.com/kumarnikki/Kisan-Mausam/releases/download/v1.4.0/kisan-mausam-release.apk';
 
   static final Dio _dio = Dio(
     BaseOptions(

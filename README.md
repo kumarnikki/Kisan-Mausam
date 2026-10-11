@@ -3,7 +3,7 @@
 # 🌾 किसान मौसम (KisanMausam)
 ### **AWS Cloud-Native, Hindi-First Hyper-Local Weather, Multi-Horizon IMD Hazard Early Warning & AI Crop Advisory Platform for Indian Farmers**
 
-[![Download APK](https://img.shields.io/badge/📲_Download_Android_APK-v1.1.5_(Direct_Install)-2E7D32?style=for-the-badge&logo=android&logoColor=white)](https://github.com/kumarnikki/Kisan-Mausam/releases/download/v1.0.0/kisan-mausam-release.apk)
+[![Download APK](https://img.shields.io/badge/📲_Download_Android_APK-v1.4.0_(Direct_Install)-2E7D32?style=for-the-badge&logo=android&logoColor=white)](https://github.com/kumarnikki/Kisan-Mausam/releases/download/v1.4.0/kisan-mausam-release.apk)
 [![AWS Cloud Native](https://img.shields.io/badge/AWS_Cloud_Native-ap--south--1_(Mumbai)-FF9900?style=for-the-badge&logo=amazon-aws&logoColor=white)](./AWS_DEPLOYMENT_GUIDE.md)
 [![Amazon Bedrock](https://img.shields.io/badge/AI-Amazon_Bedrock_%2B_Polly-FF9900?style=for-the-badge&logo=amazon-aws&logoColor=white)](./backend/app/services/aws_cloud_service.py)
 [![AWS Serverless](https://img.shields.io/badge/Serverless-AWS_Lambda_%2B_EventBridge-FF9900?style=for-the-badge&logo=awslambda&logoColor=white)](./deploy/aws_lambda_weather_poller.py)
@@ -15,7 +15,7 @@
   <b>Built on Amazon Web Services (AWS) • Calibrated to IMD Hazard Standards & ICAR Package of Practices • TRAI DLT & DPDP Act 2023 Compliant</b>
 </p>
 
-[📲 **Download Android APK**](https://github.com/kumarnikki/Kisan-Mausam/releases/download/v1.0.0/kisan-mausam-release.apk) •
+[📲 **Download Android APK**](https://github.com/kumarnikki/Kisan-Mausam/releases/download/v1.4.0/kisan-mausam-release.apk) •
 [☁️ **AWS Architecture & Deployment Guide**](./AWS_DEPLOYMENT_GUIDE.md) •
 [📘 **Full System & API Documentation**](./PROJECT_DOCUMENTATION.md) •
 [🏗️ **AWS CloudFormation IaC**](./deploy/aws-cloudformation.yaml)
@@ -32,16 +32,16 @@ Designed for extreme resilience across rural 2G/3G/4G networks, KisanMausam comb
 
 ---
 
-## 📲 Direct Android APK Download (`v1.1.5+15`)
+## 📲 Direct Android APK Download (`v1.4.0+18`)
 
 Install the latest signed release directly on any Android smartphone (Android 8.0 Oreo / API 26 and above):
 
-> ### 📥 **[Click Here to Download `kisan-mausam-release.apk` (v1.1.5)](https://github.com/kumarnikki/Kisan-Mausam/releases/download/v1.0.0/kisan-mausam-release.apk)**
+> ### 📥 **[Click Here to Download `kisan-mausam-release.apk` (v1.4.0)](https://github.com/kumarnikki/Kisan-Mausam/releases/download/v1.4.0/kisan-mausam-release.apk)**
 
 | Attribute | Specification |
 | :--- | :--- |
-| **Package ID** | `com.kisanmausam.app` |
-| **Latest Release** | `v1.1.5+15` (Universal Multi-ABI Release Signed APK) |
+| **Package ID** | `in.kishanmausam.kisan_mausam` |
+| **Latest Release** | `v1.4.0+18` (Universal Multi-ABI Release Signed APK) |
 | **Supported Languages** | Hindi (`hi-IN`) Primary • English (`en-IN`) Bilingual Toggle • 9 Indian Languages via **Amazon Translate** |
 | **Key Capabilities** | Live GPS Weather & Soil Moisture • 3-Horizon IMD Hazard Engine • Emergency SOS 112 Dual-Layer Hardware Siren + Auto SMS • GPS-Calibrated ICAR Crop Recommender • Single-Utterance Hindi Voice Assistant |
 
