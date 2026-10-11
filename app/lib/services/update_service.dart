@@ -191,7 +191,7 @@ class UpdateService {
   static Future<String> getUpdateApkPath(String version) async {
     final cleanVer = version.replaceAll(RegExp(r'[^0-9A-Za-z._-]'), '_');
     try {
-      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      if (!kIsWeb && Platform.isAndroid) {
         final nativePath = await _nativeChannel.invokeMethod<String>('getUpdateApkPath');
         if (nativePath != null && nativePath.isNotEmpty) {
           final parentDir = File(nativePath).parent.path;
@@ -206,7 +206,7 @@ class UpdateService {
   /// Trigger native Android Package Installer via FileProvider without opening browser
   static Future<bool> installDownloadedApk(String filePath) async {
     try {
-      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      if (!kIsWeb && Platform.isAndroid) {
         final launched = await _nativeChannel.invokeMethod<bool>(
           'installApk',
           {'filePath': filePath},
@@ -292,7 +292,7 @@ class _InAppUpdateDialogState extends State<_InAppUpdateDialog> {
   }
 
   Future<void> _startInAppDownloadAndInstall() async {
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+    if (kIsWeb || !Platform.isAndroid) {
       await UpdateService.launchUpdate(widget.info.apkUrl);
       return;
     }

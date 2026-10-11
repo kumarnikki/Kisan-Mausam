@@ -93,8 +93,7 @@ class MainActivity : FlutterActivity() {
                     result.success(sent)
                 }
                 "getUpdateApkPath" -> {
-                    val dir = externalCacheDir ?: cacheDir
-                    val apkFile = File(dir, "kisan-mausam-update.apk")
+                    val apkFile = File(cacheDir, "kisan-mausam-update.apk")
                     result.success(apkFile.absolutePath)
                 }
                 "canInstallPackages" -> {
