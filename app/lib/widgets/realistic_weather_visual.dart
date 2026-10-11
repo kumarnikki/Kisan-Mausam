@@ -1,22 +1,18 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
-/// Renders the 3D Claymorphic Weather Icon Pack (matching the Lavender-Violet
-/// reference UI): puffy multi-lobe 3D white clouds with soft purple drop shadows,
-/// golden sun with 8 rounded triangular rays, deep purple crescent moon with
-/// golden stars, 3D blue teardrop raindrops, and golden lightning bolts.
+/// Renders a realistic, multi-layered 3D-styled animated weather visual
+/// with volumetric shadows, specular highlights, and ambient light auras.
 class RealisticWeatherVisual extends StatefulWidget {
   final int weatherCode;
   final double size;
   final bool? isDay;
-  final bool animate;
 
   const RealisticWeatherVisual({
     super.key,
     required this.weatherCode,
     this.size = 100,
     this.isDay,
-    this.animate = true,
   });
 
   @override
@@ -35,10 +31,7 @@ class _RealisticWeatherVisualState extends State<RealisticWeatherVisual>
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 8),
-    );
-    if (widget.animate) {
-      _controller.repeat();
-    }
+    )..repeat();
   }
 
   @override
@@ -55,10 +48,9 @@ class _RealisticWeatherVisualState extends State<RealisticWeatherVisual>
 
   void _syncAnimationState() {
     if (!mounted) return;
-    final disableAnimations =
-        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    final disableAnimations = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
     final tickerEnabled = TickerMode.valuesOf(context).enabled;
-    if (widget.animate && _appActive && !disableAnimations && tickerEnabled) {
+    if (_appActive && !disableAnimations && tickerEnabled) {
       if (!_controller.isAnimating) {
         _controller.repeat();
       }
@@ -85,614 +77,614 @@ class _RealisticWeatherVisualState extends State<RealisticWeatherVisual>
         child: AnimatedBuilder(
           animation: _controller,
           builder: (context, child) {
-            final isDaytime = widget.isDay ??
-                (DateTime.now().hour >= 6 && DateTime.now().hour < 19);
+            final isDaytime = widget.isDay ?? (DateTime.now().hour >= 6 && DateTime.now().hour < 19);
             final progress = _controller.value;
             final code = widget.weatherCode;
 
-            return CustomPaint(
-              size: Size(widget.size, widget.size),
-              painter: _ClayWeatherPainter(
-                weatherCode: code,
-                isDay: isDaytime,
-                progress: progress,
-              ),
-            );
+            if (code == 0) {
+              // Clear Sky (Daytime 3D Sun vs Nighttime 3D Moon with stars)
+              return isDaytime ? _build3DSun(progress) : _build3DMoon(progress);
+            } else if (code >= 1 && code <= 3) {
+              // Partly Cloudy (Day sun behind cloud vs Night moon behind cloud)
+              return isDaytime ? _buildPartlyCloudy(progress) : _buildPartlyCloudyNight(progress);
+            } else if (code == 45 || code == 48) {
+              // Foggy / Mist
+              return _buildFoggy(progress, isNight: !isDaytime);
+            } else if (code >= 51 && code <= 65) {
+              // Rain
+              return _buildRain(progress, isNight: !isDaytime);
+            } else if (code >= 80 && code <= 82) {
+              // Showers
+              return _buildShowers(progress, isNight: !isDaytime);
+            } else if (code >= 95) {
+              // Thunderstorm / Hail
+              return _buildThunderstorm(progress, isNight: !isDaytime);
+            } else {
+              // Fair weather cloud
+              return _buildDefaultCloud(progress, isNight: !isDaytime);
+            }
           },
         ),
       ),
     );
   }
+
+  // 1. 3D Sun with rotating rays and multi-stop spherical lighting
+  Widget _build3DSun(double progress) {
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        // Pulsing Corona Glow Aura
+        Container(
+          width: widget.size * 0.95,
+          height: widget.size * 0.95,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: RadialGradient(
+              colors: [
+                const Color(0xFFFFD54F).withValues(alpha: 0.5 + 0.15 * math.sin(progress * 2 * math.pi)),
+                const Color(0xFFFF9800).withValues(alpha: 0.2),
+                Colors.transparent,
+              ],
+              stops: const [0.3, 0.65, 1.0],
+            ),
+          ),
+        ),
+
+        // Rotating Sunbeam Ray Corona
+        Transform.rotate(
+          angle: progress * 2 * math.pi,
+          child: CustomPaint(
+            size: Size(widget.size, widget.size),
+            painter: _SunRaysPainter(color: const Color(0xFFFFE082).withValues(alpha: 0.7)),
+          ),
+        ),
+
+        // 3D Volumetric Core Sphere
+        Container(
+          width: widget.size * 0.54,
+          height: widget.size * 0.54,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: const RadialGradient(
+              center: Alignment(-0.35, -0.35),
+              radius: 0.8,
+              colors: [
+                Color(0xFFFFFDE7), // Top-left specular gleam
+                Color(0xFFFFEE58), // Radiant gold
+                Color(0xFFFFA000), // Rich amber
+                Color(0xFFE65100), // Deep solar edge
+              ],
+              stops: [0.0, 0.35, 0.75, 1.0],
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFFFF8F00).withValues(alpha: 0.6),
+                blurRadius: 18,
+                spreadRadius: 2,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // 1b. 3D Crescent Moon with Twinkling Stars & Celestial Aurora
+  Widget _build3DMoon(double progress) {
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        // Pulsing Indigo-Silver Lunar Aurora Glow
+        Container(
+          width: widget.size * 0.96,
+          height: widget.size * 0.96,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: RadialGradient(
+              colors: [
+                const Color(0xFF818CF8).withValues(alpha: 0.35 + 0.12 * math.sin(progress * 2 * math.pi)),
+                const Color(0xFF38BDF8).withValues(alpha: 0.15),
+                Colors.transparent,
+              ],
+              stops: const [0.35, 0.7, 1.0],
+            ),
+          ),
+        ),
+
+        // Twinkling Starfield with Diamond Sparkles
+        CustomPaint(
+          size: Size(widget.size, widget.size),
+          painter: _StarsPainter(progress: progress),
+        ),
+
+        // 3D Crescent Moon with Volumetric Lighting
+        CustomPaint(
+          size: Size(widget.size * 0.72, widget.size * 0.72),
+          painter: _CrescentMoonPainter(progress: progress),
+        ),
+      ],
+    );
+  }
+
+  // 2. Partly Cloudy: 3D Sun behind fluffy 3D Cloud
+  Widget _buildPartlyCloudy(double progress) {
+    final floatY = math.sin(progress * 2 * math.pi) * 3;
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        // Sun peeking top right
+        Positioned(
+          top: widget.size * 0.08,
+          right: widget.size * 0.08,
+          child: Container(
+            width: widget.size * 0.44,
+            height: widget.size * 0.44,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: const RadialGradient(
+                center: Alignment(-0.3, -0.3),
+                colors: [
+                  Color(0xFFFFF9C4),
+                  Color(0xFFFFCA28),
+                  Color(0xFFF57C00),
+                ],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFFFFB300).withValues(alpha: 0.5),
+                  blurRadius: 14,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // Front 3D Cloud floating
+        Positioned(
+          bottom: widget.size * 0.12 + floatY,
+          left: widget.size * 0.06,
+          child: _buildCloudBody(
+            width: widget.size * 0.76,
+            height: widget.size * 0.46,
+            baseColor: const Color(0xFFF5F7FA),
+            shadeColor: const Color(0xFFB0BEC5),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // 2b. Partly Cloudy Night: 3D Moon peeking behind dark twilight cloud
+  Widget _buildPartlyCloudyNight(double progress) {
+    final floatY = math.sin(progress * 2 * math.pi) * 3;
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        // Twinkling Starfield
+        CustomPaint(
+          size: Size(widget.size, widget.size),
+          painter: _StarsPainter(progress: progress),
+        ),
+
+        // Crescent Moon peeking top right
+        Positioned(
+          top: widget.size * 0.06,
+          right: widget.size * 0.06,
+          child: CustomPaint(
+            size: Size(widget.size * 0.48, widget.size * 0.48),
+            painter: _CrescentMoonPainter(progress: progress),
+          ),
+        ),
+
+        // Front 3D Night Cloud floating
+        Positioned(
+          bottom: widget.size * 0.12 + floatY,
+          left: widget.size * 0.06,
+          child: _buildCloudBody(
+            width: widget.size * 0.76,
+            height: widget.size * 0.46,
+            baseColor: const Color(0xFF475569),
+            shadeColor: const Color(0xFF1E293B),
+            isNight: true,
+          ),
+        ),
+      ],
+    );
+  }
+
+  // 3. 3D Cloud with Raindrops
+  Widget _buildRain(double progress, {bool isNight = false}) {
+    final floatY = math.sin(progress * 2 * math.pi) * 2;
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        // Stormy Cloud Body
+        Positioned(
+          top: widget.size * 0.12 + floatY,
+          child: _buildCloudBody(
+            width: widget.size * 0.78,
+            height: widget.size * 0.48,
+            baseColor: isNight ? const Color(0xFF334155) : const Color(0xFFECEFF1),
+            shadeColor: isNight ? const Color(0xFF0F172A) : const Color(0xFF78909C),
+            isNight: isNight,
+          ),
+        ),
+        // Animated Raindrops
+        Positioned(
+          bottom: widget.size * 0.08,
+          child: CustomPaint(
+            size: Size(widget.size * 0.65, widget.size * 0.32),
+            painter: _RaindropsPainter(progress: progress),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // 4. Heavy Showers with Cyan glow
+  Widget _buildShowers(double progress, {bool isNight = false}) {
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        Positioned(
+          top: widget.size * 0.10,
+          child: _buildCloudBody(
+            width: widget.size * 0.82,
+            height: widget.size * 0.50,
+            baseColor: isNight ? const Color(0xFF1E293B) : const Color(0xFFCFD8DC),
+            shadeColor: isNight ? const Color(0xFF0F172A) : const Color(0xFF546E7A),
+            isNight: isNight,
+          ),
+        ),
+        Positioned(
+          bottom: widget.size * 0.05,
+          child: CustomPaint(
+            size: Size(widget.size * 0.7, widget.size * 0.38),
+            painter: _RaindropsPainter(progress: progress, isHeavy: true),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // 5. Thunderstorm with pulsing golden-cyan lightning
+  Widget _buildThunderstorm(double progress, {bool isNight = false}) {
+    final lightningFlash = (math.sin(progress * 8 * math.pi) > 0.7) ? 1.0 : 0.2;
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        // Dark Thunder Cloud
+        Positioned(
+          top: widget.size * 0.08,
+          child: _buildCloudBody(
+            width: widget.size * 0.82,
+            height: widget.size * 0.50,
+            baseColor: isNight ? const Color(0xFF1E1B4B) : const Color(0xFF90A4AE),
+            shadeColor: isNight ? const Color(0xFF0F0E2A) : const Color(0xFF37474F),
+            isNight: isNight,
+          ),
+        ),
+        // Animated Lightning Bolt
+        Positioned(
+          bottom: widget.size * 0.06,
+          child: Opacity(
+            opacity: lightningFlash,
+            child: Icon(
+              Icons.flash_on,
+              size: widget.size * 0.42,
+              color: const Color(0xFFFFD600),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // 6. Foggy Ethereal Mist
+  Widget _buildFoggy(double progress, {bool isNight = false}) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(3, (i) {
+        final shift = math.sin((progress + i * 0.3) * 2 * math.pi) * 8;
+        return Transform.translate(
+          offset: Offset(shift, 0),
+          child: Container(
+            margin: const EdgeInsets.symmetric(vertical: 4),
+            width: widget.size * (0.8 - i * 0.12),
+            height: widget.size * 0.11,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              gradient: LinearGradient(
+                colors: isNight
+                    ? [
+                        Colors.white.withValues(alpha: 0.05),
+                        const Color(0xFF94A3B8).withValues(alpha: 0.5),
+                        Colors.white.withValues(alpha: 0.05),
+                      ]
+                    : [
+                        Colors.white.withValues(alpha: 0.1),
+                        Colors.white.withValues(alpha: 0.75),
+                        Colors.white.withValues(alpha: 0.1),
+                      ],
+              ),
+            ),
+          ),
+        );
+      }),
+    );
+  }
+
+  // Default Cloud
+  Widget _buildDefaultCloud(double progress, {bool isNight = false}) {
+    return Center(
+      child: _buildCloudBody(
+        width: widget.size * 0.8,
+        height: widget.size * 0.5,
+        baseColor: isNight ? const Color(0xFF334155) : const Color(0xFFF5F5F5),
+        shadeColor: isNight ? const Color(0xFF1E293B) : const Color(0xFFBDBDBD),
+        isNight: isNight,
+      ),
+    );
+  }
+
+  // Reusable 3D Volumetric Cloud Component
+  Widget _buildCloudBody({
+    required double width,
+    required double height,
+    required Color baseColor,
+    required Color shadeColor,
+    bool isNight = false,
+  }) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(height / 2),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            baseColor,
+            shadeColor,
+          ],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: shadeColor.withValues(alpha: isNight ? 0.6 : 0.45),
+            blurRadius: 14,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Stack(
+        children: [
+          // Specular highlights on top puffs
+          Positioned(
+            left: width * 0.2,
+            top: -height * 0.35,
+            child: Container(
+              width: width * 0.45,
+              height: width * 0.45,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    (isNight ? const Color(0xFFE2E8F0) : Colors.white).withValues(alpha: isNight ? 0.45 : 0.9),
+                    baseColor.withValues(alpha: 0.2),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
-class _ClayWeatherPainter extends CustomPainter {
-  final int weatherCode;
-  final bool isDay;
-  final double progress;
+/// Custom painter for rotating radial sun rays
+class _SunRaysPainter extends CustomPainter {
+  final Color color;
+  _SunRaysPainter({required this.color});
 
-  _ClayWeatherPainter({
-    required this.weatherCode,
-    required this.isDay,
-    required this.progress,
-  });
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 3.2
+      ..strokeCap = StrokeCap.round;
+
+    const count = 12;
+    final innerR = size.width * 0.34;
+    final outerR = size.width * 0.46;
+
+    for (int i = 0; i < count; i++) {
+      final angle = (i * 2 * math.pi) / count;
+      final start = Offset(
+        center.dx + innerR * math.cos(angle),
+        center.dy + innerR * math.sin(angle),
+      );
+      final end = Offset(
+        center.dx + outerR * math.cos(angle),
+        center.dy + outerR * math.sin(angle),
+      );
+      canvas.drawLine(start, end, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+/// Custom painter for animated falling rain drops
+class _RaindropsPainter extends CustomPainter {
+  final double progress;
+  final bool isHeavy;
+
+  _RaindropsPainter({required this.progress, this.isHeavy = false});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = isHeavy ? const Color(0xFF40C4FF) : const Color(0xFF80D8FF)
+      ..strokeWidth = isHeavy ? 2.8 : 2.0
+      ..strokeCap = StrokeCap.round;
+
+    final count = isHeavy ? 6 : 4;
+    final stepX = size.width / (count + 1);
+
+    for (int i = 0; i < count; i++) {
+      final dropProgress = (progress + (i * 0.25)) % 1.0;
+      final x = stepX * (i + 1);
+      final y = size.height * dropProgress;
+
+      canvas.drawLine(
+        Offset(x - 2, y),
+        Offset(x + 2, y + 10),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _RaindropsPainter oldDelegate) =>
+      oldDelegate.progress != progress;
+}
+
+/// Custom painter for a volumetric 3D Crescent Moon with craters and rim lighting
+class _CrescentMoonPainter extends CustomPainter {
+  final double progress;
+  _CrescentMoonPainter({required this.progress});
 
   @override
   void paint(Canvas canvas, Size size) {
     final w = size.width;
     final h = size.height;
-    final floatY = math.sin(progress * 2 * math.pi) * (h * 0.022);
+    final center = Offset(w * 0.48, h * 0.5);
+    final radius = w * 0.42;
 
-    if (weatherCode == 0) {
-      // Clear sky: 3D Sun with triangular rays (day) or 3D Purple Crescent Moon + Stars (night)
-      if (isDay) {
-        _drawClaySun(
-          canvas,
-          center: Offset(w * 0.5, h * 0.5 + floatY * 0.5),
-          radius: w * 0.27,
-          progress: progress,
-        );
-      } else {
-        _drawClayMoonAndStars(
-          canvas,
-          center: Offset(w * 0.5, h * 0.5 + floatY * 0.5),
-          radius: w * 0.30,
-          progress: progress,
-        );
-      }
-      return;
-    }
+    // Create Crescent shape using Path difference
+    final outerPath = Path()
+      ..addOval(Rect.fromCircle(center: center, radius: radius));
 
-    if (weatherCode >= 1 && weatherCode <= 3) {
-      // Partly cloudy: Sun or Purple Moon peeking behind puffy 3D white cloud
-      if (isDay) {
-        _drawClaySun(
-          canvas,
-          center: Offset(w * 0.64, h * 0.34 - floatY * 0.4),
-          radius: w * 0.21,
-          progress: progress,
-        );
-      } else {
-        _drawClayMoonAndStars(
-          canvas,
-          center: Offset(w * 0.66, h * 0.32 - floatY * 0.4),
-          radius: w * 0.22,
-          progress: progress,
-        );
-      }
-      _drawPuffyClayCloud(
-        canvas,
-        rect: Rect.fromCenter(
-          center: Offset(w * 0.46, h * 0.58 + floatY),
-          width: w * 0.78,
-          height: h * 0.48,
-        ),
-        warmInnerGlow: isDay,
-      );
-      return;
-    }
+    final innerCutter = Path()
+      ..addOval(Rect.fromCircle(
+        center: Offset(center.dx + radius * 0.52, center.dy - radius * 0.22),
+        radius: radius * 0.88,
+      ));
 
-    if (weatherCode == 45 || weatherCode == 48) {
-      // Foggy / Mist: Sun/Moon + Puffy 3D Cloud + Wavy 3D Mist bars
-      if (isDay) {
-        _drawClaySun(
-          canvas,
-          center: Offset(w * 0.64, h * 0.28),
-          radius: w * 0.18,
-          progress: progress,
-        );
-      }
-      _drawPuffyClayCloud(
-        canvas,
-        rect: Rect.fromCenter(
-          center: Offset(w * 0.48, h * 0.48 + floatY),
-          width: w * 0.76,
-          height: h * 0.44,
-        ),
-        warmInnerGlow: isDay,
-      );
-      _drawWavyFogLines(
-        canvas,
-        center: Offset(w * 0.5, h * 0.80),
-        width: w * 0.62,
-        progress: progress,
-      );
-      return;
-    }
+    final moonPath = Path.combine(PathOperation.difference, outerPath, innerCutter);
 
-    if (weatherCode >= 51 && weatherCode <= 67) {
-      // Rain / Drizzle: Sun peeking top-right + Puffy 3D Cloud + 3D Blue Teardrops
-      if (isDay) {
-        _drawClaySun(
-          canvas,
-          center: Offset(w * 0.68, h * 0.28 - floatY * 0.3),
-          radius: w * 0.18,
-          progress: progress,
-        );
-      } else {
-        _drawClayMoonAndStars(
-          canvas,
-          center: Offset(w * 0.68, h * 0.28 - floatY * 0.3),
-          radius: w * 0.19,
-          progress: progress,
-        );
-      }
-      _drawPuffyClayCloud(
-        canvas,
-        rect: Rect.fromCenter(
-          center: Offset(w * 0.46, h * 0.48 + floatY),
-          width: w * 0.78,
-          height: h * 0.46,
-        ),
-        warmInnerGlow: isDay,
-      );
-      _drawTeardropRain(
-        canvas,
-        area: Rect.fromLTWH(w * 0.22, h * 0.68, w * 0.52, h * 0.24),
-        count: 3,
-        progress: progress,
-      );
-      return;
-    }
+    // Glowing moonlight halo shadow
+    final glowPaint = Paint()
+      ..color = const Color(0xFFBAE6FD).withValues(alpha: 0.5)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10);
+    canvas.drawPath(moonPath, glowPaint);
 
-    if (weatherCode >= 80 && weatherCode <= 82) {
-      // Heavy Showers: Puffy 3D Cloud + 4 3D Blue Teardrops
-      _drawPuffyClayCloud(
-        canvas,
-        rect: Rect.fromCenter(
-          center: Offset(w * 0.50, h * 0.44 + floatY),
-          width: w * 0.82,
-          height: h * 0.48,
-        ),
-        warmInnerGlow: false,
-      );
-      _drawTeardropRain(
-        canvas,
-        area: Rect.fromLTWH(w * 0.18, h * 0.66, w * 0.62, h * 0.26),
-        count: 4,
-        progress: progress,
-      );
-      return;
-    }
-
-    if (weatherCode >= 95) {
-      // Thunderstorm: Puffy 3D Cloud + 3D Golden Lightning Bolt + Teardrop Raindrops
-      _drawPuffyClayCloud(
-        canvas,
-        rect: Rect.fromCenter(
-          center: Offset(w * 0.50, h * 0.42 + floatY),
-          width: w * 0.82,
-          height: h * 0.48,
-        ),
-        warmInnerGlow: true,
-      );
-      _drawClayLightning(
-        canvas,
-        center: Offset(w * 0.48, h * 0.73),
-        size: Size(w * 0.24, h * 0.32),
-        progress: progress,
-      );
-      _drawTeardropRain(
-        canvas,
-        area: Rect.fromLTWH(w * 0.20, h * 0.68, w * 0.60, h * 0.24),
-        count: 2,
-        progress: progress,
-      );
-      return;
-    }
-
-    // Default: Puffy 3D Cloud with Sun peeking
-    if (isDay) {
-      _drawClaySun(
-        canvas,
-        center: Offset(w * 0.65, h * 0.34),
-        radius: w * 0.20,
-        progress: progress,
-      );
-    }
-    _drawPuffyClayCloud(
-      canvas,
-      rect: Rect.fromCenter(
-        center: Offset(w * 0.48, h * 0.56 + floatY),
-        width: w * 0.78,
-        height: h * 0.48,
-      ),
-      warmInnerGlow: isDay,
-    );
-  }
-
-  /// 3D Golden Sun with 8 rounded triangular rays around the circumference
-  void _drawClaySun(
-    Canvas canvas, {
-    required Offset center,
-    required double radius,
-    required double progress,
-  }) {
-    // Soft warm amber aura
-    final auraPaint = Paint()
-      ..shader = RadialGradient(
-        colors: [
-          const Color(0xFFFFD54F).withValues(alpha: 0.45),
-          const Color(0xFFFF9800).withValues(alpha: 0.0),
-        ],
-      ).createShader(Rect.fromCircle(center: center, radius: radius * 1.65));
-    canvas.drawCircle(center, radius * 1.65, auraPaint);
-
-    // 8 Rounded-Triangle Rays (slow rotation)
-    canvas.save();
-    canvas.translate(center.dx, center.dy);
-    canvas.rotate(progress * 2 * math.pi * 0.25);
-
-    const rayCount = 8;
-    final innerR = radius * 1.10;
-    final outerR = radius * 1.38;
-    final halfBaseAngle = 0.16;
-
-    for (int i = 0; i < rayCount; i++) {
-      final angle = (i * 2 * math.pi) / rayCount;
-      final tip = Offset(outerR * math.cos(angle), outerR * math.sin(angle));
-      final baseLeft = Offset(
-        innerR * math.cos(angle - halfBaseAngle),
-        innerR * math.sin(angle - halfBaseAngle),
-      );
-      final baseRight = Offset(
-        innerR * math.cos(angle + halfBaseAngle),
-        innerR * math.sin(angle + halfBaseAngle),
-      );
-
-      final rayPath = Path()
-        ..moveTo(baseLeft.dx, baseLeft.dy)
-        ..quadraticBezierTo(tip.dx, tip.dy, baseRight.dx, baseRight.dy)
-        ..close();
-
-      final rayPaint = Paint()
-        ..shader = const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFFFE57F), Color(0xFFFFA000)],
-        ).createShader(Rect.fromCircle(center: Offset.zero, radius: outerR));
-
-      canvas.drawPath(rayPath, rayPaint);
-    }
-    canvas.restore();
-
-    // Main 3D Sun Sphere
-    final sphereRect = Rect.fromCircle(center: center, radius: radius);
-    final sunShadow = Paint()
-      ..color = const Color(0xFFFF8F00).withValues(alpha: 0.38)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
-    canvas.drawCircle(center.translate(0, radius * 0.14), radius * 0.95, sunShadow);
-
-    final sunPaint = Paint()
-      ..shader = const RadialGradient(
-        center: Alignment(-0.35, -0.38),
-        radius: 0.88,
-        colors: [
-          Color(0xFFFFFDE7),
-          Color(0xFFFFD54F),
-          Color(0xFFFFA000),
-          Color(0xFFFF6F00),
-        ],
-        stops: [0.0, 0.35, 0.78, 1.0],
-      ).createShader(sphereRect);
-    canvas.drawCircle(center, radius, sunPaint);
-  }
-
-  /// 3D Deep Violet-Purple Crescent Moon + 3D Golden Stars (matching reference icon pack)
-  void _drawClayMoonAndStars(
-    Canvas canvas, {
-    required Offset center,
-    required double radius,
-    required double progress,
-  }) {
-    final outer = Path()..addOval(Rect.fromCircle(center: center, radius: radius));
-    final cutter = Path()
-      ..addOval(
-        Rect.fromCircle(
-          center: Offset(center.dx + radius * 0.44, center.dy - radius * 0.24),
-          radius: radius * 0.82,
-        ),
-      );
-    final crescent = Path.combine(PathOperation.difference, outer, cutter);
-
-    // Soft purple glow shadow
-    final shadowPaint = Paint()
-      ..color = const Color(0xFF4A18C9).withValues(alpha: 0.42)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 9);
-    canvas.drawPath(crescent.shift(const Offset(0, 4)), shadowPaint);
-
-    // 3D Purple-Violet Claymorphic Shader
+    // Volumetric 3D Shader for the Moon surface
+    final shaderRect = Rect.fromCircle(center: center, radius: radius);
     final moonPaint = Paint()
       ..shader = const RadialGradient(
-        center: Alignment(-0.4, -0.4),
-        radius: 1.0,
+        center: Alignment(-0.6, -0.6),
+        radius: 0.9,
         colors: [
-          Color(0xFFB388FF),
-          Color(0xFF7C4DFF),
-          Color(0xFF521CE0),
-          Color(0xFF340D9E),
+          Color(0xFFFFFFFF), // Specular gleam
+          Color(0xFFF1F5F9), // Pearl silver
+          Color(0xFFCBD5E1), // Lunar dust
+          Color(0xFF94A3B8), // Crater shadow
+          Color(0xFF475569), // Edge shadow
         ],
-        stops: [0.0, 0.35, 0.75, 1.0],
-      ).createShader(Rect.fromCircle(center: center, radius: radius));
-    canvas.drawPath(crescent, moonPaint);
+        stops: [0.0, 0.3, 0.65, 0.85, 1.0],
+      ).createShader(shaderRect);
 
-    // Golden 3D Stars around the crescent
-    _drawGoldenStar(
-      canvas,
-      Offset(center.dx - radius * 0.85, center.dy - radius * 0.55),
-      radius * 0.22,
-    );
-    _drawGoldenStar(
-      canvas,
-      Offset(center.dx + radius * 0.72, center.dy - radius * 0.62),
-      radius * 0.18,
-    );
-    _drawGoldenStar(
-      canvas,
-      Offset(center.dx + radius * 0.85, center.dy + radius * 0.20),
-      radius * 0.15,
-    );
-  }
+    canvas.drawPath(moonPath, moonPaint);
 
-  void _drawGoldenStar(Canvas canvas, Offset center, double r) {
-    final path = Path()
-      ..moveTo(center.dx, center.dy - r)
-      ..quadraticBezierTo(center.dx + r * 0.2, center.dy - r * 0.2, center.dx + r, center.dy)
-      ..quadraticBezierTo(center.dx + r * 0.2, center.dx == 0 ? 0 : center.dy + r * 0.2, center.dx, center.dy + r)
-      ..quadraticBezierTo(center.dx - r * 0.2, center.dy + r * 0.2, center.dx - r, center.dy)
-      ..quadraticBezierTo(center.dx - r * 0.2, center.dy - r * 0.2, center.dx, center.dy - r)
-      ..close();
-
-    final starPaint = Paint()
-      ..shader = const RadialGradient(
-        colors: [Color(0xFFFFF59D), Color(0xFFFFB300)],
-      ).createShader(Rect.fromCircle(center: center, radius: r));
-    canvas.drawPath(path, starPaint);
-  }
-
-  /// Puffy Multi-Lobe 3D Claymorphic White Cloud with Soft Purple Drop Shadow
-  void _drawPuffyClayCloud(
-    Canvas canvas, {
-    required Rect rect,
-    required bool warmInnerGlow,
-  }) {
-    final w = rect.width;
-    final h = rect.height;
-    final left = rect.left;
-    final top = rect.top;
-
-    // Build unified cloud silhouette for the soft purple drop shadow
-    final baseRRect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(left + w * 0.04, top + h * 0.34, w * 0.92, h * 0.62),
-      Radius.circular(h * 0.31),
-    );
-    final leftPuff = Offset(left + w * 0.28, top + h * 0.50);
-    final leftRadius = w * 0.22;
-    final centerPuff = Offset(left + w * 0.50, top + h * 0.38);
-    final centerRadius = w * 0.27;
-    final rightPuff = Offset(left + w * 0.72, top + h * 0.52);
-    final rightRadius = w * 0.20;
-
-    final silhouette = Path()
-      ..addRRect(baseRRect)
-      ..addOval(Rect.fromCircle(center: leftPuff, radius: leftRadius))
-      ..addOval(Rect.fromCircle(center: centerPuff, radius: centerRadius))
-      ..addOval(Rect.fromCircle(center: rightPuff, radius: rightRadius));
-
-    // 1. Soft Purple Claymorphic Drop Shadow (matches reference image)
-    final shadowPaint = Paint()
-      ..color = const Color(0xFF4F26CA).withValues(alpha: 0.28)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 11);
-    canvas.drawPath(silhouette.shift(Offset(0, h * 0.14)), shadowPaint);
-
-    // 2. Cloud Base Pill with 3D Lavender-White Gradient
-    final basePaint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [
-          const Color(0xFFFFFFFF),
-          const Color(0xFFF6F2FF),
-          const Color(0xFFE4DCFF),
-        ],
-        stops: const [0.0, 0.62, 1.0],
-      ).createShader(rect);
-    canvas.drawPath(silhouette, basePaint);
-
-    // 3. Warm solar / lavender inner subsurface scattering glow
-    if (warmInnerGlow) {
-      final glowCenter = Offset(left + w * 0.62, top + h * 0.36);
-      final glowPaint = Paint()
-        ..shader = RadialGradient(
-          colors: [
-            const Color(0xFFFFE082).withValues(alpha: 0.45),
-            const Color(0xFFFFB74D).withValues(alpha: 0.0),
-          ],
-        ).createShader(Rect.fromCircle(center: glowCenter, radius: w * 0.34));
-      canvas.save();
-      canvas.clipPath(silhouette);
-      canvas.drawCircle(glowCenter, w * 0.34, glowPaint);
-      canvas.restore();
-    }
-
-    // 4. Individual 3D Spherical Puff Lobes for Claymorphic Volume
-    _drawCloudLobe(canvas, leftPuff, leftRadius);
-    _drawCloudLobe(canvas, rightPuff, rightRadius);
-    _drawCloudLobe(canvas, centerPuff, centerRadius);
-
-    // 5. Crisp Top-Left Specular Rim Gleam
-    final rimPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.85)
+    // Subtle Lunar Crater Details (soft translucent indentations)
+    canvas.save();
+    canvas.clipPath(moonPath);
+    final craterPaint = Paint()
+      ..color = const Color(0xFF64748B).withValues(alpha: 0.35)
+      ..style = PaintingStyle.fill;
+    final craterHighlight = Paint()
+      ..color = Colors.white.withValues(alpha: 0.4)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.4;
-    canvas.drawArc(
-      Rect.fromCircle(center: centerPuff, radius: centerRadius * 0.92),
-      math.pi * 1.05,
-      math.pi * 0.65,
-      false,
-      rimPaint,
-    );
+      ..strokeWidth = 1.0;
+
+    // Crater 1
+    final c1 = Offset(center.dx - radius * 0.22, center.dy + radius * 0.15);
+    canvas.drawCircle(c1, radius * 0.14, craterPaint);
+    canvas.drawCircle(Offset(c1.dx - 1, c1.dy - 1), radius * 0.12, craterHighlight);
+
+    // Crater 2
+    final c2 = Offset(center.dx - radius * 0.12, center.dy - radius * 0.22);
+    canvas.drawCircle(c2, radius * 0.09, craterPaint);
+
+    // Crater 3
+    final c3 = Offset(center.dx - radius * 0.35, center.dy - radius * 0.05);
+    canvas.drawCircle(c3, radius * 0.07, craterPaint);
+
+    canvas.restore();
   }
 
-  void _drawCloudLobe(Canvas canvas, Offset center, double radius) {
-    final lobePaint = Paint()
-      ..shader = RadialGradient(
-        center: const Alignment(-0.35, -0.42),
-        radius: 0.95,
-        colors: [
-          const Color(0xFFFFFFFF),
-          const Color(0xFFF9F6FF),
-          const Color(0xFFE5DEFF).withValues(alpha: 0.85),
-        ],
-        stops: const [0.0, 0.58, 1.0],
-      ).createShader(Rect.fromCircle(center: center, radius: radius));
-    canvas.drawCircle(center, radius, lobePaint);
-  }
+  @override
+  bool shouldRepaint(covariant _CrescentMoonPainter oldDelegate) =>
+      oldDelegate.progress != progress;
+}
 
-  /// 3D Glossy Blue Teardrop Raindrops (matching reference image)
-  void _drawTeardropRain(
-    Canvas canvas, {
-    required Rect area,
-    required int count,
-    required double progress,
-  }) {
-    final stepX = area.width / (count + 0.5);
-    final dropW = (area.width * 0.16).clamp(6.0, 13.0);
-    final dropH = dropW * 1.45;
+/// Custom painter for twinkling stars with diamond sparkle rays
+class _StarsPainter extends CustomPainter {
+  final double progress;
+  _StarsPainter({required this.progress});
 
-    for (int i = 0; i < count; i++) {
-      final phase = (progress * 1.5 + i * 0.33) % 1.0;
-      final cx = area.left + stepX * (i + 0.75) - phase * 3.0;
-      final cy = area.top + phase * (area.height - dropH * 0.5);
-
-      canvas.save();
-      canvas.translate(cx, cy);
-      canvas.rotate(0.22); // Slight diagonal tilt like reference image
-
-      final dropPath = Path()
-        ..moveTo(0, -dropH * 0.55)
-        ..cubicTo(
-          dropW * 0.65,
-          -dropH * 0.05,
-          dropW * 0.62,
-          dropH * 0.45,
-          0,
-          dropH * 0.45,
-        )
-        ..cubicTo(
-          -dropW * 0.62,
-          dropH * 0.45,
-          -dropW * 0.65,
-          -dropH * 0.05,
-          0,
-          -dropH * 0.55,
-        )
-        ..close();
-
-      final dropShadow = Paint()
-        ..color = const Color(0xFF2962FF).withValues(alpha: 0.35)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
-      canvas.drawPath(dropPath.shift(const Offset(0, 2)), dropShadow);
-
-      final dropPaint = Paint()
-        ..shader = LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: const [
-            Color(0xFF80D8FF),
-            Color(0xFF2979FF),
-            Color(0xFF1565C0),
-          ],
-        ).createShader(
-          Rect.fromCenter(center: Offset.zero, width: dropW, height: dropH),
-        );
-      canvas.drawPath(dropPath, dropPaint);
-
-      // Tiny specular highlight dot
-      canvas.drawCircle(
-        Offset(-dropW * 0.16, dropH * 0.08),
-        dropW * 0.12,
-        Paint()..color = Colors.white.withValues(alpha: 0.85),
-      );
-      canvas.restore();
-    }
-  }
-
-  /// 3D Golden Lightning Bolt
-  void _drawClayLightning(
-    Canvas canvas, {
-    required Offset center,
-    required Size size,
-    required double progress,
-  }) {
+  @override
+  void paint(Canvas canvas, Size size) {
     final w = size.width;
     final h = size.height;
-    final path = Path()
-      ..moveTo(center.dx + w * 0.12, center.dy - h * 0.50)
-      ..lineTo(center.dx - w * 0.36, center.dy + h * 0.04)
-      ..lineTo(center.dx - w * 0.02, center.dy + h * 0.04)
-      ..lineTo(center.dx - w * 0.18, center.dy + h * 0.52)
-      ..lineTo(center.dx + w * 0.38, center.dy - h * 0.08)
-      ..lineTo(center.dx + w * 0.04, center.dy - h * 0.08)
-      ..close();
 
-    final glow = Paint()
-      ..color = const Color(0xFFFFB300).withValues(alpha: 0.55)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7);
-    canvas.drawPath(path, glow);
+    // Star positions (dx, dy, size, twinklePhase)
+    final stars = [
+      [w * 0.16, h * 0.22, 3.2, 0.0],
+      [w * 0.82, h * 0.18, 2.5, 0.3],
+      [w * 0.26, h * 0.78, 2.8, 0.6],
+      [w * 0.76, h * 0.82, 3.5, 0.8],
+      [w * 0.08, h * 0.55, 2.0, 0.45],
+      [w * 0.88, h * 0.48, 2.2, 0.15],
+      [w * 0.48, h * 0.08, 2.8, 0.7],
+    ];
 
-    final boltPaint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: const [
-          Color(0xFFFFF59D),
-          Color(0xFFFFCA28),
-          Color(0xFFFF8F00),
-        ],
-      ).createShader(Rect.fromCenter(center: center, width: w, height: h));
-    canvas.drawPath(path, boltPaint);
-  }
+    for (final s in stars) {
+      final x = s[0];
+      final y = s[1];
+      final starSize = s[2];
+      final phase = s[3];
 
-  /// 3D Wavy Mist Lines under Cloud
-  void _drawWavyFogLines(
-    Canvas canvas, {
-    required Offset center,
-    required double width,
-    required double progress,
-  }) {
-    final paint = Paint()
-      ..color = const Color(0xFFEDE7FF).withValues(alpha: 0.9)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3.6
-      ..strokeCap = StrokeCap.round;
+      // Twinkle pulsation
+      final opacity = (0.35 + 0.65 * ((math.sin((progress + phase) * 2 * math.pi) + 1) / 2)).clamp(0.1, 1.0);
 
-    for (int row = 0; row < 2; row++) {
-      final y = center.dy + row * 8.0;
-      final shift = math.sin((progress + row * 0.4) * 2 * math.pi) * 4.0;
-      final lineW = width * (row == 0 ? 1.0 : 0.75);
-      final startX = center.dx - lineW / 2 + shift;
+      final starPaint = Paint()
+        ..color = const Color(0xFFF8FAFC).withValues(alpha: opacity)
+        ..style = PaintingStyle.fill;
 
-      final path = Path()
-        ..moveTo(startX, y)
-        ..quadraticBezierTo(
-          startX + lineW * 0.25,
-          y - 3.5,
-          startX + lineW * 0.5,
-          y,
-        )
-        ..quadraticBezierTo(
-          startX + lineW * 0.75,
-          y + 3.5,
-          startX + lineW,
-          y,
-        );
-      canvas.drawPath(path, paint);
+      // Center glowing dot
+      canvas.drawCircle(Offset(x, y), starSize * 0.6, starPaint);
+
+      // Four-point diamond rays
+      final rayLength = starSize * 2.2;
+      final rayPaint = Paint()
+        ..color = const Color(0xFFE0F2FE).withValues(alpha: opacity * 0.85)
+        ..strokeWidth = 1.0
+        ..strokeCap = StrokeCap.round;
+
+      canvas.drawLine(Offset(x - rayLength, y), Offset(x + rayLength, y), rayPaint);
+      canvas.drawLine(Offset(x, y - rayLength), Offset(x, y + rayLength), rayPaint);
     }
   }
 
   @override
-  bool shouldRepaint(covariant _ClayWeatherPainter oldDelegate) =>
-      oldDelegate.progress != progress ||
-      oldDelegate.weatherCode != weatherCode ||
-      oldDelegate.isDay != isDay;
+  bool shouldRepaint(covariant _StarsPainter oldDelegate) =>
+      oldDelegate.progress != progress;
 }

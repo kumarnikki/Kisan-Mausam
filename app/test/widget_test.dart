@@ -352,5 +352,49 @@ void main() {
       }
     }
   });
+
+  testWidgets('Test 13: Hero card separates cleanly and metrics row fits at 320dp width & 1.3x text scale across all 7 ambient states', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(320, 780);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      debugWeatherNotifier.value = null;
+    });
+
+    final themes = [
+      AppTheme.lightTheme(),
+      AppTheme.darkTheme(),
+      AppTheme.highContrastTheme(),
+    ];
+
+    for (final theme in themes) {
+      for (final lang in ['hi', 'en']) {
+        SharedPreferences.setMockInitialValues({'language': lang});
+
+        for (final state in AmbientWeatherState.values) {
+          debugWeatherNotifier.value = DebugWeatherOverride(
+            ambientState: state,
+          );
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: theme,
+              builder: (ctx, child) => MediaQuery(
+                data: MediaQuery.of(ctx).copyWith(
+                  textScaler: const TextScaler.linear(1.3),
+                ),
+                child: child!,
+              ),
+              home: WeatherHomeScreen(onOpenSettings: () {}),
+            ),
+          );
+          await tester.pump(const Duration(milliseconds: 300));
+
+          // Verify zero overflow at 320dp width and textScaler 1.3
+          expect(tester.takeException(), isNull);
+          expect(find.byType(WeatherHomeScreen), findsOneWidget);
+        }
+      }
+    }
+  });
 }
 

@@ -63,6 +63,32 @@ class DebugWeatherOverride {
 final ValueNotifier<DebugWeatherOverride?> debugWeatherNotifier =
     ValueNotifier<DebugWeatherOverride?>(null);
 
+/// Inherited scope to pass Ambient weather context to descendant AppSurfaces and widgets.
+class AmbientScope extends InheritedWidget {
+  final AmbientWeatherState state;
+  final bool isDark;
+  final bool isHighContrast;
+
+  const AmbientScope({
+    super.key,
+    required this.state,
+    required this.isDark,
+    required this.isHighContrast,
+    required super.child,
+  });
+
+  static AmbientScope? maybeOf(BuildContext context) {
+    return context.dependOnInheritedWidgetOfExactType<AmbientScope>();
+  }
+
+  @override
+  bool updateShouldNotify(AmbientScope oldWidget) {
+    return state != oldWidget.state ||
+        isDark != oldWidget.isDark ||
+        isHighContrast != oldWidget.isHighContrast;
+  }
+}
+
 /// Replaces BackdropFilter blur with a solid semi-opaque fill and 1px hairline border.
 /// Keeps the GlassCard class name and API so all existing call sites compile cleanly.
 class GlassCard extends StatelessWidget {
@@ -89,7 +115,7 @@ class GlassCard extends StatelessWidget {
   }
 }
 
-/// Primary surface component: solid semi-opaque fill + 1px low-contrast hairline border (no blur, no drop shadow).
+/// Primary surface component: solid semi-opaque fill + 1px low-contrast hairline border (no blur, soft shadow on light).
 class AppSurface extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry padding;
@@ -97,6 +123,10 @@ class AppSurface extends StatelessWidget {
   final double borderRadius;
   final Color? color;
   final Color? borderColor;
+  final double? borderWidth;
+  final Gradient? gradient;
+  final List<BoxShadow>? boxShadow;
+  final Clip clipBehavior;
   final VoidCallback? onTap;
 
   const AppSurface({
@@ -107,14 +137,48 @@ class AppSurface extends StatelessWidget {
     this.borderRadius = AppTheme.rCard,
     this.color,
     this.borderColor,
+    this.borderWidth,
+    this.gradient,
+    this.boxShadow,
+    this.clipBehavior = Clip.antiAlias,
     this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final fill = color ?? AppTheme.surfaceFill(context);
-    final bColor = borderColor ?? AppTheme.borderColor(context);
-    final bWidth = AppTheme.borderWidth(context);
+    final ambient = AmbientScope.maybeOf(context);
+    final highContrast = ambient?.isHighContrast ?? AppTheme.isHighContrast(context);
+    final isDark = ambient?.isDark ?? (Theme.of(context).brightness == Brightness.dark);
+
+    final Color fill;
+    final Gradient? effectiveGradient;
+    final Color bColor;
+    final double bWidth;
+    final List<BoxShadow>? effectiveShadows;
+
+    if (highContrast) {
+      fill = color ?? Colors.white;
+      effectiveGradient = null;
+      bColor = borderColor ?? Colors.black;
+      bWidth = borderWidth ?? 2.0;
+      effectiveShadows = null;
+    } else if (ambient != null) {
+      // Inside AmbientBackground: match hero card surface family tokens unless caller provided overrides
+      fill = color ?? (isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight);
+      effectiveGradient = gradient ??
+          (color == null
+              ? AmbientBackground.cardGradientForState(ambient.state, isDark: isDark)
+              : null);
+      bColor = borderColor ?? AmbientBackground.cardBorderColor(isDark: isDark);
+      bWidth = borderWidth ?? 1.0;
+      effectiveShadows = boxShadow ?? AmbientBackground.cardBoxShadow(isDark: isDark);
+    } else {
+      fill = color ?? AppTheme.surfaceFill(context);
+      effectiveGradient = gradient;
+      bColor = borderColor ?? AppTheme.borderColor(context);
+      bWidth = borderWidth ?? AppTheme.borderWidth(context);
+      effectiveShadows = boxShadow;
+    }
 
     Widget content = Padding(
       padding: padding,
@@ -129,16 +193,28 @@ class AppSurface extends StatelessWidget {
       );
     }
 
+    final side = BorderSide(color: bColor, width: bWidth);
+
     return Padding(
       padding: margin ?? EdgeInsets.zero,
-      child: Material(
-        color: fill,
-        clipBehavior: Clip.antiAlias,
-        shape: RoundedRectangleBorder(
+      child: Container(
+        decoration: BoxDecoration(
+          color: effectiveGradient == null ? fill : null,
+          gradient: effectiveGradient,
           borderRadius: BorderRadius.circular(borderRadius),
-          side: BorderSide(color: bColor, width: bWidth),
+          border: Border.fromBorderSide(side),
+          boxShadow: effectiveShadows,
         ),
-        child: content,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(
+            (borderRadius - bWidth).clamp(0.0, borderRadius),
+          ),
+          clipBehavior: clipBehavior,
+          child: Material(
+            color: Colors.transparent,
+            child: content,
+          ),
+        ),
       ),
     );
   }
@@ -230,44 +306,127 @@ class AmbientBackground extends StatelessWidget {
 
     switch (state) {
       case AmbientWeatherState.clearDay:
-        top = isDark ? const Color(0xFF231845) : const Color(0xFFA796FF);
-        bottom = isDark ? const Color(0xFF140D2B) : const Color(0xFF7B5DF9);
+        top = isDark ? const Color(0xFF1C1A10) : const Color(0xFFFFF4D6);
+        bottom = isDark ? const Color(0xFF12110B) : const Color(0xFFFFFBF0);
         break;
       case AmbientWeatherState.dawnDusk:
-        top = isDark ? const Color(0xFF281948) : const Color(0xFFB399FF);
-        bottom = isDark ? const Color(0xFF160E2E) : const Color(0xFF835FF8);
+        top = isDark ? const Color(0xFF241710) : const Color(0xFFFFE6CC);
+        bottom = isDark ? const Color(0xFF140E0A) : const Color(0xFFFFF6EC);
         break;
       case AmbientWeatherState.clearNight:
-        top = isDark ? const Color(0xFF171033) : const Color(0xFF7E68F2);
-        bottom = isDark ? const Color(0xFF0E0921) : const Color(0xFF5A3FE0);
+        top = isDark ? const Color(0xFF0B1220) : const Color(0xFFE6ECF8);
+        bottom = isDark ? const Color(0xFF111A2E) : const Color(0xFFF5F7FC);
         break;
       case AmbientWeatherState.cloudy:
-        top = isDark ? const Color(0xFF211740) : const Color(0xFFA292FF);
-        bottom = isDark ? const Color(0xFF130D28) : const Color(0xFF775AF7);
+        top = isDark ? const Color(0xFF14181C) : const Color(0xFFECEFF1);
+        bottom = isDark ? const Color(0xFF0E1114) : const Color(0xFFF6F7F8);
         break;
       case AmbientWeatherState.rain:
-        top = isDark ? const Color(0xFF1D163D) : const Color(0xFF968AFF);
-        bottom = isDark ? const Color(0xFF110C26) : const Color(0xFF6B52F2);
+        top = isDark ? const Color(0xFF0C1A24) : const Color(0xFFE1EEF6);
+        bottom = isDark ? const Color(0xFF08121A) : const Color(0xFFF3F8FB);
         break;
       case AmbientWeatherState.storm:
-        top = isDark ? const Color(0xFF1B123A) : const Color(0xFF8976FA);
-        bottom = isDark ? const Color(0xFF0F0A24) : const Color(0xFF5D3FE8);
+        top = isDark ? const Color(0xFF151126) : const Color(0xFFE9E5F3);
+        bottom = isDark ? const Color(0xFF0D0A19) : const Color(0xFFF6F4FA);
         break;
       case AmbientWeatherState.severeHeat:
-        top = isDark ? const Color(0xFF2A1846) : const Color(0xFFB094FF);
-        bottom = isDark ? const Color(0xFF170D2B) : const Color(0xFF8156F6);
+        top = isDark ? const Color(0xFF241109) : const Color(0xFFFDE6D6);
+        bottom = isDark ? const Color(0xFF150A05) : const Color(0xFFFFF6EE);
         break;
     }
 
     if (quiet) {
-      final neutralTop = isDark ? const Color(0xFF1C1436) : const Color(0xFFF6F3FF);
-      final neutralBottom = isDark ? const Color(0xFF130E26) : const Color(0xFFE7E0FF);
+      final neutral = isDark ? const Color(0xFF121512) : const Color(0xFFF8F9F8);
       return [
-        Color.lerp(top, neutralTop, 0.72)!,
-        Color.lerp(bottom, neutralBottom, 0.75)!,
+        Color.lerp(top, neutral, 0.55)!,
+        Color.lerp(bottom, neutral, 0.65)!,
       ];
     }
     return [top, bottom];
+  }
+
+  /// Two-stop diagonal card tint gradient providing contrast against ambient background
+  /// in all 7 weather states in both Light and Dark themes.
+  static Gradient cardGradientForState(
+    AmbientWeatherState state, {
+    required bool isDark,
+  }) {
+    final List<Color> colors;
+    if (isDark) {
+      // Dark theme: one step lighter than ambient gradient
+      switch (state) {
+        case AmbientWeatherState.clearDay:
+          colors = const [Color(0xFF282518), Color(0xFF1D1B11)];
+          break;
+        case AmbientWeatherState.dawnDusk:
+          colors = const [Color(0xFF332219), Color(0xFF241812)];
+          break;
+        case AmbientWeatherState.clearNight:
+          colors = const [Color(0xFF16213A), Color(0xFF0F1A30)];
+          break;
+        case AmbientWeatherState.cloudy:
+          colors = const [Color(0xFF20252A), Color(0xFF171B1F)];
+          break;
+        case AmbientWeatherState.rain:
+          colors = const [Color(0xFF152633), Color(0xFF0F1D27)];
+          break;
+        case AmbientWeatherState.storm:
+          colors = const [Color(0xFF221D38), Color(0xFF181429)];
+          break;
+        case AmbientWeatherState.severeHeat:
+          colors = const [Color(0xFF341C13), Color(0xFF26140D)];
+          break;
+      }
+    } else {
+      // Light theme: ~88-95% white with subtle 2-stop diagonal weather tint
+      switch (state) {
+        case AmbientWeatherState.clearDay:
+          colors = const [Color(0xFAFFFFFF), Color(0xF2FFFDF5)];
+          break;
+        case AmbientWeatherState.dawnDusk:
+          colors = const [Color(0xFAFFFFFF), Color(0xF2FFF9F2)];
+          break;
+        case AmbientWeatherState.clearNight:
+          colors = const [Color(0xFAFFFFFF), Color(0xF2F7FAFE)];
+          break;
+        case AmbientWeatherState.cloudy:
+          colors = const [Color(0xFFFFFFFF), Color(0xFAFBFDFF)];
+          break;
+        case AmbientWeatherState.rain:
+          colors = const [Color(0xFAFFFFFF), Color(0xF2F5FAFE)];
+          break;
+        case AmbientWeatherState.storm:
+          colors = const [Color(0xFAFFFFFF), Color(0xF2F9F7FE)];
+          break;
+        case AmbientWeatherState.severeHeat:
+          colors = const [Color(0xFAFFFFFF), Color(0xF2FFF8F4)];
+          break;
+      }
+    }
+
+    return LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: colors,
+    );
+  }
+
+  /// 1px border color for card surface family.
+  /// Dark: white at 11% opacity (10-12% target). Light: outlineLight (12% textPrimaryLight).
+  static Color cardBorderColor({required bool isDark}) {
+    return isDark ? const Color(0x1EFFFFFF) : AppTheme.outlineLight;
+  }
+
+  /// Very soft shadow for light theme (blur 16, y 4, black at ~6%). None for dark theme.
+  static List<BoxShadow>? cardBoxShadow({required bool isDark}) {
+    if (isDark) return null;
+    return const [
+      BoxShadow(
+        color: Color(0x0F000000),
+        blurRadius: 16,
+        offset: Offset(0, 4),
+      ),
+    ];
   }
 
   @override
@@ -279,7 +438,12 @@ class AmbientBackground extends StatelessWidget {
         if (highContrast) {
           return Container(
             color: Theme.of(context).scaffoldBackgroundColor,
-            child: child,
+            child: AmbientScope(
+              state: AmbientWeatherState.clearDay,
+              isDark: false,
+              isHighContrast: true,
+              child: child,
+            ),
           );
         }
 
@@ -304,7 +468,12 @@ class AmbientBackground extends StatelessWidget {
               colors: colors,
             ),
           ),
-          child: child,
+          child: AmbientScope(
+            state: state,
+            isDark: isDark,
+            isHighContrast: false,
+            child: child,
+          ),
         );
       },
     );
@@ -702,7 +871,7 @@ class ChoiceChipGroup<T> extends StatelessWidget {
   }
 }
 
-/// 56dp height Pill Primary Button (matching 3D "Get Start" pill button in reference UI).
+/// 56dp height Primary Button.
 class PrimaryButton extends StatelessWidget {
   final String label;
   final VoidCallback? onPressed;
@@ -720,43 +889,19 @@ class PrimaryButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bg = AppTheme.primaryButtonFill(context);
-    final isHc = AppTheme.isHighContrast(context);
-    return Container(
+    return SizedBox(
       width: double.infinity,
       height: 56,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(AppTheme.rPill),
-        gradient: isHc || onPressed == null
-            ? null
-            : const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Color(0xFF6E3BFF),
-                  Color(0xFF521CE0),
-                ],
-              ),
-        boxShadow: isHc || onPressed == null
-            ? null
-            : [
-                BoxShadow(
-                  color: const Color(0xFF4B18D6).withValues(alpha: 0.38),
-                  blurRadius: 18,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-      ),
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(
-          backgroundColor: isHc ? bg : Colors.transparent,
-          shadowColor: Colors.transparent,
+          backgroundColor: bg,
           foregroundColor: Colors.white,
           disabledBackgroundColor: bg.withValues(alpha: 0.4),
           disabledForegroundColor: Colors.white70,
           elevation: 0,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppTheme.rPill),
-            side: isHc
+            borderRadius: BorderRadius.circular(AppTheme.rInput),
+            side: AppTheme.isHighContrast(context)
                 ? const BorderSide(color: Colors.black, width: 2)
                 : BorderSide.none,
           ),
@@ -797,7 +942,7 @@ class PrimaryButton extends StatelessWidget {
   }
 }
 
-/// 56dp height Secondary Outlined Pill Button.
+/// 56dp height Secondary Outlined Button.
 class SecondaryButton extends StatelessWidget {
   final String label;
   final VoidCallback? onPressed;
@@ -821,11 +966,11 @@ class SecondaryButton extends StatelessWidget {
           foregroundColor: fg,
           backgroundColor: AppTheme.surfaceFill(context),
           side: BorderSide(
-            color: fg.withValues(alpha: 0.45),
-            width: AppTheme.isHighContrast(context) ? 2.0 : 1.4,
+            color: fg,
+            width: AppTheme.isHighContrast(context) ? 2.0 : 1.2,
           ),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppTheme.rPill),
+            borderRadius: BorderRadius.circular(AppTheme.rInput),
           ),
         ),
         onPressed: onPressed,

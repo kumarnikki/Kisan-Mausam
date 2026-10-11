@@ -1,10 +1,10 @@
 {
   "version": "1.3.0",
   "versionCode": 17,
-  "releaseName": "Kisan Mausam v1.3.0 - Lavender-Violet 3D Claymorphic UI Edition",
+  "releaseName": "Kisan Mausam v1.3.0 - Material 3 Weather Hero Card & Ambient UI Edition",
   "apkUrl": "https://github.com/kumarnikki/Kisan-Mausam/releases/download/v1.3.0/kisan-mausam-release.apk",
   "githubReleaseUrl": "https://github.com/kumarnikki/Kisan-Mausam/releases/latest",
-  "changelog": "• New Soft 3D Claymorphic Lavender-Violet & Periwinkle Weather UI\n• Frosted White-Lavender Hero Card with giant 84sp violet temperature & 3D weather illustrations\n• 3-Column White Pill Stats Pod (Precipitation %, Humidity %, Wind speed km/h)\n• Smooth Cubic-Bezier Hourly Wave Chart (0:00 to 21:00) with glowing current-hour ring marker\n• 7-Day Vertical Stadium-Capsule Forecast Strip with 3D weather visuals",
+  "changelog": "• Unified Weather Hero Card on Home with ambient-aware 2-stop weather tints and crisp 1px borders across Light, Dark & High-Contrast themes\n• Full Material 3 UI/UX Redesign with 7 dynamic Ambient Weather backgrounds (Clear Day, Dawn/Dusk, Night, Cloudy, Rain, Storm, Severe Heat)\n• Persistent 3-tab bottom Navigation Bar (Weather, Ask AI Mic, Crops) with 1-tap access\n• Above-the-fold IMD Hazard Status Rows & 30-day seasonal outlook on Home\n• Protected Hold-to-Confirm SOS button (1.2s hold) with Siren, 112 & Kisan Helpline 1800-180-1551",
   "minRequiredVersion": "1.0.0",
-  "publishedAt": "2026-10-10T19:40:00Z"
+  "publishedAt": "2026-10-11T03:40:00Z"
 }

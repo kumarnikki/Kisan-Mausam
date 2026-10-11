@@ -5,7 +5,6 @@ import '../../services/api_service.dart';
 import '../../services/storage_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/glass_card.dart';
-import '../../widgets/realistic_weather_visual.dart';
 import 'otp_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -306,32 +305,33 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: AmbientBackground(
-        weatherCode: 61,
-        isDay: true,
+        quiet: true,
         child: SafeArea(
           child: SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
                 Center(
                   child: Column(
                     children: [
-                      const RealisticWeatherVisual(
-                        weatherCode: 61,
-                        isDay: true,
-                        size: 132,
-                        animate: false,
+                      Container(
+                        width: 72,
+                        height: 72,
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryGreen,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: const Icon(Icons.agriculture_rounded, color: Colors.white, size: 42),
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 12),
                       Text(
                         _lang == 'hi' ? 'किसान मौसम' : 'KisanMausam',
                         style: TextStyle(
-                          fontSize: 30,
-                          fontWeight: FontWeight.w900,
-                          color: AppTheme.textPrimary(context),
-                          letterSpacing: -0.5,
+                          fontSize: 28,
+                          fontWeight: FontWeight.w800,
+                          color: accent,
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -340,15 +340,12 @@ class _LoginScreenState extends State<LoginScreen> {
                             ? 'भारतीय किसानों के लिए मौसम व फसल सुरक्षा ऐप'
                             : 'Weather & Crop Protection App for Indian Farmers',
                         textAlign: TextAlign.center,
-                        style: AppTheme.labelStyle.copyWith(
-                          color: textSecondary,
-                          fontWeight: FontWeight.w600,
-                        ),
+                        style: AppTheme.labelStyle.copyWith(color: textSecondary),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 24),
 
                 AppSurface(
                   padding: const EdgeInsets.all(18),

@@ -901,26 +901,65 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
     );
   }
 
-  int _selectedDayIndex = 0;
-
   Widget _buildWeatherHomeTab(BuildContext context) {
     return ValueListenableBuilder<DebugWeatherOverride?>(
       valueListenable: debugWeatherNotifier,
       builder: (context, debugOverride, _) {
         final effectiveCode = (kDebugMode && debugOverride?.ambientState != null)
             ? debugOverride!.weatherCode
-            : (_weather?.current.weatherCode ?? 1);
+            : (_weather?.current.weatherCode ?? 0);
         final effectiveIsDay = (kDebugMode && debugOverride?.ambientState != null)
             ? debugOverride!.isDay
             : (_weather?.current.isDay ?? true);
         final effectiveTemp = (kDebugMode && debugOverride?.ambientState != null)
             ? debugOverride!.temperature
-            : (_weather?.current.temperature ?? 22.0);
-        final sunrise = _weather?.daily.isNotEmpty == true
-            ? _weather!.daily.first.sunrise
+            : (_weather?.current.temperature ?? 28.0);
+        final effectiveWeather = _weather ??
+            ((kDebugMode && debugOverride?.ambientState != null)
+                ? WeatherData(
+                    latitude: 21.1458,
+                    longitude: 79.0882,
+                    timezone: 'Asia/Kolkata',
+                    elevation: 310.0,
+                    current: CurrentWeather(
+                      time: DateTime.now().toIso8601String(),
+                      temperature: effectiveTemp,
+                      relativeHumidity: 65.0,
+                      apparentTemperature: effectiveTemp - 2,
+                      precipitation: 0.0,
+                      weatherCode: effectiveCode,
+                      windSpeed: 14.0,
+                      windGusts: 18.0,
+                      uvIndex: 5.4,
+                      soilTemperature: 24.5,
+                      soilMoisture: 0.32,
+                      isDay: effectiveIsDay,
+                    ),
+                    hourly: const [],
+                    daily: [
+                      DailyForecast(
+                        date: '2026-10-11',
+                        tempMax: effectiveTemp + 4,
+                        tempMin: effectiveTemp - 4,
+                        precipitationSum: 0.0,
+                        precipitationProbabilityMax: 10,
+                        windSpeedMax: 16.0,
+                        sunrise: '2026-10-11T06:12',
+                        sunset: '2026-10-11T18:04',
+                        uvIndexMax: 6.0,
+                        weatherCode: effectiveCode,
+                      ),
+                    ],
+                    attribution: 'Open-Meteo.com (CC BY 4.0)',
+                    cachedAt: DateTime.now().toIso8601String(),
+                  )
+                : null);
+
+        final sunrise = effectiveWeather?.daily.isNotEmpty == true
+            ? effectiveWeather!.daily.first.sunrise
             : null;
-        final sunset = _weather?.daily.isNotEmpty == true
-            ? _weather!.daily.first.sunset
+        final sunset = effectiveWeather?.daily.isNotEmpty == true
+            ? effectiveWeather!.daily.first.sunset
             : null;
 
         return AmbientBackground(
@@ -941,7 +980,20 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
               child: CustomScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 slivers: [
-                  // Optional OTA Update Banner
+                  // a) Top bar (56dp): Farm chip on left, SOS HoldToConfirm + Settings Gear on right
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppTheme.s16,
+                        AppTheme.s8,
+                        AppTheme.s16,
+                        AppTheme.s8,
+                      ),
+                      child: _buildTopBar(context),
+                    ),
+                  ),
+
+                  // Optional OTA Update Banner (single level InfoBanner)
                   if (_availableUpdate != null &&
                       _availableUpdate!.hasUpdate &&
                       !_updateBannerDismissed)
@@ -949,9 +1001,9 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                       child: Padding(
                         padding: const EdgeInsets.fromLTRB(
                           AppTheme.s16,
-                          AppTheme.s8,
-                          AppTheme.s16,
                           0,
+                          AppTheme.s16,
+                          AppTheme.s8,
                         ),
                         child: InfoBanner(
                           icon: Icons.system_update_alt_rounded,
@@ -971,37 +1023,24 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                       ),
                     ),
 
-                  // TOP FROSTED WHITE-LAVENDER HERO CARD (matches center screen in reference UI)
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-                      child: _buildTopHeroCard(
-                        context,
-                        effectiveCode: effectiveCode,
-                        effectiveIsDay: effectiveIsDay,
-                        effectiveTemp: effectiveTemp,
-                      ),
-                    ),
-                  ),
-
-                  if (_isLoading && _weather == null)
+                  if (_isLoading && effectiveWeather == null)
                     SliverToBoxAdapter(
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: AppTheme.s16),
+                        padding: const EdgeInsets.all(AppTheme.s16),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: const [
-                            SkeletonBox(height: 56),
-                            SizedBox(height: AppTheme.s12),
-                            SkeletonBox(height: 148, borderRadius: 36),
-                            SizedBox(height: AppTheme.s12),
-                            SkeletonBox(height: 110, borderRadius: AppTheme.rCard),
+                            SkeletonBox(height: 64),
+                            SizedBox(height: AppTheme.s16),
+                            SkeletonBox(height: 150, borderRadius: AppTheme.rCard),
+                            SizedBox(height: AppTheme.s16),
+                            SkeletonBox(height: 120, borderRadius: AppTheme.rCard),
                           ],
                         ),
                       ),
                     )
-                  else if (_weather != null) ...[
-                    // Alert area (active IMD hazards or slim safe banner + 30-day outlook)
+                  else if (effectiveWeather != null) ...[
+                    // b) Alert area directly under the top bar (always visible without scrolling)
                     SliverToBoxAdapter(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
@@ -1011,35 +1050,34 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                       ),
                     ),
 
-                    // 7-Day Forecasts Horizontal Vertical-Capsule Strip (exact match to reference UI)
+                    // c) Weather hero (wrapped in ONE card; radius 20, padding 20, 16dp spacing above & below)
                     SliverToBoxAdapter(
                       child: Padding(
-                        padding: const EdgeInsets.fromLTRB(
-                          AppTheme.s16,
-                          AppTheme.s16,
-                          AppTheme.s16,
-                          AppTheme.s12,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppTheme.s16,
+                          vertical: AppTheme.s16,
                         ),
-                        child: _buildSevenDayCapsulesSection(
+                        child: _buildWeatherHero(
                           context,
-                          _weather!,
+                          effectiveWeather.current,
                           effectiveCode: effectiveCode,
+                          effectiveIsDay: effectiveIsDay,
                           effectiveTemp: effectiveTemp,
                         ),
                       ),
                     ),
 
-                    // Detail strip: compact 4-up grid of MetricTile (soil temp, soil moisture %, sunrise, sunset)
+                    // d) Detail strip: compact 4-up grid of MetricTile (soil temp, soil moisture %, sunrise, sunset)
                     SliverToBoxAdapter(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
                           horizontal: AppTheme.s16,
                         ),
-                        child: _buildDetailGrid(context, _weather!),
+                        child: _buildDetailGrid(context, effectiveWeather),
                       ),
                     ),
 
-                    // One row "Best crops for your field now" with chevron to Crops
+                    // e) One row "Best crops for your field now" with chevron to Crops
                     SliverToBoxAdapter(
                       child: Padding(
                         padding: const EdgeInsets.fromLTRB(
@@ -1052,7 +1090,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                       ),
                     ),
 
-                    // Footer: Open-Meteo attribution with bottom padding
+                    // f) Footer: Open-Meteo attribution with bottom padding
                     SliverToBoxAdapter(
                       child: Padding(
                         padding: const EdgeInsets.fromLTRB(
@@ -1068,8 +1106,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               fontSize: 12.5,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.textPrimary(context).withValues(alpha: 0.78),
+                              color: AppTheme.textSecondary(context),
                             ),
                           ),
                         ),
@@ -1082,162 +1119,6 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
           ),
         );
       },
-    );
-  }
-
-  String _formatHeaderDateSubtitle() {
-    final now = DateTime.now();
-    const weekdaysEn = [
-      'Monday',
-      'Tuesday',
-      'Wednesday',
-      'Thursday',
-      'Friday',
-      'Saturday',
-      'Sunday',
-    ];
-    const weekdaysHi = [
-      'सोमवार',
-      'मंगलवार',
-      'बुधवार',
-      'गुरुवार',
-      'शुक्रवार',
-      'शनिवार',
-      'रविवार',
-    ];
-    const monthsEn = [
-      'January',
-      'February',
-      'March',
-      'April',
-      'May',
-      'June',
-      'July',
-      'August',
-      'September',
-      'October',
-      'November',
-      'December',
-    ];
-    const monthsHi = [
-      'जनवरी',
-      'फ़रवरी',
-      'मार्च',
-      'अप्रैल',
-      'मई',
-      'जून',
-      'जुलाई',
-      'अगस्त',
-      'सितंबर',
-      'अक्टूबर',
-      'नवंबर',
-      'दिसंबर',
-    ];
-    final wIdx = (now.weekday - 1).clamp(0, 6);
-    final mIdx = (now.month - 1).clamp(0, 11);
-    final hh = now.hour.toString().padLeft(2, '0');
-    final mm = now.minute.toString().padLeft(2, '0');
-    if (_lang == 'hi') {
-      return '${weekdaysHi[wIdx]}, ${now.day} ${monthsHi[mIdx]} $hh:$mm • ${_formatFreshnessText()}';
-    }
-    return '${weekdaysEn[wIdx]}, ${now.day} ${monthsEn[mIdx]} $hh:$mm • ${_formatFreshnessText()}';
-  }
-
-  /// Frosted White-Lavender Rounded Top Hero Card matching the center phone in the reference UI
-  Widget _buildTopHeroCard(
-    BuildContext context, {
-    required int effectiveCode,
-    required bool effectiveIsDay,
-    required double effectiveTemp,
-  }) {
-    final isHc = AppTheme.isHighContrast(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    final cardGradient = isHc
-        ? LinearGradient(
-            colors: [
-              isDark ? Colors.black : Colors.white,
-              isDark ? Colors.black : Colors.white,
-            ],
-          )
-        : LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: isDark
-                ? const [Color(0xFF281C4A), Color(0xFF1B1236)]
-                : const [Color(0xFFFCF9FF), Color(0xFFEDE6FF)],
-          );
-
-    return Container(
-      decoration: BoxDecoration(
-        gradient: cardGradient,
-        borderRadius: BorderRadius.circular(34),
-        border: Border.all(
-          color: isHc
-              ? AppTheme.borderColor(context)
-              : (isDark
-                  ? const Color(0xFF5E43B8).withValues(alpha: 0.45)
-                  : Colors.white.withValues(alpha: 0.92)),
-          width: isHc ? 2.0 : 1.5,
-        ),
-        boxShadow: isHc
-            ? const []
-            : [
-                BoxShadow(
-                  color: const Color(0xFF4318B8).withValues(alpha: isDark ? 0.42 : 0.18),
-                  blurRadius: 28,
-                  offset: const Offset(0, 14),
-                ),
-              ],
-      ),
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // a) Top bar inside hero card: Farm/Location selector, SOS HoldToConfirmButton, Settings gear
-          _buildTopBar(context),
-          const SizedBox(height: 4),
-          // Date + Freshness subtitle centered under header
-          Text(
-            _formatHeaderDateSubtitle(),
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textSecondary(context),
-            ),
-          ),
-          const SizedBox(height: 8),
-
-          if (_weather != null) ...[
-            // Giant Violet Temperature (22°) + Overlapping 3D Weather Visual
-            _buildWeatherHero(
-              context,
-              _weather!.current,
-              effectiveCode: effectiveCode,
-              effectiveIsDay: effectiveIsDay,
-              effectiveTemp: effectiveTemp,
-            ),
-            const SizedBox(height: 14),
-
-            // 3-Column Rounded White Pill Stats Pod (Precipitation %, Humidity %, Wind speed km/h)
-            _buildThreeColumnStatsPod(context, _weather!),
-            const SizedBox(height: 16),
-
-            // Smooth Cubic-Bezier Hourly Wave Chart (0:00 3:00 6:00 9:00 12:00 15:00 18:00 21:00)
-            _buildHourlyWaveSection(
-              context,
-              _weather!,
-              effectiveTemp: effectiveTemp,
-            ),
-          ] else ...[
-            const SizedBox(height: 12),
-            const SkeletonBox(height: 110, borderRadius: 24),
-          ],
-        ],
-      ),
     );
   }
 
@@ -1274,69 +1155,67 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
     }
     final cropLabel = _currentFarm?.getCurrentCrop(_lang) ??
         (_lang == 'en' ? 'Wheat' : 'गेहूं');
-    final chipLabel = '$shortLoc • $cropLabel';
+    final chipLabel = '$shortLoc - $cropLabel';
 
     return ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: 52),
+      constraints: const BoxConstraints(minHeight: 56),
       child: Row(
         children: [
-          // Left: Farm & Location switcher pill with location pin & chevron
+          // Left: Farm chip "{village or district} - {crop}" with chevron
           Expanded(
             child: Semantics(
               button: true,
               label: '${AppStrings.get("location_and_farm", _lang)}: $chipLabel',
-              child: InkWell(
-                borderRadius: BorderRadius.circular(AppTheme.rPill),
+              child: AppSurface(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppTheme.s12,
+                  vertical: 10,
+                ),
+                borderRadius: AppTheme.rPill,
                 onTap: _showFarmSelector,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 8,
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (_isLocating)
-                        SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: AppTheme.primaryActionColor(context),
-                          ),
-                        )
-                      else
-                        Icon(
-                          Icons.location_on_rounded,
-                          size: 20,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_isLocating)
+                      SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
                           color: AppTheme.primaryActionColor(context),
                         ),
-                      const SizedBox(width: 5),
-                      Flexible(
-                        child: Text(
-                          chipLabel,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                            color: AppTheme.textPrimary(context),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 2),
+                      )
+                    else
                       Icon(
-                        Icons.keyboard_arrow_down_rounded,
-                        size: 20,
+                        Icons.location_on,
+                        size: 18,
                         color: AppTheme.primaryActionColor(context),
                       ),
-                    ],
-                  ),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        chipLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.textPrimary(context),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      size: 20,
+                      color: AppTheme.textSecondary(context),
+                    ),
+                  ],
                 ),
               ),
             ),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: AppTheme.s8),
           // Right: Protected SOS HoldToConfirmButton (~1.2s hold)
           HoldToConfirmButton(
             label: AppStrings.get('sos_label', _lang),
@@ -1347,7 +1226,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
             cancelButtonLabel: AppStrings.get('settings_delete_cancel', _lang),
             onConfirmed: _activateSos,
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: AppTheme.s8),
           // Settings Gear IconAction (>= 48dp)
           IconAction(
             icon: Icons.settings_rounded,
@@ -1359,9 +1238,9 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
     );
   }
 
-  /// b) Alert area directly under top hero card:
+  /// b) Alert area directly under top bar:
   /// - Active Horizon-1 hazards sorted red before orange (only highest-severity expanded by default)
-  /// - Or single slim green/lavender row "No severe hazards in the next 3 days"
+  /// - Or single slim green row "No severe hazards in the next 3 days"
   /// - Plus 1 collapsed row for 30-day seasonal outlook
   Widget _buildAlertArea(
     BuildContext context,
@@ -1406,12 +1285,13 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (h1Risks.isEmpty)
+          // Single slim green row "No severe hazards in the next 3 days"
           AppSurface(
             padding: const EdgeInsets.symmetric(
               horizontal: AppTheme.s12,
               vertical: 10,
             ),
-            borderRadius: 18,
+            borderRadius: AppTheme.rInput,
             child: Row(
               children: [
                 Icon(
@@ -1424,8 +1304,8 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                   child: Text(
                     AppStrings.get('no_severe_hazards_3d', _lang),
                     style: TextStyle(
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
                       color: AppTheme.textPrimary(context),
                     ),
                   ),
@@ -1454,6 +1334,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
               risk.expectedDate,
               _lang,
             );
+            // Strip any secondary "(XX% chance)" from expectedValue so probability is only shown once
             var cleanExpected = risk.expectedValue
                 .replaceAll(RegExp(r'\s*\([^)]*%\s*chance\)', caseSensitive: false), '')
                 .trim();
@@ -1498,7 +1379,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
             );
           }),
 
-        // 30-day seasonal outlook as 1 collapsed row
+        // 30-day seasonal outlook as 1 collapsed row (max 1 level of container)
         if (h3Risks.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: AppTheme.s4),
@@ -1507,7 +1388,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                 horizontal: AppTheme.s12,
                 vertical: 8,
               ),
-              borderRadius: 18,
+              borderRadius: AppTheme.rInput,
               onTap: () => setState(
                 () => _seasonalOutlookExpanded = !_seasonalOutlookExpanded,
               ),
@@ -1589,7 +1470,11 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
     return '$activeLoc ($temp°C, मिट्टी नमी $soilPct%) में अगले 30 दिनों के मौसमी पूर्वानुमान के अनुसार नमी संरक्षण व समय पर हल्की सिंचाई की सलाह है।';
   }
 
-  /// c) Giant Violet Temperature (84sp) + Condition label + Overlapping 3D Claymorphic Weather Visual
+  /// c) Weather hero wrapped inside ONE card (AppSurface with radius 20, padding 20):
+  /// - 64sp temperature top-left, condition label, feels-like beneath, updated text under condition
+  /// - Clipped RealisticWeatherVisual (size 96) on the right side
+  /// - Hairline divider
+  /// - 3-column metrics row (wind, humidity, UV) with icon+value on line 1, short label below, separated by thin vertical dividers
   Widget _buildWeatherHero(
     BuildContext context,
     CurrentWeather current, {
@@ -1601,145 +1486,120 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
     final displayCond = (!effectiveIsDay && effectiveCode == 0)
         ? (_lang == 'hi' ? 'साफ रात' : 'Clear Night')
         : condText;
-    final isHc = AppTheme.isHighContrast(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final heroTempColor = isHc
-        ? AppTheme.textPrimary(context)
-        : (isDark ? const Color(0xFFD0BCFF) : const Color(0xFF5D2BF8));
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
+    return AppSurface(
+      borderRadius: AppTheme.rCard,
+      padding: const EdgeInsets.all(20),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            flex: 6,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    '${effectiveTemp.round()}°',
-                    style: AppTheme.heroTempStyle.copyWith(
-                      fontSize: 84,
-                      fontWeight: FontWeight.w900,
-                      color: heroTempColor,
-                      height: 0.96,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    GestureDetector(
+                      onLongPress: kDebugMode ? _showDebugOverrideSheet : null,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          '${effectiveTemp.round()}°',
+                          style: AppTheme.heroTempStyle.copyWith(
+                            color: AppTheme.textPrimary(context),
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
+                    const SizedBox(height: 2),
+                    Text(
+                      displayCond,
+                      style: AppTheme.titleStyle.copyWith(
+                        color: AppTheme.textPrimary(context),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${AppStrings.get('feels_like', _lang)} ${current.apparentTemperature.round()}°C',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textSecondary(context),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _formatFreshnessText(),
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: AppTheme.textSecondary(context),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  displayCond,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    color: AppTheme.textPrimary(context),
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '${AppStrings.get('feels_like', _lang)} ${current.apparentTemperature.round()}°C',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textSecondary(context),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 4),
-          Flexible(
-            flex: 5,
-            child: Center(
-              child: RealisticWeatherVisual(
-                weatherCode: effectiveCode,
-                isDay: effectiveIsDay,
-                size: 124,
               ),
-            ),
+              const SizedBox(width: AppTheme.s8),
+              RepaintBoundary(
+                child: SizedBox(
+                  width: 96,
+                  height: 96,
+                  child: RealisticWeatherVisual(
+                    weatherCode: effectiveCode,
+                    isDay: effectiveIsDay,
+                    size: 96,
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
-    );
-  }
 
-  /// 3-Column White Rounded Pill Stats Pod (Precipitation %, Humidity %, Wind speed km/h)
-  /// Exact match to the white 3-column card in the middle of the reference UI.
-  Widget _buildThreeColumnStatsPod(BuildContext context, WeatherData weather) {
-    final isHc = AppTheme.isHighContrast(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cur = weather.current;
+          // Hairline divider
+          const SizedBox(height: AppTheme.s16),
+          Container(
+            height: 1,
+            color: AppTheme.isHighContrast(context)
+                ? Colors.black26
+                : (isDark ? Colors.white12 : AppTheme.outlineLight),
+          ),
+          const SizedBox(height: AppTheme.s12),
 
-    final int precipProb = weather.hourly.isNotEmpty
-        ? weather.hourly.first.precipitationProbability
-        : (weather.daily.isNotEmpty
-            ? weather.daily.first.precipitationProbabilityMax
-            : (cur.precipitation > 0 ? 75 : 20));
-
-    final podBg = isHc
-        ? (isDark ? Colors.black : Colors.white)
-        : (isDark ? const Color(0xFF312259) : Colors.white);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
-      decoration: BoxDecoration(
-        color: podBg,
-        borderRadius: BorderRadius.circular(24),
-        border: isHc
-            ? Border.all(color: AppTheme.borderColor(context), width: 1.5)
-            : null,
-        boxShadow: isHc
-            ? const []
-            : [
-                BoxShadow(
-                  color: const Color(0xFF5A2CE8).withValues(alpha: isDark ? 0.30 : 0.12),
-                  blurRadius: 18,
-                  offset: const Offset(0, 8),
+          // Metrics row: 1 3-column row with thin vertical dividers
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: _buildHeroMetricColumn(
+                    context,
+                    icon: Icons.air_rounded,
+                    value: '${current.windSpeed.round()} km/h',
+                    label: AppStrings.get('wind_speed', _lang),
+                  ),
+                ),
+                _buildHeroMetricDivider(context),
+                Expanded(
+                  child: _buildHeroMetricColumn(
+                    context,
+                    icon: Icons.water_drop_rounded,
+                    value: '${current.relativeHumidity.round()}%',
+                    label: AppStrings.get('humidity', _lang),
+                  ),
+                ),
+                _buildHeroMetricDivider(context),
+                Expanded(
+                  child: _buildHeroMetricColumn(
+                    context,
+                    icon: Icons.wb_sunny_rounded,
+                    value: current.uvIndex.toStringAsFixed(1),
+                    label: AppStrings.get('uv_index', _lang),
+                  ),
                 ),
               ],
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _buildStatPodColumn(
-              context,
-              icon: Icons.umbrella_rounded,
-              value: '$precipProb%',
-              label: _lang == 'hi' ? 'वर्षा संभावना' : 'Precipitation',
-            ),
-          ),
-          Container(
-            width: 1,
-            height: 36,
-            color: AppTheme.borderColor(context).withValues(alpha: 0.45),
-          ),
-          Expanded(
-            child: _buildStatPodColumn(
-              context,
-              icon: Icons.water_drop_rounded,
-              value: '${cur.relativeHumidity.round()}%',
-              label: AppStrings.get('humidity', _lang),
-            ),
-          ),
-          Container(
-            width: 1,
-            height: 36,
-            color: AppTheme.borderColor(context).withValues(alpha: 0.45),
-          ),
-          Expanded(
-            child: _buildStatPodColumn(
-              context,
-              icon: Icons.air_rounded,
-              value: '${cur.windSpeed.round()} km/h',
-              label: AppStrings.get('wind_speed', _lang),
             ),
           ),
         ],
@@ -1747,305 +1607,69 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
     );
   }
 
-  Widget _buildStatPodColumn(
+  Widget _buildHeroMetricColumn(
     BuildContext context, {
     required IconData icon,
     required String value,
     required String label,
   }) {
-    final accent = AppTheme.primaryActionColor(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 22, color: accent),
-          const SizedBox(height: 4),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(
-              value,
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w800,
-                color: AppTheme.textPrimary(context),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: AppTheme.primaryActionColor(context),
+            ),
+            const SizedBox(width: 4),
+            Flexible(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.textPrimary(context),
+                    height: 1.25,
+                  ),
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 2),
-          Text(
+          ],
+        ),
+        const SizedBox(height: 2),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
             label,
             maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 11.5,
+              fontSize: 12.5,
               fontWeight: FontWeight.w600,
               color: AppTheme.textSecondary(context),
+              height: 1.3,
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  /// Smooth Cubic-Bezier Hourly Wave Chart (`0:00 3:00 6:00 9:00 12:00 15:00 18:00 21:00`)
-  /// with glowing current-hour ring marker and vertical dashed line.
-  Widget _buildHourlyWaveSection(
-    BuildContext context,
-    WeatherData weather, {
-    required double effectiveTemp,
-  }) {
-    const slotHours = [0, 3, 6, 9, 12, 15, 18, 21];
-    final List<double> temps = [];
-
-    if (weather.hourly.length >= 22) {
-      for (final h in slotHours) {
-        temps.add(weather.hourly[h].temperature);
-      }
-    } else {
-      // Synthesize smooth diurnal curve around effectiveTemp when offline/short hourly list
-      final offsets = [-4.0, -5.0, -3.0, 0.0, 3.0, 4.0, 1.5, -1.5];
-      for (final off in offsets) {
-        temps.add(effectiveTemp + off);
-      }
-    }
-
-    final nowHour = DateTime.now().hour;
-    int activeSlot = (nowHour / 3).round().clamp(0, slotHours.length - 1);
-
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final accent = AppTheme.primaryActionColor(context);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SizedBox(
-          height: 82,
-          child: CustomPaint(
-            painter: _HourlyBezierWavePainter(
-              temperatures: temps,
-              activeIndex: activeSlot,
-              lineColor: accent,
-              isDark: isDark,
-              textColor: AppTheme.textPrimary(context),
-            ),
-          ),
-        ),
-        const SizedBox(height: 6),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: List.generate(slotHours.length, (i) {
-            final isCurrent = i == activeSlot;
-            final label = '${slotHours[i]}:00';
-            return Flexible(
-              child: Container(
-                padding: EdgeInsets.symmetric(
-                  horizontal: isCurrent ? 6 : 2,
-                  vertical: 3,
-                ),
-                decoration: isCurrent
-                    ? BoxDecoration(
-                        color: accent.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(10),
-                      )
-                    : null,
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: isCurrent ? FontWeight.w800 : FontWeight.w600,
-                      color: isCurrent
-                          ? accent
-                          : AppTheme.textSecondary(context),
-                    ),
-                  ),
-                ),
-              ),
-            );
-          }),
         ),
       ],
     );
   }
 
-  /// 7-Day Forecasts Horizontal Vertical-Capsule Strip (exact match to bottom of center screen in reference UI)
-  Widget _buildSevenDayCapsulesSection(
-    BuildContext context,
-    WeatherData weather, {
-    required int effectiveCode,
-    required double effectiveTemp,
-  }) {
-    final isHc = AppTheme.isHighContrast(context);
+  Widget _buildHeroMetricDivider(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    const daysEn = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
-    const daysHi = ['सोम', 'मंगल', 'बुध', 'गुरु', 'शुक्र', 'शनि', 'रवि'];
-
-    final dailyList = weather.daily;
-    final count = dailyList.isNotEmpty ? dailyList.length.clamp(1, 7) : 7;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 10),
-          child: Text(
-            _lang == 'hi' ? '7-दिन का मौसम पूर्वानुमान' : '7-Day Forecasts',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              color: AppTheme.textPrimary(context),
-            ),
-          ),
-        ),
-        SizedBox(
-          height: 156,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: count,
-            separatorBuilder: (_, _) => const SizedBox(width: 10),
-            itemBuilder: (context, idx) {
-              final isSelected = idx == _selectedDayIndex;
-              DateTime dateObj = DateTime.now().add(Duration(days: idx));
-              int code = effectiveCode;
-              int maxT = effectiveTemp.round();
-              int minT = (effectiveTemp - 5).round();
-
-              if (idx < dailyList.length) {
-                final d = dailyList[idx];
-                try {
-                  dateObj = DateTime.parse(d.date);
-                } catch (_) {}
-                code = idx == 0 ? effectiveCode : d.weatherCode;
-                maxT = d.tempMax.round();
-                minT = d.tempMin.round();
-              }
-
-              final wIdx = (dateObj.weekday - 1).clamp(0, 6);
-              final dayLabel = _lang == 'hi' ? daysHi[wIdx] : daysEn[wIdx];
-
-              final BoxDecoration capsuleDeco;
-              if (isHc) {
-                capsuleDeco = BoxDecoration(
-                  color: isSelected
-                      ? AppTheme.primaryButtonFill(context)
-                      : (isDark ? Colors.black : Colors.white),
-                  borderRadius: BorderRadius.circular(40),
-                  border: Border.all(
-                    color: AppTheme.borderColor(context),
-                    width: 2.0,
-                  ),
-                );
-              } else if (isSelected) {
-                capsuleDeco = BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Color(0xFF7542FF), Color(0xFF4D19E0)],
-                  ),
-                  borderRadius: BorderRadius.circular(40),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.45),
-                    width: 1.4,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF3E12BD).withValues(alpha: 0.42),
-                      blurRadius: 16,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                );
-              } else {
-                capsuleDeco = BoxDecoration(
-                  color: isDark
-                      ? const Color(0xFF281C4C).withValues(alpha: 0.72)
-                      : Colors.white.withValues(alpha: 0.45),
-                  borderRadius: BorderRadius.circular(40),
-                  border: Border.all(
-                    color: isDark
-                        ? const Color(0xFF6B4EE6).withValues(alpha: 0.35)
-                        : Colors.white.withValues(alpha: 0.78),
-                    width: 1.4,
-                  ),
-                );
-              }
-
-              final fgColor = isSelected
-                  ? Colors.white
-                  : AppTheme.textPrimary(context);
-              final subColor = isSelected
-                  ? Colors.white.withValues(alpha: 0.78)
-                  : AppTheme.textSecondary(context);
-
-              return GestureDetector(
-                onTap: () => setState(() => _selectedDayIndex = idx),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 220),
-                  curve: Curves.easeOutCubic,
-                  width: 72,
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 12,
-                    horizontal: 6,
-                  ),
-                  decoration: capsuleDeco,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          dayLabel,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            color: fgColor,
-                          ),
-                        ),
-                      ),
-                      RealisticWeatherVisual(
-                        weatherCode: code,
-                        isDay: true,
-                        size: 46,
-                      ),
-                      Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text(
-                              '$maxT°',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w900,
-                                color: fgColor,
-                              ),
-                            ),
-                          ),
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text(
-                              '$minT°',
-                              style: TextStyle(
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.w700,
-                                color: subColor,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      ],
+    final color = AppTheme.isHighContrast(context)
+        ? Colors.black26
+        : (isDark ? Colors.white12 : AppTheme.outlineLight);
+    return Container(
+      width: 1,
+      margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      color: color,
     );
   }
 
@@ -2115,7 +1739,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
         horizontal: AppTheme.s16,
         vertical: AppTheme.s12,
       ),
-      borderRadius: 20,
+      borderRadius: AppTheme.rInput,
       onTap: () => setState(() => _currentTabIndex = 2),
       child: Row(
         children: [
@@ -2256,153 +1880,3 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
     );
   }
 }
-
-/// Smooth Cubic-Bezier Hourly Wave Chart Painter matching the center screen in the reference UI
-class _HourlyBezierWavePainter extends CustomPainter {
-  final List<double> temperatures;
-  final int activeIndex;
-  final Color lineColor;
-  final bool isDark;
-  final Color textColor;
-
-  _HourlyBezierWavePainter({
-    required this.temperatures,
-    required this.activeIndex,
-    required this.lineColor,
-    required this.isDark,
-    required this.textColor,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (temperatures.length < 2) return;
-
-    final w = size.width;
-    final h = size.height;
-    final topPad = 22.0;
-    final bottomPad = 10.0;
-    final chartH = (h - topPad - bottomPad).clamp(20.0, h);
-
-    double minT = temperatures.first;
-    double maxT = temperatures.first;
-    for (final t in temperatures) {
-      if (t < minT) minT = t;
-      if (t > maxT) maxT = t;
-    }
-    final range = (maxT - minT).abs() < 1.0 ? 4.0 : (maxT - minT);
-
-    final List<Offset> pts = [];
-    final stepX = w / (temperatures.length - 1);
-    for (int i = 0; i < temperatures.length; i++) {
-      final norm = (temperatures[i] - minT) / range;
-      final x = i * stepX;
-      final y = topPad + chartH * (1.0 - norm);
-      pts.add(Offset(x, y));
-    }
-
-    // Build smooth cubic bezier path
-    final curvePath = Path()..moveTo(pts.first.dx, pts.first.dy);
-    for (int i = 0; i < pts.length - 1; i++) {
-      final p0 = pts[i];
-      final p1 = pts[i + 1];
-      final midX = (p0.dx + p1.dx) / 2;
-      curvePath.cubicTo(midX, p0.dy, midX, p1.dy, p1.dx, p1.dy);
-    }
-
-    // Soft lavender gradient fill under the curve
-    final fillPath = Path.from(curvePath)
-      ..lineTo(pts.last.dx, h)
-      ..lineTo(pts.first.dx, h)
-      ..close();
-
-    final fillPaint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [
-          lineColor.withValues(alpha: isDark ? 0.28 : 0.20),
-          lineColor.withValues(alpha: 0.0),
-        ],
-      ).createShader(Rect.fromLTWH(0, 0, w, h));
-    canvas.drawPath(fillPath, fillPaint);
-
-    // Smooth gradient stroke (violet -> warm amber at midday peak -> violet)
-    final strokePaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3.2
-      ..strokeCap = StrokeCap.round
-      ..shader = LinearGradient(
-        colors: [
-          lineColor,
-          const Color(0xFF9C4DFF),
-          const Color(0xFFFF9800),
-          lineColor,
-        ],
-        stops: const [0.0, 0.35, 0.68, 1.0],
-      ).createShader(Rect.fromLTWH(0, 0, w, h));
-    canvas.drawPath(curvePath, strokePaint);
-
-    // Draw dashed vertical line & glowing ring dot at activeIndex
-    final idx = activeIndex.clamp(0, pts.length - 1);
-    final activePt = pts[idx];
-
-    final dashPaint = Paint()
-      ..color = lineColor.withValues(alpha: 0.45)
-      ..strokeWidth = 1.4
-      ..strokeCap = StrokeCap.round;
-
-    double dashY = activePt.dy + 8;
-    while (dashY < h - 2) {
-      canvas.drawLine(
-        Offset(activePt.dx, dashY),
-        Offset(activePt.dx, (dashY + 4).clamp(0.0, h)),
-        dashPaint,
-      );
-      dashY += 8;
-    }
-
-    // Outer glow aura
-    canvas.drawCircle(
-      activePt,
-      10,
-      Paint()..color = lineColor.withValues(alpha: 0.22),
-    );
-    // White ring
-    canvas.drawCircle(
-      activePt,
-      6.5,
-      Paint()..color = Colors.white,
-    );
-    // Violet core dot
-    canvas.drawCircle(
-      activePt,
-      4.2,
-      Paint()..color = lineColor,
-    );
-
-    // Temperature label above active point
-    final tp = TextPainter(
-      text: TextSpan(
-        text: '${temperatures[idx].round()}°',
-        style: TextStyle(
-          fontSize: 11.5,
-          fontWeight: FontWeight.w800,
-          color: textColor,
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-
-    final labelX = (activePt.dx - tp.width / 2).clamp(2.0, w - tp.width - 2.0);
-    final labelY = (activePt.dy - tp.height - 8).clamp(0.0, h);
-    tp.paint(canvas, Offset(labelX, labelY));
-  }
-
-  @override
-  bool shouldRepaint(covariant _HourlyBezierWavePainter oldDelegate) =>
-      oldDelegate.activeIndex != activeIndex ||
-      oldDelegate.lineColor != lineColor ||
-      oldDelegate.isDark != isDark ||
-      oldDelegate.temperatures != temperatures;
-}
-
