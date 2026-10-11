@@ -77,13 +77,13 @@ async def root():
 @app.get("/api/v1/app/version", tags=["App Updates"])
 async def get_app_version():
     return {
-        "version": "2.1.0",
-        "versionCode": 25,
-        "releaseName": "Kisan Mausam v2.1.0 - Top Seasonal El Niño & 30-Day Outlook Edition",
-        "apkUrl": "https://github.com/kumarnikki/Kisan-Mausam/releases/download/v2.1.0/kisan-mausam-release.apk",
+        "version": "2.2.0",
+        "versionCode": 26,
+        "releaseName": "Kisan Mausam v2.2.0 - Restored Home Layout, Account Phone Security & El Niño Outlook Edition",
+        "apkUrl": "https://github.com/kumarnikki/Kisan-Mausam/releases/download/v2.2.0/kisan-mausam-release.apk",
         "githubReleaseUrl": "https://github.com/kumarnikki/Kisan-Mausam/releases/latest",
-        "changelog": "• Top Seasonal Section: Moved 'This season' (El Niño / ENSO season card + 30-day seasonal outlook card) directly below the pinned weather warning / weather shift advisory bar\n• Clean Home Layout: Removed footer attribution text for a distraction-free bottom layout\n• Registered Account Phone Security: Locked mobile number against editing or overwriting in Settings once an account is created",
+        "changelog": "• Restored Home Order: Weather Hero Card → 2×2 Field Conditions → 'This season' (El Niño + 30-Day Outlook) → 'Best crops now'\n• Clean Home Layout: Removed footer attribution text for a distraction-free bottom layout\n• Registered Account Phone Security: Locked mobile number against editing or overwriting in Settings once an account is created",
         "minRequiredVersion": "1.0.0",
-        "publishedAt": "2026-10-11T10:35:00Z"
+        "publishedAt": "2026-10-11T14:05:00Z"
     }
 

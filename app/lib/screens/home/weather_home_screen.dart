@@ -1418,7 +1418,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                         ),
                       )
                     else if (effectiveWeather != null) ...[
-                      // 2a) Section label "This season" with El Niño season card + 30-day outlook card (placed directly after warning / weather shift advisory)
+                      // 2a) Weather hero card (saturated weather gradient, white text, inner white-10% metrics panel)
                       SliverToBoxAdapter(
                         child: _StaggeredEntrance(
                           index: 0,
@@ -1426,37 +1426,6 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                             padding: const EdgeInsets.fromLTRB(
                               AppTheme.s16,
                               AppTheme.s8,
-                              AppTheme.s16,
-                              AppTheme.s16,
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                _buildSmallSectionLabel(
-                                  context,
-                                  AppStrings.get('section_this_season', _lang),
-                                ),
-                                const SizedBox(height: AppTheme.s8),
-                                _buildElNinoSeasonCard(context, debugOverride),
-                                const SizedBox(height: AppTheme.s12),
-                                _build30DayOutlookCard(
-                                  context,
-                                  effectiveWeather,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      // 2b) Weather hero card (saturated weather gradient, white text, inner white-10% metrics panel)
-                      SliverToBoxAdapter(
-                        child: _StaggeredEntrance(
-                          index: 1,
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(
-                              AppTheme.s16,
-                              0,
                               AppTheme.s16,
                               AppTheme.s16,
                             ),
@@ -1475,10 +1444,10 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                         ),
                       ),
 
-                      // 2c) Field conditions: ONE card with four cells in a 2x2 grid with hairline dividers
+                      // 2b) Field conditions: ONE card with four cells in a 2x2 grid with hairline dividers
                       SliverToBoxAdapter(
                         child: _StaggeredEntrance(
-                          index: 2,
+                          index: 1,
                           child: Padding(
                             padding: const EdgeInsets.fromLTRB(
                               AppTheme.s16,
@@ -1489,6 +1458,37 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                             child: _buildFieldConditionsCard(
                               context,
                               effectiveWeather,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // 2c) Section label "This season" with El Niño season card + 30-day outlook card
+                      SliverToBoxAdapter(
+                        child: _StaggeredEntrance(
+                          index: 2,
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(
+                              AppTheme.s16,
+                              0,
+                              AppTheme.s16,
+                              AppTheme.s16,
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                _buildSmallSectionLabel(
+                                  context,
+                                  AppStrings.get('section_this_season', _lang),
+                                ),
+                                const SizedBox(height: AppTheme.s8),
+                                _buildElNinoSeasonCard(context, debugOverride),
+                                const SizedBox(height: AppTheme.s12),
+                                _build30DayOutlookCard(
+                                  context,
+                                  effectiveWeather,
+                                ),
+                              ],
                             ),
                           ),
                         ),
