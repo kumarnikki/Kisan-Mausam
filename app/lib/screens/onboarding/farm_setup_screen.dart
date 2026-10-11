@@ -44,6 +44,7 @@ class _FarmSetupScreenState extends State<FarmSetupScreen> {
   double _lon = 79.0882;
   bool _detectingGps = false;
   bool _touchedValidation = false;
+  bool _isPhoneLocked = false;
 
   static const List<Map<String, String>> _popularCrops = [
     {'key': 'Wheat', 'hi': 'गेहूं', 'en': 'Wheat'},
@@ -61,6 +62,7 @@ class _FarmSetupScreenState extends State<FarmSetupScreen> {
   @override
   void initState() {
     super.initState();
+    _isPhoneLocked = widget.isEditing;
     _loadExistingProfile();
   }
 
@@ -78,7 +80,7 @@ class _FarmSetupScreenState extends State<FarmSetupScreen> {
     final l = await StorageService.getLanguage();
     final savedUserName = await StorageService.getUserName();
     var savedPhone = await StorageService.getUserPhone();
-    if (savedPhone == null || savedPhone.isEmpty) {
+    if ((savedPhone == null || savedPhone.isEmpty) && !widget.isEditing) {
       savedPhone = await AlertService.detectSimPhoneNumber();
       if (savedPhone != null && savedPhone.isNotEmpty) {
         await StorageService.saveUserPhone(savedPhone);
@@ -86,10 +88,13 @@ class _FarmSetupScreenState extends State<FarmSetupScreen> {
     }
     final profileConfigured = await StorageService.isProfileConfigured();
     final farms = await StorageService.getFarms();
+    final hasValidSavedPhone = savedPhone != null &&
+        savedPhone.replaceAll(RegExp(r'\D'), '').length >= 10;
 
     if (!mounted) return;
     setState(() {
       _lang = l;
+      _isPhoneLocked = widget.isEditing || hasValidSavedPhone;
       if (savedPhone != null && savedPhone.isNotEmpty) {
         _phoneController.text = savedPhone;
       }
@@ -221,10 +226,12 @@ class _FarmSetupScreenState extends State<FarmSetupScreen> {
     if (farmerName.isNotEmpty) {
       await StorageService.saveUserName(farmerName);
     }
-    final rawPhone = _phoneController.text.replaceAll(RegExp(r'\D'), '');
-    if (rawPhone.length >= 10) {
-      final ten = rawPhone.substring(rawPhone.length - 10);
-      await StorageService.saveUserPhone(ten);
+    if (!_isPhoneLocked && !widget.isEditing) {
+      final rawPhone = _phoneController.text.replaceAll(RegExp(r'\D'), '');
+      if (rawPhone.length >= 10) {
+        final ten = rawPhone.substring(rawPhone.length - 10);
+        await StorageService.saveUserPhone(ten);
+      }
     }
 
     final cropText = _resolvedCropText().isEmpty
@@ -397,6 +404,8 @@ class _FarmSetupScreenState extends State<FarmSetupScreen> {
                             const SizedBox(height: 12),
                             TextField(
                               controller: _phoneController,
+                              readOnly: _isPhoneLocked || widget.isEditing,
+                              enabled: !(_isPhoneLocked || widget.isEditing),
                               keyboardType: TextInputType.phone,
                               maxLength: 10,
                               textInputAction: TextInputAction.next,
@@ -408,6 +417,15 @@ class _FarmSetupScreenState extends State<FarmSetupScreen> {
                                 prefixText: '+91 ',
                                 counterText: '',
                                 prefixIcon: const Icon(Icons.phone_android_rounded),
+                                suffixIcon: (_isPhoneLocked || widget.isEditing)
+                                    ? const Icon(Icons.lock_outline_rounded, size: 18)
+                                    : null,
+                                helperText: (_isPhoneLocked || widget.isEditing)
+                                    ? (isEn
+                                        ? 'Registered account mobile number cannot be changed'
+                                        : 'खाता बनाते समय दर्ज मोबाइल नंबर बदला नहीं जा सकता')
+                                    : null,
+                                helperMaxLines: 2,
                               ),
                             ),
                             const SizedBox(height: 12),

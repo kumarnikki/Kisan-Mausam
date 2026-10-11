@@ -11,6 +11,7 @@ import 'package:kisan_mausam/screens/chat/krishi_sahayak_screen.dart';
 import 'package:kisan_mausam/screens/crops/crop_recommender_screen.dart';
 import 'package:kisan_mausam/screens/settings/settings_screen.dart';
 import 'package:kisan_mausam/services/alert_service.dart';
+import 'package:kisan_mausam/services/storage_service.dart';
 import 'package:kisan_mausam/theme/app_theme.dart';
 import 'package:kisan_mausam/widgets/glass_card.dart';
 
@@ -495,6 +496,39 @@ void main() {
         expect(find.text('See all 5 crops'), findsOneWidget);
       }
     }
+  });
+
+  testWidgets('Test 15: Registered phone number cannot be edited in Settings or overwritten in StorageService',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({
+      'selected_language': 'en',
+      'user_phone': '9876543210',
+      'user_name': 'Kisan',
+      'onboarding_done': true,
+      'profile_configured': true,
+    });
+
+    // Attempt to overwrite phone number once account is created
+    await StorageService.saveUserPhone('1111122222');
+    expect(await StorageService.getUserPhone(), '9876543210');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.lightTheme(),
+        home: FarmSetupScreen(
+          isEditing: true,
+          onFarmCreated: () {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Registered account mobile number cannot be changed'), findsOneWidget);
+    final phoneFieldFinder = find.widgetWithText(TextField, '9876543210');
+    expect(phoneFieldFinder, findsOneWidget);
+    final phoneField = tester.widget<TextField>(phoneFieldFinder);
+    expect(phoneField.readOnly, isTrue);
+    expect(phoneField.enabled, isFalse);
   });
 }
 

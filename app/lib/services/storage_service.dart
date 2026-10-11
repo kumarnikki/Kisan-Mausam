@@ -159,8 +159,19 @@ class StorageService {
     }
   }
 
-  static Future<void> saveUserPhone(String phone) async {
+  static Future<void> saveUserPhone(
+    String phone, {
+    bool forceOverwrite = false,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
+    final existing = prefs.getString(_keyUserPhone)?.replaceAll(RegExp(r'\D'), '') ?? '';
+    final accountCreated = (prefs.getBool(_keyOnboardingDone) == true) ||
+        (prefs.getBool(_keyProfileConfigured) == true);
+    if (!forceOverwrite && accountCreated && existing.length >= 10) {
+      // Phone number is permanently locked to the account once created.
+      await prefs.setBool(_keyIsLoggedIn, true);
+      return;
+    }
     final digits = phone.replaceAll(RegExp(r'\D'), '');
     final clean = digits.length > 10 ? digits.substring(digits.length - 10) : digits;
     if (clean.isNotEmpty) {
