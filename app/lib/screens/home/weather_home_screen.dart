@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../l10n/app_strings.dart';
 import '../../models/farm_profile.dart';
 import '../../models/weather_models.dart';
@@ -27,6 +28,7 @@ class WeatherHomeScreen extends StatefulWidget {
 
 class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
   final ApiService _apiService = ApiService();
+  final ScrollController _scrollController = ScrollController();
 
   int _currentTabIndex = 0; // 0: Weather, 1: Ask (Chat), 2: Crops
   String? _pendingChatPrompt;
@@ -35,8 +37,14 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
   FarmProfile? _currentFarm;
   WeatherData? _weather;
   FarmRiskData? _riskData;
+  EnsoSummary? _ensoData;
+  bool _isEnsoLoading = true;
+  List<CropRecommendationItem> _topCrops = [];
+  bool _isCropsLoading = true;
+
   bool _isLoading = true;
   bool _isLocating = false;
+  bool _isOfflineMode = false;
   String _lang = 'hi';
   DateTime? _cachedTime;
 
@@ -48,15 +56,41 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
   AppUpdateInfo? _availableUpdate;
   bool _updateBannerDismissed = false;
 
-  // Hazard expansion state: index 0 (highest severity) expanded by default
-  final Set<int> _expandedHazardIndices = {0};
-  bool _seasonalOutlookExpanded = false;
+  // Scroll & overlay state for pinned warning bar
+  bool _isWarningCompact = false;
+  bool _isHazardOverlayOpen = false;
 
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
+    _enableEdgeToEdgeStatusBar();
     _loadData();
     _checkAppUpdateSilently();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _enableEdgeToEdgeStatusBar() {
+    try {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    } catch (_) {}
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final offset = _scrollController.offset;
+    final shouldCompact = offset >= 80.0;
+    if (shouldCompact != _isWarningCompact) {
+      setState(() {
+        _isWarningCompact = shouldCompact;
+      });
+    }
   }
 
   void _checkAppUpdateSilently() {
@@ -68,7 +102,11 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
   }
 
   Future<void> _loadData() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _isEnsoLoading = true;
+      _isCropsLoading = true;
+    });
     final lang = await StorageService.getLanguage();
     final farms = await StorageService.getFarms();
     final activeId = await StorageService.getActiveFarmId();
@@ -97,6 +135,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
         '${initialLat.toStringAsFixed(2)}_${initialLon.toStringAsFixed(2)}';
     final cachedWeather = await StorageService.getCachedWeather(cacheKey);
     final cachedTs = await StorageService.getWeatherCachedTime(cacheKey);
+    final cachedEnso = await StorageService.getCachedEnso();
 
     if (!mounted) return;
     setState(() {
@@ -109,13 +148,86 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
         _cachedTime = cachedTs;
         _isLoading = false;
       }
+      if (cachedEnso != null) {
+        _ensoData = cachedEnso;
+        _isEnsoLoading = false;
+      }
     });
+
+    // Lazy-load shared crop recommendations immediately from cache/weather
+    _loadSharedCrops(
+      lat: initialLat,
+      lon: initialLon,
+      locName: initialName,
+      weather: cachedWeather,
+    );
+    // Fetch live ENSO status
+    _loadEnsoStatus();
 
     await _initSmsPhoneAndPermission();
     if (!mounted) return;
 
     await _fetchWeather(initialLat, initialLon, locationName: initialName);
     await _autoFetchGPSLocation();
+  }
+
+  Future<void> _loadEnsoStatus({bool isRetry = false}) async {
+    if (isRetry && mounted) {
+      setState(() => _isEnsoLoading = true);
+    }
+    final debugOverride = kDebugMode ? debugWeatherNotifier.value : null;
+    if (debugOverride?.forceEnsoUnavailable == true) {
+      if (mounted) {
+        setState(() {
+          _ensoData = null;
+          _isEnsoLoading = false;
+        });
+      }
+      return;
+    }
+    try {
+      final enso = await _apiService.getEnsoStatus(
+        forceOffline: debugOverride?.forceOfflineCached == true,
+        forceUnavailable: debugOverride?.forceEnsoUnavailable == true,
+      );
+      if (mounted) {
+        setState(() {
+          _ensoData = enso ?? _riskData?.enso;
+          _isEnsoLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _isEnsoLoading = false);
+      }
+    }
+  }
+
+  Future<void> _loadSharedCrops({
+    required double lat,
+    required double lon,
+    required String locName,
+    WeatherData? weather,
+  }) async {
+    try {
+      final crops = await CropRecommenderScreen.getSharedRecommendations(
+        lang: _lang,
+        latitude: lat,
+        longitude: lon,
+        locationName: locName,
+        weather: weather,
+      );
+      if (mounted) {
+        setState(() {
+          _topCrops = crops.take(3).toList();
+          _isCropsLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _isCropsLoading = false);
+      }
+    }
   }
 
   Future<void> _initSmsPhoneAndPermission() async {
@@ -174,18 +286,29 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
     String? locationName,
   }) async {
     try {
-      final locName = locationName ?? _gpsLocationName ?? _currentFarm?.village;
+      final locName =
+          locationName ?? _gpsLocationName ?? _currentFarm?.village ?? 'Nagpur';
       final data = await _apiService.getWeatherForecast(lat, lon);
       final cacheKey = '${lat.toStringAsFixed(2)}_${lon.toStringAsFixed(2)}';
       final cachedTs = await StorageService.getWeatherCachedTime(cacheKey);
+      final isCachedOffline =
+          data.attribution.toLowerCase().contains('offline');
 
       if (mounted) {
         setState(() {
           _weather = data;
           _cachedTime = cachedTs ?? DateTime.now();
+          _isOfflineMode = isCachedOffline;
           _isLoading = false;
         });
       }
+
+      await _loadSharedCrops(
+        lat: lat,
+        lon: lon,
+        locName: locName,
+        weather: data,
+      );
 
       _apiService
           .getFarmRisks(
@@ -199,9 +322,8 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
         if (mounted && r != null) {
           setState(() {
             _riskData = r;
-            _expandedHazardIndices
-              ..clear()
-              ..add(0);
+            _ensoData ??= r.enso;
+            _isEnsoLoading = false;
           });
           _checkAndShowAlertPopup(r, weather: data, locKey: cacheKey);
         }
@@ -250,8 +372,10 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
               fallbackHi: r.titleHi,
               fallbackEn: r.titleEn,
             ),
-            bodyHi: '$activeLoc में ${r.expectedValue} की संभावना है। तुरंत सावधानी बरतें।',
-            bodyEn: 'Risk detected at $activeLoc: ${r.expectedValue}.',
+            bodyHi:
+                '$activeLoc में ${AppStrings.localizeExpectedValue(r.expectedValue, 'hi')} की संभावना है। तुरंत सावधानी बरतें।',
+            bodyEn:
+                'Risk detected at $activeLoc: ${AppStrings.localizeExpectedValue(r.expectedValue, 'en')}.',
             severity: 'red',
             actionHi: AppStrings.hazardAction(
               r.alertType,
@@ -349,8 +473,9 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
     final actionAscii = r.actionEn.isNotEmpty
         ? r.actionEn
         : 'Take immediate crop protection measures.';
+    final expectedEn = AppStrings.localizeExpectedValue(r.expectedValue, 'en');
     final msg =
-        'KisanMausam Alert ($loc): $alertNameAscii (${r.expectedValue}, ${r.probability.round()}% risk). Action: $actionAscii';
+        'KisanMausam Alert ($loc): $alertNameAscii ($expectedEn, ${r.probability.round()}% risk). Action: $actionAscii';
     final sent = await _apiService.sendWeatherOrSosSms(
       phone: savedPhone ?? '',
       alertType: r.alertType,
@@ -427,19 +552,36 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
 
   String _getWeatherConditionText(int code, String lang) {
     if (code == 0) return lang == 'hi' ? 'साफ धूप' : 'Clear Sky';
-    if (code >= 1 && code <= 3) return lang == 'hi' ? 'हल्के बादल' : 'Partly Cloudy';
+    if (code >= 1 && code <= 2) {
+      return lang == 'hi' ? 'आंशिक बादल' : 'Partly Cloudy';
+    }
+    if (code == 3) return lang == 'hi' ? 'घने बादल' : 'Cloudy';
     if (code == 45 || code == 48) return lang == 'hi' ? 'कोहरा' : 'Foggy';
-    if (code >= 51 && code <= 55) return lang == 'hi' ? 'हल्की बूंदाबांदी' : 'Drizzle';
+    if (code >= 51 && code <= 55) {
+      return lang == 'hi' ? 'हल्की बूंदाबांदी' : 'Drizzle';
+    }
     if (code >= 61 && code <= 65) return lang == 'hi' ? 'बारिश' : 'Rain';
-    if (code >= 80 && code <= 82) return lang == 'hi' ? 'तेज बौछारें' : 'Rain Showers';
-    if (code == 95) return lang == 'hi' ? 'गरज-चमक के साथ बारिश' : 'Thunderstorm';
+    if (code >= 80 && code <= 82) {
+      return lang == 'hi' ? 'तेज बौछारें' : 'Rain Showers';
+    }
+    if (code == 95) {
+      return lang == 'hi' ? 'गरज-चमक के साथ बारिश' : 'Thunderstorm';
+    }
     if (code == 96 || code == 99) {
       return lang == 'hi' ? 'ओलावृष्टि तूफान' : 'Thunderstorm with Hail';
     }
     return lang == 'hi' ? 'सामान्य मौसम' : 'Fair Weather';
   }
 
-  String _formatFreshnessText() {
+  String _formatFreshnessText({bool forceOffline = false}) {
+    if (forceOffline || _isOfflineMode) {
+      final mins = _cachedTime != null
+          ? DateTime.now().difference(_cachedTime!).inMinutes.clamp(5, 720)
+          : 18;
+      return _lang == 'hi'
+          ? '${AppStrings.get("offline_cached", _lang)} • $mins मिनट पहले'
+          : '${AppStrings.get("offline_cached", _lang)} • ${mins}m ago';
+    }
     if (_cachedTime == null) {
       return AppStrings.get('updated_just_now', _lang);
     }
@@ -469,7 +611,6 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
     }
   }
 
-  /// Step 4.3: Activate SOS via HoldToConfirmButton
   Future<void> _activateSos() async {
     var cleanPhone = '';
     final stored = _userPhone ??
@@ -520,12 +661,13 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
           locationName: loc,
         );
         final logsCount = res?['dispatched_logs_count'] ?? 0;
-        return res?['sms_sent'] == true || logsCount > 0 || cleanPhone.isNotEmpty;
+        return res?['sms_sent'] == true ||
+            logsCount > 0 ||
+            cleanPhone.isNotEmpty;
       },
     );
   }
 
-  /// Step 4.2: Farm switcher bottom sheet ("Location & farm") with inline search
   void _showFarmSelector() {
     final searchController = TextEditingController();
     List<LocationResult> searchResults = [];
@@ -561,7 +703,6 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // 1. Saved farms first (current has a check, row height 56)
                   ..._farms.map((farm) {
                     final isSelected = farm.id == _currentFarm?.id;
                     final villageLabel = farm.getVillage(_lang);
@@ -593,7 +734,9 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                           );
                         },
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: AppTheme.s8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppTheme.s8,
+                          ),
                           child: Row(
                             children: [
                               Icon(
@@ -645,10 +788,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                       ),
                     );
                   }),
-
                   const Divider(height: AppTheme.s16),
-
-                  // 2. Use current GPS location (row height 56)
                   SizedBox(
                     height: 56,
                     child: InkWell(
@@ -658,10 +798,16 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                         _fetchCurrentLocationGPS();
                       },
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: AppTheme.s8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppTheme.s8,
+                        ),
                         child: Row(
                           children: [
-                            Icon(Icons.my_location_rounded, color: primaryCol, size: 22),
+                            Icon(
+                              Icons.my_location_rounded,
+                              color: primaryCol,
+                              size: 22,
+                            ),
                             const SizedBox(width: AppTheme.s12),
                             Expanded(
                               child: Text(
@@ -678,8 +824,6 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                       ),
                     ),
                   ),
-
-                  // 3. Search city or village (inline in the same sheet, row height 56)
                   if (!showInlineSearch)
                     SizedBox(
                       height: 56,
@@ -689,10 +833,16 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                           setSheetState(() => showInlineSearch = true);
                         },
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: AppTheme.s8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppTheme.s8,
+                          ),
                           child: Row(
                             children: [
-                              Icon(Icons.search_rounded, color: primaryCol, size: 22),
+                              Icon(
+                                Icons.search_rounded,
+                                color: primaryCol,
+                                size: 22,
+                              ),
                               const SizedBox(width: AppTheme.s12),
                               Expanded(
                                 child: Text(
@@ -726,12 +876,15 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                                 child: SizedBox(
                                   width: 20,
                                   height: 20,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
                                 ),
                               )
                             : IconButton(
                                 icon: const Icon(Icons.arrow_forward_rounded),
-                                onPressed: () => performSearch(searchController.text),
+                                onPressed: () =>
+                                    performSearch(searchController.text),
                               ),
                       ),
                       onSubmitted: performSearch,
@@ -748,7 +901,9 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                             return SizedBox(
                               height: 56,
                               child: InkWell(
-                                borderRadius: BorderRadius.circular(AppTheme.rInput),
+                                borderRadius: BorderRadius.circular(
+                                  AppTheme.rInput,
+                                ),
                                 onTap: () async {
                                   Navigator.pop(ctx);
                                   setState(() {
@@ -815,126 +970,287 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
   Widget build(BuildContext context) {
     final isKeyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
     final hideBottomNav = _currentTabIndex == 1 && isKeyboardOpen;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return PopScope(
-      canPop: _currentTabIndex == 0,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && _currentTabIndex != 0) {
-          setState(() => _currentTabIndex = 0);
-        }
-      },
-      child: Scaffold(
-        body: IndexedStack(
-          index: _currentTabIndex,
-          children: [
-            // Tab 0: Weather (Home)
-            _buildWeatherHomeTab(context),
-            // Tab 1: Ask (Krishi Sahayak)
-            KrishiSahayakScreen(
-              key: ValueKey('chat_tab_${_lang}_$_pendingChatPrompt'),
-              farm: _currentFarm,
-              locationName: _gpsLocationName ?? _currentFarm?.getVillage(_lang),
-              latitude: _gpsLat ?? _weather?.latitude ?? _currentFarm?.latitude,
-              longitude: _gpsLon ?? _weather?.longitude ?? _currentFarm?.longitude,
-              weather: _weather,
-              lang: _lang,
-              initialPrompt: _pendingChatPrompt,
-              onBack: () => setState(() => _currentTabIndex = 0),
-            ),
-            // Tab 2: Crops (Crop Recommender)
-            CropRecommenderScreen(
-              key: ValueKey('crops_tab_${_lang}_${_gpsLat}_$_gpsLon'),
-              farmId: _currentFarm?.id ?? 1,
-              farmName: _currentFarm?.getName(_lang) ?? AppStrings.get('my_farm', _lang),
-              village: _gpsLocationName ?? _currentFarm?.getVillage(_lang) ?? 'Umred',
-              farm: _currentFarm,
-              lang: _lang,
-              latitude: _gpsLat ?? _currentFarm?.latitude,
-              longitude: _gpsLon ?? _currentFarm?.longitude,
-              weather: _weather,
-              onBack: () => setState(() => _currentTabIndex = 0),
-              onAskCrop: (prompt) {
-                setState(() {
-                  _pendingChatPrompt = prompt;
-                  _currentTabIndex = 1;
-                });
-              },
-            ),
-          ],
+    final overlayStyle = SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+      statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarIconBrightness:
+          isDark ? Brightness.light : Brightness.dark,
+    );
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: overlayStyle,
+      child: PopScope(
+        canPop: _currentTabIndex == 0 && !_isHazardOverlayOpen,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) {
+            if (_isHazardOverlayOpen) {
+              setState(() => _isHazardOverlayOpen = false);
+            } else if (_currentTabIndex != 0) {
+              setState(() => _currentTabIndex = 0);
+            }
+          }
+        },
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          extendBodyBehindAppBar: true,
+          body: IndexedStack(
+            index: _currentTabIndex,
+            children: [
+              // Tab 0: Weather (Home)
+              _buildWeatherHomeTab(context),
+              // Tab 1: Ask (Krishi Sahayak)
+              KrishiSahayakScreen(
+                key: ValueKey('chat_tab_${_lang}_$_pendingChatPrompt'),
+                farm: _currentFarm,
+                locationName:
+                    _gpsLocationName ?? _currentFarm?.getVillage(_lang),
+                latitude:
+                    _gpsLat ?? _weather?.latitude ?? _currentFarm?.latitude,
+                longitude:
+                    _gpsLon ?? _weather?.longitude ?? _currentFarm?.longitude,
+                weather: _weather,
+                lang: _lang,
+                initialPrompt: _pendingChatPrompt,
+                onBack: () => setState(() => _currentTabIndex = 0),
+              ),
+              // Tab 2: Crops (Crop Recommender)
+              CropRecommenderScreen(
+                key: ValueKey('crops_tab_${_lang}_${_gpsLat}_$_gpsLon'),
+                farmId: _currentFarm?.id ?? 1,
+                farmName: _currentFarm?.getName(_lang) ??
+                    AppStrings.get('my_farm', _lang),
+                village: _gpsLocationName ??
+                    _currentFarm?.getVillage(_lang) ??
+                    'Umred',
+                farm: _currentFarm,
+                lang: _lang,
+                latitude: _gpsLat ?? _currentFarm?.latitude,
+                longitude: _gpsLon ?? _currentFarm?.longitude,
+                weather: _weather,
+                onBack: () => setState(() => _currentTabIndex = 0),
+                onAskCrop: (prompt) {
+                  setState(() {
+                    _pendingChatPrompt = prompt;
+                    _currentTabIndex = 1;
+                  });
+                },
+              ),
+            ],
+          ),
+          bottomNavigationBar:
+              hideBottomNav ? null : _buildBottomNavBar(context),
         ),
-        bottomNavigationBar: hideBottomNav ? null : _buildBottomNavBar(context),
       ),
     );
   }
 
+  /// Bottom Navigation Bar with aligned baselines across Weather, Ask, and Crops,
+  /// and a distinct surface + 1px top hairline border.
   Widget _buildBottomNavBar(BuildContext context) {
     final primaryFill = AppTheme.primaryButtonFill(context);
     final isHc = AppTheme.isHighContrast(context);
-    final selectedIconColor = isHc ? Colors.white : AppTheme.primaryActionColor(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final selectedIconColor =
+        isHc ? Colors.white : AppTheme.primaryActionColor(context);
 
-    return NavigationBar(
-      selectedIndex: _currentTabIndex,
-      onDestinationSelected: (idx) {
-        setState(() => _currentTabIndex = idx);
-      },
-      destinations: [
-        NavigationDestination(
-          icon: const Icon(Icons.wb_sunny_outlined),
-          selectedIcon: Icon(Icons.wb_sunny_rounded, color: selectedIconColor),
-          label: AppStrings.get('nav_weather', _lang),
-        ),
-        // Centre visually emphasized Ask (Mic) destination
-        NavigationDestination(
-          icon: Container(
-            width: 44,
-            height: 36,
-            decoration: BoxDecoration(
-              color: primaryFill,
-              borderRadius: BorderRadius.circular(AppTheme.rPill),
-            ),
-            child: const Icon(
-              Icons.mic,
-              color: Colors.white,
-              size: 22,
-            ),
+    final navSurfaceColor = isHc
+        ? Colors.white
+        : (isDark ? const Color(0xFF121C2E) : Colors.white);
+    final topHairlineColor = isHc
+        ? Colors.black
+        : (isDark ? const Color(0x1FFFFFFF) : const Color(0xFFCFD8DF));
+
+    return Container(
+      decoration: BoxDecoration(
+        color: navSurfaceColor,
+        border: Border(
+          top: BorderSide(
+            color: topHairlineColor,
+            width: isHc ? 2.0 : 1.0,
           ),
-          selectedIcon: Container(
-            width: 48,
-            height: 36,
-            decoration: BoxDecoration(
-              color: primaryFill,
-              borderRadius: BorderRadius.circular(AppTheme.rPill),
+        ),
+      ),
+      child: NavigationBar(
+        backgroundColor: navSurfaceColor,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        selectedIndex: _currentTabIndex,
+        onDestinationSelected: (idx) {
+          setState(() {
+            _isHazardOverlayOpen = false;
+            _currentTabIndex = idx;
+          });
+        },
+        destinations: [
+          NavigationDestination(
+            icon: const SizedBox(
+              height: 32,
+              child: Center(child: Icon(Icons.wb_sunny_outlined, size: 22)),
             ),
-            child: const Icon(
-              Icons.mic,
-              color: Colors.white,
-              size: 22,
+            selectedIcon: SizedBox(
+              height: 32,
+              child: Center(
+                child: Icon(
+                  Icons.wb_sunny_rounded,
+                  size: 22,
+                  color: selectedIconColor,
+                ),
+              ),
             ),
+            label: AppStrings.get('nav_weather', _lang),
           ),
-          label: AppStrings.get('nav_ask', _lang),
-        ),
-        NavigationDestination(
-          icon: const Icon(Icons.grass_outlined),
-          selectedIcon: Icon(Icons.grass_rounded, color: selectedIconColor),
-          label: AppStrings.get('nav_crops', _lang),
-        ),
-      ],
+          // Centre visually emphasized Ask (Mic) destination with identical 32dp icon box height so all 3 labels share the exact same baseline!
+          NavigationDestination(
+            icon: SizedBox(
+              height: 32,
+              child: Center(
+                child: Container(
+                  width: 44,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: primaryFill,
+                    borderRadius: BorderRadius.circular(AppTheme.rPill),
+                  ),
+                  child: const Icon(
+                    Icons.mic_rounded,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                ),
+              ),
+            ),
+            selectedIcon: SizedBox(
+              height: 32,
+              child: Center(
+                child: Container(
+                  width: 48,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: primaryFill,
+                    borderRadius: BorderRadius.circular(AppTheme.rPill),
+                  ),
+                  child: const Icon(
+                    Icons.mic_rounded,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                ),
+              ),
+            ),
+            label: AppStrings.get('nav_ask', _lang),
+          ),
+          NavigationDestination(
+            icon: const SizedBox(
+              height: 32,
+              child: Center(child: Icon(Icons.grass_outlined, size: 22)),
+            ),
+            selectedIcon: SizedBox(
+              height: 32,
+              child: Center(
+                child: Icon(
+                  Icons.grass_rounded,
+                  size: 22,
+                  color: selectedIconColor,
+                ),
+              ),
+            ),
+            label: AppStrings.get('nav_crops', _lang),
+          ),
+        ],
+      ),
     );
+  }
+
+  List<DetectedRisk> _resolveActiveH1Hazards(
+    DebugWeatherOverride? debugOverride,
+  ) {
+    List<DetectedRisk> h1Risks = List<DetectedRisk>.from(
+      _riskData?.horizon1.risks ?? const <DetectedRisk>[],
+    );
+
+    if (kDebugMode && debugOverride != null) {
+      if (debugOverride.forceAllClear == true) {
+        h1Risks = [];
+      } else if (debugOverride.forceMultipleHazards == true) {
+        h1Risks = [
+          DetectedRisk(
+            alertType: 'heavy_rain',
+            titleHi: 'भारी वर्षा एवं जलभराव चेतावनी',
+            titleEn: 'Heavy Rainfall Warning',
+            severity: 'red',
+            probability: 88.0,
+            confidence: 'High',
+            expectedValue: '68.0 mm',
+            expectedDate: 'अगले 24-48 घंटे',
+            actionHi:
+                'खेत में जल निकासी नालियां साफ रखें और कीटनाशक छिड़काव स्थगित करें।',
+            actionEn:
+                'Keep field drainage channels clear and postpone pesticide spraying.',
+          ),
+          DetectedRisk(
+            alertType: 'strong_wind',
+            titleHi: 'तेज आंधी और हवा चेतावनी',
+            titleEn: 'Strong Gusty Winds Alert',
+            severity: 'orange',
+            probability: 74.0,
+            confidence: 'Medium',
+            expectedValue: '42 km/h',
+            expectedDate: 'अगले 24-48 घंटे',
+            actionHi:
+                'ऊंची फसलों व बागवानी पौधों को सहारा दें और आज स्प्रे न करें।',
+            actionEn:
+                'Provide staking support to tall crops and avoid spraying today.',
+          ),
+        ];
+      } else if (debugOverride.forceActiveHazards == true && h1Risks.isEmpty) {
+        h1Risks = [
+          DetectedRisk(
+            alertType: 'heavy_rain',
+            titleHi: 'भारी वर्षा चेतावनी',
+            titleEn: 'Heavy rainfall warning',
+            severity: 'red',
+            probability: 88.0,
+            confidence: 'High',
+            expectedValue: '68.0 mm',
+            expectedDate: 'अगले 24-48 घंटे',
+            actionHi:
+                'खेत में जल निकासी नालियां साफ रखें और कीटनाशक छिड़काव स्थगित करें।',
+            actionEn:
+                'Keep field drainage channels clear and postpone pesticide spraying.',
+          ),
+        ];
+      }
+    }
+
+    // Sort by severity: red before orange
+    h1Risks.sort((a, b) {
+      final aScore = a.severity.toLowerCase() == 'red' ? 0 : 1;
+      final bScore = b.severity.toLowerCase() == 'red' ? 0 : 1;
+      return aScore.compareTo(bScore);
+    });
+    return h1Risks;
   }
 
   Widget _buildWeatherHomeTab(BuildContext context) {
     return ValueListenableBuilder<DebugWeatherOverride?>(
       valueListenable: debugWeatherNotifier,
       builder: (context, debugOverride, _) {
-        final effectiveCode = (kDebugMode && debugOverride?.ambientState != null)
-            ? debugOverride!.weatherCode
-            : (_weather?.current.weatherCode ?? 0);
-        final effectiveIsDay = (kDebugMode && debugOverride?.ambientState != null)
-            ? debugOverride!.isDay
-            : (_weather?.current.isDay ?? true);
-        final effectiveTemp = (kDebugMode && debugOverride?.ambientState != null)
-            ? debugOverride!.temperature
-            : (_weather?.current.temperature ?? 28.0);
+        final effectiveCode =
+            (kDebugMode && debugOverride?.ambientState != null)
+                ? debugOverride!.weatherCode
+                : (_weather?.current.weatherCode ?? 0);
+        final effectiveIsDay =
+            (kDebugMode && debugOverride?.ambientState != null)
+                ? debugOverride!.isDay
+                : (_weather?.current.isDay ?? true);
+        final effectiveTemp =
+            (kDebugMode && debugOverride?.ambientState != null)
+                ? debugOverride!.temperature
+                : (_weather?.current.temperature ?? 28.0);
         final effectiveWeather = _weather ??
             ((kDebugMode && debugOverride?.ambientState != null)
                 ? WeatherData(
@@ -983,224 +1299,365 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
             ? effectiveWeather!.daily.first.sunset
             : null;
 
+        final h1Risks = _resolveActiveH1Hazards(debugOverride);
+        final topPad = MediaQuery.paddingOf(context).top;
+
         return AmbientBackground(
           weatherCode: effectiveCode,
           isDay: effectiveIsDay,
           temperature: effectiveTemp,
           sunrise: sunrise,
           sunset: sunset,
-          child: SafeArea(
-            child: RefreshIndicator(
-              color: AppTheme.primaryActionColor(context),
-              onRefresh: () async {
-                final rLat = _gpsLat ?? _currentFarm?.latitude ?? 21.1458;
-                final rLon = _gpsLon ?? _currentFarm?.longitude ?? 79.0882;
-                final rName = _gpsLocationName ?? _currentFarm?.village;
-                await _fetchWeather(rLat, rLon, locationName: rName);
-              },
-              child: CustomScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                slivers: [
-                  // a) Top bar (56dp): Farm chip on left, SOS HoldToConfirm + Settings Gear on right
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                        AppTheme.s16,
-                        AppTheme.s8,
-                        AppTheme.s16,
-                        AppTheme.s8,
+          child: Stack(
+            children: [
+              // Main scrollable area with Pinned SliverPersistentHeader for Top Bar + Warning Bar
+              RefreshIndicator(
+                edgeOffset: topPad + 110,
+                color: AppTheme.primaryActionColor(context),
+                onRefresh: () async {
+                  final rLat = _gpsLat ?? _currentFarm?.latitude ?? 21.1458;
+                  final rLon = _gpsLon ?? _currentFarm?.longitude ?? 79.0882;
+                  final rName = _gpsLocationName ?? _currentFarm?.village;
+                  await _loadEnsoStatus();
+                  await _fetchWeather(rLat, rLon, locationName: rName);
+                },
+                child: CustomScrollView(
+                  controller: _scrollController,
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  slivers: [
+                    // 1) PINNED HEADER: Top bar (farm chip, SOS, settings) + pinned active warning bar
+                    SliverPersistentHeader(
+                      pinned: true,
+                      delegate: _PinnedHomeHeaderDelegate(
+                        topInset: topPad,
+                        textScale: MediaQuery.textScalerOf(context).scale(1.0),
+                        hasActiveHazard: h1Risks.isNotEmpty,
+                        isCompactScroll: _isWarningCompact,
+                        topBar: _buildTopBar(context),
+                        expandedWarning: h1Risks.isNotEmpty
+                            ? _buildExpandedPinnedWarning(
+                                context,
+                                h1Risks.first,
+                                extraCount: h1Risks.length - 1,
+                              )
+                            : null,
+                        compactWarning: h1Risks.isNotEmpty
+                            ? _buildCompactPinnedWarning(
+                                context,
+                                h1Risks.first,
+                                extraCount: h1Risks.length - 1,
+                              )
+                            : null,
                       ),
-                      child: _buildTopBar(context),
                     ),
-                  ),
 
-                  // Optional OTA Update Banner (single level InfoBanner)
-                  if (_availableUpdate != null &&
-                      _availableUpdate!.hasUpdate &&
-                      !_updateBannerDismissed)
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(
-                          AppTheme.s16,
-                          0,
-                          AppTheme.s16,
-                          AppTheme.s8,
-                        ),
-                        child: InfoBanner(
-                          icon: Icons.system_update_alt_rounded,
-                          text:
-                              '${AppStrings.get('update_banner_title', _lang)} (v${_availableUpdate!.latestVersion})',
-                          onTap: () => UpdateService.showUpdateDialog(
-                            context,
-                            _availableUpdate!,
-                            lang: _lang,
+                    // If no hazards are active, show the slim green "No severe hazards in the next 3 days" bar (can scroll away)
+                    if (h1Risks.isEmpty && effectiveWeather != null)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(
+                            AppTheme.s16,
+                            0,
+                            AppTheme.s16,
+                            AppTheme.s8,
                           ),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.close_rounded, size: 18),
-                            onPressed: () =>
-                                setState(() => _updateBannerDismissed = true),
+                          child: _buildNoHazardsGreenBar(context),
+                        ),
+                      ),
+
+                    // Optional OTA Update Banner
+                    if (_availableUpdate != null &&
+                        _availableUpdate!.hasUpdate &&
+                        !_updateBannerDismissed)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(
+                            AppTheme.s16,
+                            0,
+                            AppTheme.s16,
+                            AppTheme.s8,
                           ),
-                        ),
-                      ),
-                    ),
-
-                  if (_isLoading && effectiveWeather == null)
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.all(AppTheme.s16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: const [
-                            SkeletonBox(height: 64),
-                            SizedBox(height: AppTheme.s16),
-                            SkeletonBox(height: 150, borderRadius: AppTheme.rCard),
-                            SizedBox(height: AppTheme.s16),
-                            SkeletonBox(height: 120, borderRadius: AppTheme.rCard),
-                          ],
-                        ),
-                      ),
-                    )
-                  else if (effectiveWeather != null) ...[
-                    // b) Alert area directly under the top bar (always visible without scrolling)
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: AppTheme.s16,
-                        ),
-                        child: _buildAlertArea(context, debugOverride),
-                      ),
-                    ),
-
-                    // c) Weather hero (wrapped in ONE card; radius 20, padding 20, 16dp spacing above & below)
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: AppTheme.s16,
-                          vertical: AppTheme.s16,
-                        ),
-                        child: _buildWeatherHero(
-                          context,
-                          effectiveWeather.current,
-                          effectiveCode: effectiveCode,
-                          effectiveIsDay: effectiveIsDay,
-                          effectiveTemp: effectiveTemp,
-                        ),
-                      ),
-                    ),
-
-                    // d) Detail strip: compact 4-up grid of MetricTile (soil temp, soil moisture %, sunrise, sunset)
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: AppTheme.s16,
-                        ),
-                        child: _buildDetailGrid(context, effectiveWeather),
-                      ),
-                    ),
-
-                    // e) One row "Best crops for your field now" with chevron to Crops
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(
-                          AppTheme.s16,
-                          AppTheme.s12,
-                          AppTheme.s16,
-                          0,
-                        ),
-                        child: _buildBestCropsRow(context),
-                      ),
-                    ),
-
-                    // f) Footer: Open-Meteo attribution with bottom padding
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(
-                          AppTheme.s16,
-                          AppTheme.s24,
-                          AppTheme.s16,
-                          AppTheme.s32,
-                        ),
-                        child: GestureDetector(
-                          onLongPress: kDebugMode ? _showDebugOverrideSheet : null,
-                          child: Text(
-                            AppStrings.get('attribution', _lang),
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 12.5,
-                              color: AppTheme.textSecondary(context),
+                          child: InfoBanner(
+                            icon: Icons.system_update_alt_rounded,
+                            text:
+                                '${AppStrings.get('update_banner_title', _lang)} (v${_availableUpdate!.latestVersion})',
+                            onTap: () => UpdateService.showUpdateDialog(
+                              context,
+                              _availableUpdate!,
+                              lang: _lang,
+                            ),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.close_rounded, size: 18),
+                              onPressed: () =>
+                                  setState(() => _updateBannerDismissed = true),
                             ),
                           ),
                         ),
                       ),
-                    ),
+
+                    if (_isLoading && effectiveWeather == null)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.all(AppTheme.s16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: const [
+                              SkeletonBox(height: 64),
+                              SizedBox(height: AppTheme.s16),
+                              SkeletonBox(
+                                height: 180,
+                                borderRadius: AppTheme.rCard,
+                              ),
+                              SizedBox(height: AppTheme.s16),
+                              SkeletonBox(
+                                height: 120,
+                                borderRadius: AppTheme.rCard,
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    else if (effectiveWeather != null) ...[
+                      // 2a) Weather hero card (saturated weather gradient, white text, inner white-10% metrics panel)
+                      SliverToBoxAdapter(
+                        child: _StaggeredEntrance(
+                          index: 0,
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(
+                              AppTheme.s16,
+                              AppTheme.s8,
+                              AppTheme.s16,
+                              AppTheme.s16,
+                            ),
+                            child: _buildWeatherHero(
+                              context,
+                              effectiveWeather.current,
+                              effectiveCode: effectiveCode,
+                              effectiveIsDay: effectiveIsDay,
+                              effectiveTemp: effectiveTemp,
+                              sunrise: sunrise,
+                              sunset: sunset,
+                              forceOffline:
+                                  debugOverride?.forceOfflineCached == true,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // 2b) Field conditions: ONE card with four cells in a 2x2 grid with hairline dividers
+                      SliverToBoxAdapter(
+                        child: _StaggeredEntrance(
+                          index: 1,
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(
+                              AppTheme.s16,
+                              0,
+                              AppTheme.s16,
+                              AppTheme.s16,
+                            ),
+                            child: _buildFieldConditionsCard(
+                              context,
+                              effectiveWeather,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // 2c) Section label "This season" with El Niño season card + 30-day outlook card
+                      SliverToBoxAdapter(
+                        child: _StaggeredEntrance(
+                          index: 2,
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(
+                              AppTheme.s16,
+                              0,
+                              AppTheme.s16,
+                              AppTheme.s16,
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                _buildSmallSectionLabel(
+                                  context,
+                                  AppStrings.get('section_this_season', _lang),
+                                ),
+                                const SizedBox(height: AppTheme.s8),
+                                _buildElNinoSeasonCard(context, debugOverride),
+                                const SizedBox(height: AppTheme.s12),
+                                _build30DayOutlookCard(
+                                  context,
+                                  effectiveWeather,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // 2d) Section label "Best crops now" (with season badge) + top 3 crops inline
+                      SliverToBoxAdapter(
+                        child: _StaggeredEntrance(
+                          index: 3,
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(
+                              AppTheme.s16,
+                              0,
+                              AppTheme.s16,
+                              0,
+                            ),
+                            child: _buildBestCropsSection(
+                              context,
+                              effectiveWeather,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // 2e) Footer: Open-Meteo CC BY 4.0 attribution with bottom padding above nav bar
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(
+                            AppTheme.s16,
+                            AppTheme.s24,
+                            AppTheme.s16,
+                            AppTheme.s32,
+                          ),
+                          child: GestureDetector(
+                            onLongPress:
+                                kDebugMode ? _showDebugOverrideSheet : null,
+                            child: Text(
+                              AppStrings.get('attribution', _lang),
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                color: AppTheme.textSecondary(context),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
-            ),
+
+              // Floating Overlay Panel when compact warning bar or "+N more" is tapped (never pushes page content)
+              if (_isHazardOverlayOpen && h1Risks.isNotEmpty)
+                _buildHazardOverlayPanel(context, h1Risks, topPad),
+            ],
           ),
         );
       },
     );
   }
 
-  /// a) Top bar (min 56dp): left farm chip "{village or district} - {crop}", right SOS HoldToConfirmButton + Settings gear
+  /// Section label: small (13sp, medium weight, muted) for scannable rhythm, with optional trailing badge.
+  Widget _buildSmallSectionLabel(
+    BuildContext context,
+    String label, {
+    Widget? trailing,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Flexible(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                letterSpacing: 0.2,
+                color: AppTheme.textSecondary(context),
+                height: 1.3,
+              ),
+            ),
+          ),
+          ?trailing,
+        ],
+      ),
+    );
+  }
+
+  /// 1) Top bar:
+  /// Farm chip with TWO lines inside the chip:
+  /// - Line 1 (bold): district/village (never truncates "Outer North D..." at 360dp)
+  /// - Line 2 (secondary): "{crop} - {acres} ac"
+  /// SOS and Settings are fixed-size controls on the right.
   Widget _buildTopBar(BuildContext context) {
     final rawLoc = _gpsLocationName ??
         _currentFarm?.getVillage(_lang) ??
         AppStrings.get('my_farm', _lang);
-    var shortLoc = rawLoc.split(',').first.trim();
+    final parts = rawLoc
+        .split(',')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    String line1Loc = parts.isNotEmpty ? parts.first : rawLoc.trim();
+    if (parts.length >= 2 && line1Loc.length < 12) {
+      line1Loc = '${parts[0]}, ${parts[1]}';
+    }
+
     if (_lang == 'en') {
-      if (shortLoc.contains('माउंटेन व्यू')) {
-        shortLoc = 'Mountain View';
-      } else if (shortLoc.contains('उमरेड') || shortLoc.contains('Umred')) {
-        shortLoc = 'Umred';
-      } else if (shortLoc.contains('नागपुर') || shortLoc.contains('Nagpur')) {
-        shortLoc = 'Nagpur';
+      if (line1Loc.contains('माउंटेन व्यू')) {
+        line1Loc = 'Mountain View';
+      } else if (line1Loc.contains('उमरेड') || line1Loc.contains('Umred')) {
+        line1Loc = 'Umred, Nagpur';
+      } else if (line1Loc.contains('नागपुर') || line1Loc.contains('Nagpur')) {
+        line1Loc = 'Nagpur';
       } else {
-        final stripped = shortLoc
+        final stripped = line1Loc
             .replaceAll(RegExp(r'[\u0900-\u097F]+'), '')
             .replaceAll('()', '')
             .trim();
-        shortLoc = stripped.isNotEmpty
+        line1Loc = stripped.isNotEmpty
             ? stripped
-            : (_currentFarm?.getVillage('en') ?? 'Farm');
+            : (_currentFarm?.getVillage('en') ?? 'Nagpur');
       }
     } else {
-      if (shortLoc.toLowerCase() == 'mountain view') {
-        shortLoc = 'माउंटेन व्यू';
-      } else if (shortLoc.contains('उमरेड') || shortLoc.contains('Umred')) {
-        shortLoc = 'उमरेड';
-      } else if (shortLoc.contains('नागपुर') || shortLoc.contains('Nagpur')) {
-        shortLoc = 'नागपुर';
+      if (line1Loc.toLowerCase() == 'mountain view') {
+        line1Loc = 'माउंटेन व्यू';
+      } else if (line1Loc.contains('उमरेड') || line1Loc.contains('Umred')) {
+        line1Loc = 'उमरेड, नागपुर';
+      } else if (line1Loc.contains('नागपुर') || line1Loc.contains('Nagpur')) {
+        line1Loc = 'नागपुर';
       }
     }
+
     final cropLabel = _currentFarm?.getCurrentCrop(_lang) ??
         (_lang == 'en' ? 'Wheat' : 'गेहूं');
-    final chipLabel = '$shortLoc - $cropLabel';
+    final acresVal = _currentFarm?.landSizeAcres ?? 3.0;
+    final acresFormatted = acresVal == acresVal.roundToDouble()
+        ? acresVal.round().toString()
+        : acresVal.toStringAsFixed(1);
+    final acresUnit = AppStrings.get('acres_short', _lang);
+    final line2Text = '$cropLabel - $acresFormatted $acresUnit';
 
     return ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: 56),
+      constraints: const BoxConstraints(minHeight: 54),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Left: Farm chip "{village or district} - {crop}" with chevron
+          // Farm chip takes all remaining width
           Expanded(
             child: Semantics(
               button: true,
-              label: '${AppStrings.get("location_and_farm", _lang)}: $chipLabel',
+              label:
+                  '${AppStrings.get("location_and_farm", _lang)}: $line1Loc, $line2Text',
               child: AppSurface(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: AppTheme.s12,
-                  vertical: 10,
+                  horizontal: 12,
+                  vertical: 7,
                 ),
-                borderRadius: AppTheme.rPill,
+                borderRadius: 16,
                 onTap: _showFarmSelector,
                 child: Row(
-                  mainAxisSize: MainAxisSize.min,
                   children: [
                     if (_isLocating)
                       SizedBox(
-                        width: 18,
-                        height: 18,
+                        width: 16,
+                        height: 16,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
                           color: AppTheme.primaryActionColor(context),
@@ -1208,27 +1665,51 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                       )
                     else
                       Icon(
-                        Icons.location_on,
+                        Icons.location_on_rounded,
                         size: 18,
                         color: AppTheme.primaryActionColor(context),
                       ),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text(
-                        chipLabel,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 14.5,
-                          fontWeight: FontWeight.w700,
-                          color: AppTheme.textPrimary(context),
-                        ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // First line: district/village (bold), scaled down only if super long so it never truncates "Outer North D..."
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              line1Loc,
+                              maxLines: 1,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                                color: AppTheme.textPrimary(context),
+                                height: 1.2,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 1),
+                          // Second line: "{crop} - {acres} ac" (secondary)
+                          Text(
+                            line2Text,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textSecondary(context),
+                              height: 1.2,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(width: 4),
                     Icon(
                       Icons.keyboard_arrow_down_rounded,
-                      size: 20,
+                      size: 18,
                       color: AppTheme.textSecondary(context),
                     ),
                   ],
@@ -1237,7 +1718,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
             ),
           ),
           const SizedBox(width: AppTheme.s8),
-          // Right: Protected SOS HoldToConfirmButton (~1.2s hold)
+          // Fixed-size SOS HoldToConfirmButton
           HoldToConfirmButton(
             label: AppStrings.get('sos_label', _lang),
             holdHint: AppStrings.get('sos_hold_hint', _lang),
@@ -1248,7 +1729,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
             onConfirmed: _activateSos,
           ),
           const SizedBox(width: AppTheme.s8),
-          // Settings Gear IconAction (>= 48dp)
+          // Fixed-size Settings Gear IconAction (48x48dp)
           IconAction(
             icon: Icons.settings_rounded,
             semanticLabel: AppStrings.get('settings', _lang),
@@ -1259,180 +1740,258 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
     );
   }
 
-  /// b) Alert area directly under top bar:
-  /// - Active Horizon-1 hazards sorted red before orange (only highest-severity expanded by default)
-  /// - Or single slim green row "No severe hazards in the next 3 days"
-  /// - Plus 1 collapsed row for 30-day seasonal outlook
-  Widget _buildAlertArea(
+  /// Expanded warning card shown at scroll offset 0 (< 80dp):
+  /// Severity strip, icon, localized title, likelihood chip, action advice, "Time window" and "Expected" values.
+  Widget _buildExpandedPinnedWarning(
     BuildContext context,
-    DebugWeatherOverride? debugOverride,
-  ) {
-    List<DetectedRisk> h1Risks = List<DetectedRisk>.from(
-      _riskData?.horizon1.risks ?? const <DetectedRisk>[],
+    DetectedRisk risk, {
+    required int extraCount,
+  }) {
+    final isRed = risk.severity.toLowerCase() == 'red';
+    final stripColor = isRed ? AppTheme.danger : AppTheme.warningText;
+    final accentText = isRed
+        ? AppTheme.semanticDangerText(context)
+        : AppTheme.semanticWarningText(context);
+    final severityLabel = AppStrings.get(
+      isRed ? 'severity_red' : 'severity_orange',
+      _lang,
     );
+    final title = AppStrings.hazardTitle(
+      risk.alertType,
+      risk.severity,
+      _lang,
+      fallbackHi: risk.titleHi,
+      fallbackEn: risk.titleEn,
+    );
+    final action = AppStrings.hazardAction(
+      risk.alertType,
+      _lang,
+      fallbackHi: risk.actionHi,
+      fallbackEn: risk.actionEn,
+    );
+    final timeWindowLabel = AppStrings.get('time_window_label', _lang);
+    final timeWindowValue = AppStrings.localizeTimeWindow(
+      risk.expectedDate,
+      _lang,
+    );
+    final expectedLabel = AppStrings.get('expected_amount_label', _lang);
+    final cleanExpected = AppStrings.localizeExpectedValue(
+      risk.expectedValue.replaceAll(
+        RegExp(r'\s*\([^)]*%\s*chance\)', caseSensitive: false),
+        '',
+      ),
+      _lang,
+    );
+    final likelihoodText =
+        '${risk.probability.round()}% ${AppStrings.get('likelihood_suffix', _lang)}';
+    final likelihoodChipText = extraCount > 0
+        ? '${risk.probability.round()}%'
+        : likelihoodText;
+    final plusMoreText = extraCount > 0
+        ? AppStrings.get('plus_n_more', _lang).replaceAll('{n}', '$extraCount')
+        : null;
 
-    if (kDebugMode && debugOverride != null) {
-      if (debugOverride.forceAllClear == true) {
-        h1Risks = [];
-      } else if (debugOverride.forceActiveHazards == true && h1Risks.isEmpty) {
-        h1Risks = [
-          DetectedRisk(
-            alertType: 'heavy_rain',
-            titleHi: 'भारी वर्षा चेतावनी',
-            titleEn: 'Heavy rainfall warning',
-            severity: 'red',
-            probability: 88.0,
-            confidence: 'High',
-            expectedValue: '68.0 mm',
-            expectedDate: 'अगले 24-48 घंटे',
-            actionHi: 'खेत में जल निकासी नालियां साफ रखें और कीटनाशक छिड़काव स्थगित करें।',
-            actionEn: 'Keep field drainage channels clear and postpone pesticide spraying.',
-          ),
-        ];
-      }
-    }
-
-    // Sort by severity: red before orange
-    h1Risks.sort((a, b) {
-      final aScore = a.severity.toLowerCase() == 'red' ? 0 : 1;
-      final bScore = b.severity.toLowerCase() == 'red' ? 0 : 1;
-      return aScore.compareTo(bScore);
-    });
-
-    final h3Risks = _riskData?.horizon3.risks ?? const <DetectedRisk>[];
-    final disableAnimations = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (h1Risks.isEmpty)
-          // Single slim green row "No severe hazards in the next 3 days"
-          AppSurface(
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppTheme.s12,
-              vertical: 10,
-            ),
-            borderRadius: AppTheme.rInput,
-            child: Row(
-              children: [
-                Icon(
-                  Icons.check_circle_rounded,
-                  size: 20,
-                  color: AppTheme.semanticSuccessText(context),
-                ),
-                const SizedBox(width: AppTheme.s8),
-                Expanded(
-                  child: Text(
-                    AppStrings.get('no_severe_hazards_3d', _lang),
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.textPrimary(context),
-                    ),
+    return Semantics(
+      button: true,
+      label: '$severityLabel: $title, $likelihoodText. $action',
+      child: AppSurface(
+        padding: EdgeInsets.zero,
+        borderRadius: AppTheme.rInput,
+        onTap: () {
+          setState(() => _isHazardOverlayOpen = !_isHazardOverlayOpen);
+        },
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(width: 4, color: stripColor),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppTheme.s12,
+                    vertical: 9,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            _hazardIconForType(risk.alertType, isRed),
+                            size: 19,
+                            color: accentText,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                '$severityLabel • $title',
+                                maxLines: 1,
+                                style: TextStyle(
+                                  fontSize: 14.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: AppTheme.textPrimary(context),
+                                  height: 1.25,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isRed
+                                  ? AppTheme.danger.withValues(alpha: 0.14)
+                                  : AppTheme.cautionAmber,
+                              borderRadius: BorderRadius.circular(
+                                AppTheme.rPill,
+                              ),
+                            ),
+                            child: Text(
+                              likelihoodChipText,
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                                color: isRed
+                                    ? accentText
+                                    : AppTheme.textPrimaryLight,
+                              ),
+                            ),
+                          ),
+                          if (plusMoreText != null) ...[
+                            const SizedBox(width: 4),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppTheme.primaryActionColor(
+                                  context,
+                                ).withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(
+                                  AppTheme.rPill,
+                                ),
+                              ),
+                              child: Text(
+                                plusMoreText,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppTheme.primaryActionColor(context),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        action,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: AppTheme.textSecondary(context),
+                          height: 1.3,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Wrap(
+                        spacing: AppTheme.s12,
+                        runSpacing: 2,
+                        children: [
+                          Text(
+                            '$timeWindowLabel: $timeWindowValue',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.textPrimary(context),
+                            ),
+                          ),
+                          if (cleanExpected.isNotEmpty)
+                            Text(
+                              '$expectedLabel: $cleanExpected',
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w700,
+                                color: accentText,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
-          )
-        else
-          ...List.generate(h1Risks.length, (idx) {
-            final risk = h1Risks[idx];
-            final isRed = risk.severity.toLowerCase() == 'red';
-            final title = AppStrings.hazardTitle(
-              risk.alertType,
-              risk.severity,
-              _lang,
-              fallbackHi: risk.titleHi,
-              fallbackEn: risk.titleEn,
-            );
-            final action = AppStrings.hazardAction(
-              risk.alertType,
-              _lang,
-              fallbackHi: risk.actionHi,
-              fallbackEn: risk.actionEn,
-            );
-            final timeWindow = AppStrings.localizeTimeWindow(
-              risk.expectedDate,
-              _lang,
-            );
-            // Strip any secondary "(XX% chance)" from expectedValue so probability is only shown once
-            var cleanExpected = risk.expectedValue
-                .replaceAll(RegExp(r'\s*\([^)]*%\s*chance\)', caseSensitive: false), '')
-                .trim();
-            if (_lang == 'hi') {
-              cleanExpected = cleanExpected
-                  .replaceAll(RegExp(r'max\s*temp', caseSensitive: false), 'अधिकतम')
-                  .replaceAll(RegExp(r'min\s*temp', caseSensitive: false), 'न्यूनतम')
-                  .replaceAll(RegExp(r'\bwind\b', caseSensitive: false), 'हवा')
-                  .replaceAll(RegExp(r'\brain\b', caseSensitive: false), 'वर्षा')
-                  .replaceAll(RegExp(r'\bmm\b'), 'मिमी')
-                  .replaceAll(RegExp(r'\bkm/h\b'), 'किमी/घंटा');
-            }
-
-            return Padding(
-              padding: const EdgeInsets.only(bottom: AppTheme.s8),
-              child: StatusRow(
-                severity: risk.severity,
-                severityLabel: AppStrings.get(
-                  isRed ? 'severity_red' : 'severity_orange',
-                  _lang,
-                ),
-                icon: _hazardIconForType(risk.alertType, isRed),
-                title: title,
-                likelihoodText:
-                    '${risk.probability.round()}% ${AppStrings.get('likelihood_suffix', _lang)}',
-                actionText: action,
-                timeWindowLabel: AppStrings.get('time_window_label', _lang),
-                timeWindowValue: timeWindow,
-                expectedLabel: AppStrings.get('expected_amount_label', _lang),
-                expectedValue: cleanExpected,
-                isExpanded: _expandedHazardIndices.contains(idx),
-                onToggle: () {
-                  setState(() {
-                    if (_expandedHazardIndices.contains(idx)) {
-                      _expandedHazardIndices.remove(idx);
-                    } else {
-                      _expandedHazardIndices.add(idx);
-                    }
-                  });
-                },
               ),
-            );
-          }),
-
-        // El Niño / La Niña (ENSO) Prediction Card directly after weather warning bars
-        Padding(
-          padding: EdgeInsets.only(top: h1Risks.isEmpty ? AppTheme.s8 : 0),
-          child: _buildEnsoPredictionCard(context),
+            ],
+          ),
         ),
+      ),
+    );
+  }
 
-        // 30-day seasonal outlook as 1 collapsed row (max 1 level of container)
-        if (h3Risks.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: AppTheme.s8),
-            child: AppSurface(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppTheme.s12,
-                vertical: 8,
-              ),
-              borderRadius: AppTheme.rInput,
-              onTap: () => setState(
-                () => _seasonalOutlookExpanded = !_seasonalOutlookExpanded,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.calendar_month_rounded,
-                        size: 18,
-                        color: AppTheme.primaryActionColor(context),
-                      ),
-                      const SizedBox(width: AppTheme.s8),
-                      Expanded(
+  /// Compact one-line pinned warning bar (48dp tall) shown after ~80dp scroll:
+  /// Icon + short title + likelihood chip + "+N more" (if multiple) + chevron.
+  Widget _buildCompactPinnedWarning(
+    BuildContext context,
+    DetectedRisk risk, {
+    required int extraCount,
+  }) {
+    final isRed = risk.severity.toLowerCase() == 'red';
+    final stripColor = isRed ? AppTheme.danger : AppTheme.warningText;
+    final accentText = isRed
+        ? AppTheme.semanticDangerText(context)
+        : AppTheme.semanticWarningText(context);
+    final title = AppStrings.hazardTitle(
+      risk.alertType,
+      risk.severity,
+      _lang,
+      fallbackHi: risk.titleHi,
+      fallbackEn: risk.titleEn,
+    );
+    final likelihoodText = '${risk.probability.round()}%';
+    final plusMoreText = extraCount > 0
+        ? AppStrings.get('plus_n_more', _lang).replaceAll('{n}', '$extraCount')
+        : null;
+
+    return SizedBox(
+      height: 48,
+      child: AppSurface(
+        padding: EdgeInsets.zero,
+        borderRadius: AppTheme.rInput,
+        onTap: () {
+          setState(() => _isHazardOverlayOpen = !_isHazardOverlayOpen);
+        },
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(width: 4, color: stripColor),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: Row(
+                  children: [
+                    Icon(
+                      _hazardIconForType(risk.alertType, isRed),
+                      size: 18,
+                      color: accentText,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
                         child: Text(
-                          AppStrings.get('outlook_30d', _lang),
+                          title,
+                          maxLines: 1,
                           style: TextStyle(
                             fontSize: 13.5,
                             fontWeight: FontWeight.w700,
@@ -1440,253 +1999,192 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                           ),
                         ),
                       ),
-                      Icon(
-                        _seasonalOutlookExpanded
-                            ? Icons.expand_less_rounded
-                            : Icons.expand_more_rounded,
-                        size: 20,
-                        color: AppTheme.textSecondary(context),
+                    ),
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
                       ),
-                    ],
-                  ),
-                  AnimatedSize(
-                    duration: disableAnimations
-                        ? Duration.zero
-                        : const Duration(milliseconds: 240),
-                    curve: Curves.easeOutCubic,
-                    child: _seasonalOutlookExpanded
-                        ? Padding(
-                            padding: const EdgeInsets.only(top: 6),
-                            child: Text(
-                              _seasonalOutlookSentence(),
-                              style: TextStyle(
-                                fontSize: 13.5,
-                                color: AppTheme.textSecondary(context),
-                                height: 1.4,
-                              ),
-                            ),
-                          )
-                        : const SizedBox.shrink(),
-                  ),
-                ],
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildEnsoPredictionCard(BuildContext context) {
-    final isHi = _lang == 'hi';
-    final enso = _riskData?.enso;
-    final oniVal = enso?.oniValue ?? -0.3;
-    final rawPhase = enso?.phase ?? 'Neutral';
-    final phaseText = isHi
-        ? (enso != null && enso.phaseHi.isNotEmpty ? enso.phaseHi : 'तटस्थ')
-        : rawPhase;
-
-    final probs = enso?.probabilities ?? const {'El Niño': 15, 'Neutral': 25, 'La Niña': 60};
-    final elNinoProb = (probs['El Niño'] ?? probs['El Nino'] ?? 15);
-    final neutralProb = (probs['Neutral'] ?? 25);
-    final laNinaProb = (probs['La Niña'] ?? probs['La Nina'] ?? 60);
-
-    final impactText = isHi
-        ? (enso != null && enso.explanationHi.isNotEmpty
-            ? enso.explanationHi
-                .replaceAll(RegExp(r'\s*\([A-Za-z\s-ñÑíÍ/]+\)'), '')
-                .trim()
-            : 'तटस्थ स्थितियाँ (ONI ${oniVal >= 0 ? "+" : ""}${oniVal.toStringAsFixed(1)}°C) — भारतीय मानसून व रबी सीजन में सामान्य से अच्छी नमी रहने की संभावना।')
-        : 'ENSO is in $rawPhase phase (ONI ${oniVal >= 0 ? "+" : ""}${oniVal.toStringAsFixed(1)}°C) with $laNinaProb% La Niña likelihood — favorable for normal-to-above-normal seasonal rainfall and soil moisture.';
-
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final dividerColor = AppTheme.isHighContrast(context)
-        ? Colors.black26
-        : (isDark ? Colors.white12 : AppTheme.outlineLight);
-
-    return AppSurface(
-      padding: const EdgeInsets.all(14),
-      borderRadius: AppTheme.rInput,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.public_rounded,
-                size: 20,
-                color: AppTheme.primaryActionColor(context),
-              ),
-              const SizedBox(width: AppTheme.s8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      AppStrings.get('enso_title', _lang),
-                      style: TextStyle(
-                        fontSize: 14.5,
-                        fontWeight: FontWeight.w800,
-                        color: AppTheme.textPrimary(context),
-                        height: 1.3,
+                      decoration: BoxDecoration(
+                        color: isRed
+                            ? AppTheme.danger.withValues(alpha: 0.14)
+                            : AppTheme.cautionAmber,
+                        borderRadius: BorderRadius.circular(AppTheme.rPill),
+                      ),
+                      child: Text(
+                        likelihoodText,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w800,
+                          color:
+                              isRed ? accentText : AppTheme.textPrimaryLight,
+                        ),
                       ),
                     ),
-                    Text(
-                      'ONI: ${oniVal >= 0 ? "+" : ""}${oniVal.toStringAsFixed(1)}°C • ${AppStrings.get('enso_source', _lang)}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.textSecondary(context),
+                    if (plusMoreText != null) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryActionColor(
+                            context,
+                          ).withValues(alpha: 0.14),
+                          borderRadius: BorderRadius.circular(AppTheme.rPill),
+                        ),
+                        child: Text(
+                          plusMoreText,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: AppTheme.primaryActionColor(context),
+                          ),
+                        ),
                       ),
+                    ],
+                    const SizedBox(width: 4),
+                    Icon(
+                      _isHazardOverlayOpen
+                          ? Icons.expand_less_rounded
+                          : Icons.expand_more_rounded,
+                      size: 20,
+                      color: AppTheme.textSecondary(context),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: AppTheme.s8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryButtonFill(context),
-                  borderRadius: BorderRadius.circular(AppTheme.rPill),
-                ),
-                child: Text(
-                  phaseText,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          OniGaugeMeter(oniValue: oniVal, lang: _lang),
-          const SizedBox(height: 10),
-          IntrinsicHeight(
-            child: Row(
-              children: [
-                Expanded(
-                  child: _buildEnsoProbColumn(
-                    context,
-                    label: isHi ? 'ला नीना' : 'La Niña',
-                    value: '$laNinaProb%',
-                  ),
-                ),
-                Container(width: 1, color: dividerColor),
-                Expanded(
-                  child: _buildEnsoProbColumn(
-                    context,
-                    label: isHi ? 'तटस्थ' : 'Neutral',
-                    value: '$neutralProb%',
-                  ),
-                ),
-                Container(width: 1, color: dividerColor),
-                Expanded(
-                  child: _buildEnsoProbColumn(
-                    context,
-                    label: isHi ? 'अल नीनो' : 'El Niño',
-                    value: '$elNinoProb%',
-                  ),
-                ),
-              ],
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            impactText,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              color: AppTheme.textSecondary(context),
-              height: 1.38,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildEnsoProbColumn(
-    BuildContext context, {
-    required String label,
-    required String value,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+  /// Overlay panel on top of content when the compact bar (or multi-hazard bar) is tapped.
+  Widget _buildHazardOverlayPanel(
+    BuildContext context,
+    List<DetectedRisk> risks,
+    double topPad,
+  ) {
+    final topOffset = topPad + (_isWarningCompact ? 118.0 : 178.0);
+    return Positioned.fill(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => setState(() => _isHazardOverlayOpen = false),
+        child: Container(
+          color: Colors.black.withValues(alpha: 0.28),
+          alignment: Alignment.topCenter,
+          padding: EdgeInsets.fromLTRB(
+            AppTheme.s16,
+            topOffset,
+            AppTheme.s16,
+            AppTheme.s24,
+          ),
+          child: GestureDetector(
+            onTap: () {}, // Prevent tap inside panel from closing
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 420),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: risks.map((risk) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: AppTheme.s8),
+                      child: _buildExpandedPinnedWarning(
+                        context,
+                        risk,
+                        extraCount: 0,
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNoHazardsGreenBar(BuildContext context) {
+    return AppSurface(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppTheme.s12,
+        vertical: 10,
+      ),
+      borderRadius: AppTheme.rInput,
+      child: Row(
         children: [
-          FittedBox(
-            fit: BoxFit.scaleDown,
+          Icon(
+            Icons.check_circle_rounded,
+            size: 20,
+            color: AppTheme.semanticSuccessText(context),
+          ),
+          const SizedBox(width: AppTheme.s8),
+          Expanded(
             child: Text(
-              value,
+              AppStrings.get('no_severe_hazards_3d', _lang),
               style: TextStyle(
                 fontSize: 13.5,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w600,
                 color: AppTheme.textPrimary(context),
               ),
             ),
           ),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(
-              label,
-              maxLines: 1,
-              style: TextStyle(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.textSecondary(context),
-              ),
-            ),
-          ),
         ],
       ),
     );
   }
 
-  IconData _hazardIconForType(String alertType, bool isRed) {
-    final t = alertType.toLowerCase();
-    if (t.contains('heat')) return Icons.wb_sunny_rounded;
-    if (t.contains('rain') || t.contains('flood')) return Icons.thunderstorm_rounded;
-    if (t.contains('frost') || t.contains('cold')) return Icons.ac_unit_rounded;
-    if (t.contains('wind')) return Icons.air_rounded;
-    return isRed ? Icons.warning_rounded : Icons.error_outline_rounded;
-  }
-
-  String _seasonalOutlookSentence() {
-    final activeLoc = _gpsLocationName ??
-        _currentFarm?.getVillage(_lang) ??
-        (_lang == 'hi' ? 'आपके क्षेत्र' : 'your area');
-    final temp = _weather?.current.temperature.toStringAsFixed(0) ?? '28';
-    final soilPct = ((_weather?.current.soilMoisture ?? 0.25) * 100).round();
-    if (_lang == 'en') {
-      return 'In $activeLoc ($temp°C, $soilPct% soil moisture), 30-day multi-model outlook indicates normal-to-mildly dry conditions; conserve topsoil moisture.';
-    }
-    return '$activeLoc ($temp°C, मिट्टी नमी $soilPct%) में अगले 30 दिनों के मौसमी पूर्वानुमान के अनुसार नमी संरक्षण व समय पर हल्की सिंचाई की सलाह है।';
-  }
-
-  /// c) Weather hero wrapped inside ONE card (AppSurface with radius 20, padding 20):
-  /// - 64sp temperature top-left, condition label, feels-like beneath, updated text under condition
-  /// - Clipped RealisticWeatherVisual (size 96) on the right side
-  /// - Hairline divider
-  /// - 3-column metrics row (wind, humidity, UV) with icon+value on line 1, short label below, separated by thin vertical dividers
+  /// 2a) Weather hero card:
+  /// Saturated weather gradient (AA contrast >= 5.25:1 for white text),
+  /// RealisticWeatherVisual clipped inside, and wind/humidity/UV row on a subtle white-10% inner panel.
   Widget _buildWeatherHero(
     BuildContext context,
     CurrentWeather current, {
     required int effectiveCode,
     required bool effectiveIsDay,
     required double effectiveTemp,
+    String? sunrise,
+    String? sunset,
+    bool forceOffline = false,
   }) {
     final condText = _getWeatherConditionText(effectiveCode, _lang);
     final displayCond = (!effectiveIsDay && effectiveCode == 0)
         ? (_lang == 'hi' ? 'साफ रात' : 'Clear Night')
         : condText;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isHc = AppTheme.isHighContrast(context);
+    final ambientState = AmbientBackground.resolveState(
+      weatherCode: effectiveCode,
+      isDay: effectiveIsDay,
+      temperature: effectiveTemp,
+      sunrise: sunrise,
+      sunset: sunset,
+    );
+
+    final primaryHeroText = isHc ? Colors.black : Colors.white;
+    final secondaryHeroText =
+        isHc ? Colors.black87 : Colors.white.withValues(alpha: 0.90);
+    final mutedHeroText =
+        isHc ? Colors.black87 : Colors.white.withValues(alpha: 0.84);
+    final innerPanelColor = isHc
+        ? Colors.black.withValues(alpha: 0.05)
+        : Colors.white.withValues(alpha: 0.11);
+    final innerDividerColor =
+        isHc ? Colors.black26 : Colors.white.withValues(alpha: 0.20);
 
     return AppSurface(
       borderRadius: AppTheme.rCard,
       padding: const EdgeInsets.all(20),
+      gradient: isHc
+          ? null
+          : AmbientBackground.heroGradientForState(ambientState),
+      color: isHc ? Colors.white : null,
+      borderColor: isHc ? Colors.black : Colors.white.withValues(alpha: 0.18),
+      borderWidth: isHc ? 2.0 : 1.0,
       clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1706,7 +2204,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                         child: Text(
                           '${effectiveTemp.round()}°',
                           style: AppTheme.heroTempStyle.copyWith(
-                            color: AppTheme.textPrimary(context),
+                            color: primaryHeroText,
                           ),
                         ),
                       ),
@@ -1715,7 +2213,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                     Text(
                       displayCond,
                       style: AppTheme.titleStyle.copyWith(
-                        color: AppTheme.textPrimary(context),
+                        color: primaryHeroText,
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -1724,16 +2222,16 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
-                        color: AppTheme.textSecondary(context),
+                        color: secondaryHeroText,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      _formatFreshnessText(),
+                      _formatFreshnessText(forceOffline: forceOffline),
                       style: TextStyle(
-                        fontSize: 13,
+                        fontSize: 12.5,
                         fontWeight: FontWeight.w500,
-                        color: AppTheme.textSecondary(context),
+                        color: mutedHeroText,
                       ),
                     ),
                   ],
@@ -1753,49 +2251,67 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
               ),
             ],
           ),
-
-          // Hairline divider
-          const SizedBox(height: AppTheme.s16),
+          const SizedBox(height: 16),
+          // Subtle white-10% inner panel at the bottom of the hero (max 1 nesting level)
           Container(
-            height: 1,
-            color: AppTheme.isHighContrast(context)
-                ? Colors.black26
-                : (isDark ? Colors.white12 : AppTheme.outlineLight),
-          ),
-          const SizedBox(height: AppTheme.s12),
-
-          // Metrics row: 1 3-column row with thin vertical dividers
-          IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  child: _buildHeroMetricColumn(
-                    context,
-                    icon: Icons.air_rounded,
-                    value: '${current.windSpeed.round()} km/h',
-                    label: AppStrings.get('wind_speed', _lang),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+            decoration: BoxDecoration(
+              color: innerPanelColor,
+              borderRadius: BorderRadius.circular(14),
+              border: isHc ? Border.all(color: Colors.black, width: 1) : null,
+            ),
+            child: IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: _buildHeroMetricColumn(
+                      context,
+                      icon: Icons.air_rounded,
+                      value: '${current.windSpeed.round()} km/h',
+                      label: AppStrings.get('wind_speed', _lang),
+                      textColor: primaryHeroText,
+                      subColor: secondaryHeroText,
+                    ),
                   ),
-                ),
-                _buildHeroMetricDivider(context),
-                Expanded(
-                  child: _buildHeroMetricColumn(
-                    context,
-                    icon: Icons.water_drop_rounded,
-                    value: '${current.relativeHumidity.round()}%',
-                    label: AppStrings.get('humidity', _lang),
+                  Container(
+                    width: 1,
+                    margin: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 2,
+                    ),
+                    color: innerDividerColor,
                   ),
-                ),
-                _buildHeroMetricDivider(context),
-                Expanded(
-                  child: _buildHeroMetricColumn(
-                    context,
-                    icon: Icons.wb_sunny_rounded,
-                    value: current.uvIndex.toStringAsFixed(1),
-                    label: AppStrings.get('uv_index', _lang),
+                  Expanded(
+                    child: _buildHeroMetricColumn(
+                      context,
+                      icon: Icons.water_drop_rounded,
+                      value: '${current.relativeHumidity.round()}%',
+                      label: AppStrings.get('humidity', _lang),
+                      textColor: primaryHeroText,
+                      subColor: secondaryHeroText,
+                    ),
                   ),
-                ),
-              ],
+                  Container(
+                    width: 1,
+                    margin: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 2,
+                    ),
+                    color: innerDividerColor,
+                  ),
+                  Expanded(
+                    child: _buildHeroMetricColumn(
+                      context,
+                      icon: Icons.wb_sunny_rounded,
+                      value: current.uvIndex.toStringAsFixed(1),
+                      label: AppStrings.get('uv_index', _lang),
+                      textColor: primaryHeroText,
+                      subColor: secondaryHeroText,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -1808,6 +2324,8 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
     required IconData icon,
     required String value,
     required String label,
+    required Color textColor,
+    required Color subColor,
   }) {
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -1817,11 +2335,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
           mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              icon,
-              size: 16,
-              color: AppTheme.primaryActionColor(context),
-            ),
+            Icon(icon, size: 15, color: textColor),
             const SizedBox(width: 4),
             Flexible(
               child: FittedBox(
@@ -1829,10 +2343,10 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                 child: Text(
                   value,
                   style: TextStyle(
-                    fontSize: 15,
+                    fontSize: 14.5,
                     fontWeight: FontWeight.w800,
-                    color: AppTheme.textPrimary(context),
-                    height: 1.25,
+                    color: textColor,
+                    height: 1.2,
                   ),
                 ),
               ),
@@ -1846,10 +2360,10 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
             label,
             maxLines: 1,
             style: TextStyle(
-              fontSize: 12.5,
+              fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: AppTheme.textSecondary(context),
-              height: 1.3,
+              color: subColor,
+              height: 1.25,
             ),
           ),
         ),
@@ -1857,68 +2371,481 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
     );
   }
 
-  Widget _buildHeroMetricDivider(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final color = AppTheme.isHighContrast(context)
-        ? Colors.black26
-        : (isDark ? Colors.white12 : AppTheme.outlineLight);
-    return Container(
-      width: 1,
-      margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-      color: color,
-    );
-  }
-
-  /// d) Compact 4-up grid of MetricTile: soil temp, soil moisture (shows "34%" only, keeps m3/m3 in expanded/semantic label), sunrise, sunset
-  Widget _buildDetailGrid(BuildContext context, WeatherData weather) {
+  /// 2b) Field conditions: ONE card with four cells (soil temp, soil moisture, sunrise, sunset)
+  /// in a 2x2 grid with hairline dividers.
+  Widget _buildFieldConditionsCard(BuildContext context, WeatherData weather) {
     final cur = weather.current;
     final today = weather.daily.isNotEmpty ? weather.daily.first : null;
     final soilPct = (cur.soilMoisture <= 1.0
             ? cur.soilMoisture * 100
             : cur.soilMoisture)
         .round();
-    final soilRawM3 = '${cur.soilMoisture.toStringAsFixed(2)} m³/m³';
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isHc = AppTheme.isHighContrast(context);
+    final dividerCol = isHc
+        ? Colors.black
+        : (isDark ? const Color(0x1FFFFFFF) : const Color(0xFFCFD8DF));
 
-    return Column(
-      children: [
-        Row(
+    return AppSurface(
+      borderRadius: AppTheme.rCard,
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: _buildFieldCell(
+                    context,
+                    icon: Icons.thermostat_rounded,
+                    label: AppStrings.get('soil_temp', _lang),
+                    value: '${cur.soilTemperature.toStringAsFixed(1)}°C',
+                  ),
+                ),
+                Container(width: 1, color: dividerCol),
+                Expanded(
+                  child: _buildFieldCell(
+                    context,
+                    icon: Icons.opacity_rounded,
+                    label: AppStrings.get('soil_moisture', _lang),
+                    value: '$soilPct%',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(height: 1, color: dividerCol),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: _buildFieldCell(
+                    context,
+                    icon: Icons.wb_twilight_rounded,
+                    label: AppStrings.get('sunrise', _lang),
+                    value: today != null
+                        ? _formatSunTime(today.sunrise)
+                        : '6:12 AM',
+                  ),
+                ),
+                Container(width: 1, color: dividerCol),
+                Expanded(
+                  child: _buildFieldCell(
+                    context,
+                    icon: Icons.nights_stay_rounded,
+                    label: AppStrings.get('sunset', _lang),
+                    value: today != null
+                        ? _formatSunTime(today.sunset)
+                        : '6:04 PM',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFieldCell(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(
+                icon,
+                size: 16,
+                color: AppTheme.primaryActionColor(context),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textSecondary(context),
+                    height: 1.25,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+              color: AppTheme.textPrimary(context),
+              height: 1.2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 3) EL NINO SEASON CARD
+  /// - Phase chip (El Niño / La Niña / Neutral, each with its own icon + color)
+  /// - ONI value + thin ONI scale bar (-2 to +2) with animated marker
+  /// - "as of {month}" and source "NOAA CPC / IRI" (plus cache age if offline)
+  /// - Mini 3-segment probability bar if forecast probabilities exist; otherwise titled "Current ENSO phase"
+  /// - One localized farmer-facing hedged advice line per phase + "Check IMD advisories"
+  /// - Skeleton shimmer while loading; "ENSO data unavailable" with retry icon on failure
+  Widget _buildElNinoSeasonCard(
+    BuildContext context,
+    DebugWeatherOverride? debugOverride,
+  ) {
+    if (_isEnsoLoading) {
+      return AppSurface(
+        borderRadius: AppTheme.rCard,
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: const [
+            SkeletonBox(height: 22, width: 180),
+            SizedBox(height: 12),
+            SkeletonBox(height: 18),
+            SizedBox(height: 12),
+            SkeletonBox(height: 36),
+          ],
+        ),
+      );
+    }
+
+    final forceUnavailable =
+        kDebugMode && debugOverride?.forceEnsoUnavailable == true;
+    final enso = forceUnavailable ? null : (_ensoData ?? _riskData?.enso);
+
+    if (enso == null) {
+      return AppSurface(
+        borderRadius: AppTheme.rCard,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        onTap: () => _loadEnsoStatus(isRetry: true),
+        child: Row(
           children: [
+            Icon(
+              Icons.cloud_off_rounded,
+              size: 20,
+              color: AppTheme.textSecondary(context),
+            ),
+            const SizedBox(width: 10),
             Expanded(
-              child: MetricTile(
-                icon: Icons.thermostat_rounded,
-                label: AppStrings.get('soil_temp', _lang),
-                value: '${cur.soilTemperature.toStringAsFixed(1)}°C',
+              child: Text(
+                AppStrings.get('enso_unavailable', _lang),
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textPrimary(context),
+                ),
               ),
             ),
-            const SizedBox(width: AppTheme.s8),
-            Expanded(
-              child: MetricTile(
-                icon: Icons.opacity_rounded,
-                label: AppStrings.get('soil_moisture', _lang),
-                value: '$soilPct%',
-                expandedDetail: soilRawM3,
-                semanticsLabel:
-                    '${AppStrings.get("soil_moisture", _lang)}: $soilPct% ($soilRawM3)',
+            IconButton(
+              icon: Icon(
+                Icons.refresh_rounded,
+                color: AppTheme.primaryActionColor(context),
               ),
+              tooltip: AppStrings.get('enso_retry', _lang),
+              onPressed: () => _loadEnsoStatus(isRetry: true),
             ),
           ],
         ),
-        const SizedBox(height: AppTheme.s8),
+      );
+    }
+
+    final rawPhase =
+        (kDebugMode && debugOverride?.forceEnsoPhase != null)
+            ? debugOverride!.forceEnsoPhase!
+            : enso.phase;
+    final lowerPhase = rawPhase.toLowerCase();
+    final isElNino = lowerPhase.contains('el') || lowerPhase.contains('अल');
+    final isLaNina = lowerPhase.contains('la') || lowerPhase.contains('ला');
+
+    final double oniVal = (kDebugMode && debugOverride?.forceEnsoPhase != null)
+        ? (isElNino ? 0.9 : (isLaNina ? -0.8 : -0.2))
+        : enso.oniValue;
+
+    final String phaseLabel;
+    final String adviceLine;
+    final IconData phaseIcon;
+    final Color phaseBgColor;
+
+    if (isElNino) {
+      phaseLabel = AppStrings.get('enso_phase_el_nino', _lang);
+      adviceLine = AppStrings.get('enso_advice_el_nino', _lang);
+      phaseIcon = Icons.wb_sunny_rounded;
+      phaseBgColor = const Color(0xFFD84315);
+    } else if (isLaNina) {
+      phaseLabel = AppStrings.get('enso_phase_la_nina', _lang);
+      adviceLine = AppStrings.get('enso_advice_la_nina', _lang);
+      phaseIcon = Icons.ac_unit_rounded;
+      phaseBgColor = const Color(0xFF0277BD);
+    } else {
+      phaseLabel = AppStrings.get('enso_phase_neutral', _lang);
+      adviceLine = AppStrings.get('enso_advice_neutral', _lang);
+      phaseIcon = Icons.balance_rounded;
+      phaseBgColor = const Color(0xFF00695C);
+    }
+
+    // Extract coming season probabilities if present in response
+    Map<String, int>? comingProbs;
+    final bool allowProbs =
+        !(kDebugMode && debugOverride?.forceEnsoCurrentOnly == true) &&
+            enso.hasForecastProbabilities &&
+            enso.probabilities.isNotEmpty;
+    if (allowProbs) {
+      final rawProbs = enso.probabilities;
+      if (rawProbs['season_1'] is Map) {
+        final s1 = rawProbs['season_1'] as Map;
+        comingProbs = {
+          'el_nino': (s1['el_nino'] as num?)?.round() ?? 15,
+          'neutral': (s1['neutral'] as num?)?.round() ?? 60,
+          'la_nina': (s1['la_nina'] as num?)?.round() ?? 25,
+        };
+      } else if (rawProbs.containsKey('El Niño') ||
+          rawProbs.containsKey('El Nino')) {
+        comingProbs = {
+          'el_nino':
+              ((rawProbs['El Niño'] ?? rawProbs['El Nino']) as num?)?.round() ??
+                  15,
+          'neutral': (rawProbs['Neutral'] as num?)?.round() ?? 25,
+          'la_nina':
+              ((rawProbs['La Niña'] ?? rawProbs['La Nina']) as num?)?.round() ??
+                  60,
+        };
+      }
+    }
+
+    final cardTitle = comingProbs != null
+        ? AppStrings.get('enso_seasonal_outlook_title', _lang)
+        : AppStrings.get('enso_current_phase_title', _lang);
+
+    final monthStr =
+        enso.updatedAt.isNotEmpty ? enso.updatedAt : 'Oct 2026';
+    final asOfText =
+        AppStrings.get('enso_as_of', _lang).replaceAll('{month}', monthStr);
+    final isOfflineCached =
+        _isOfflineMode || (kDebugMode && debugOverride?.forceOfflineCached == true);
+    final isHc = AppTheme.isHighContrast(context);
+
+    return AppSurface(
+      borderRadius: AppTheme.rCard,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      cardTitle,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.textPrimary(context),
+                        height: 1.25,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'ONI ${oniVal >= 0 ? "+" : ""}${oniVal.toStringAsFixed(1)}°C • $asOfText',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textSecondary(context),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Phase chip with distinct icon + color (never color-only)
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
+                decoration: BoxDecoration(
+                  color: isHc ? Colors.black : phaseBgColor,
+                  borderRadius: BorderRadius.circular(AppTheme.rPill),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(phaseIcon, size: 14, color: Colors.white),
+                    const SizedBox(width: 5),
+                    Text(
+                      phaseLabel,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // Thin ONI scale bar (-2 to +2) with animated marker
+          OniGaugeMeter(oniValue: oniVal, lang: _lang),
+
+          // Mini 3-segment probability bar if forward-looking probabilities are returned
+          if (comingProbs != null) ...[
+            const SizedBox(height: 12),
+            _buildMiniProbabilityBar(context, comingProbs),
+          ],
+
+          const SizedBox(height: 10),
+          // Localized farmer-facing hedged advice line
+          Text(
+            adviceLine,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: AppTheme.textPrimary(context),
+              height: 1.38,
+            ),
+          ),
+          const SizedBox(height: 6),
+          // Footer: "NOAA CPC / IRI" + "Check IMD advisories" (+ cache age if offline)
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 2,
+            children: [
+              Text(
+                '${AppStrings.get('enso_source_noaa_iri', _lang)}${isOfflineCached ? " (${AppStrings.get('cached_age_prefix', _lang)})" : ""}',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textSecondary(context),
+                ),
+              ),
+              Text(
+                AppStrings.get('enso_check_imd', _lang),
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.primaryActionColor(context),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMiniProbabilityBar(
+    BuildContext context,
+    Map<String, int> probs,
+  ) {
+    final laNina = (probs['la_nina'] ?? 25).clamp(1, 100);
+    final neutral = (probs['neutral'] ?? 50).clamp(1, 100);
+    final elNino = (probs['el_nino'] ?? 25).clamp(1, 100);
+    final isHc = AppTheme.isHighContrast(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          AppStrings.get('enso_coming_season_prob', _lang),
+          style: TextStyle(
+            fontSize: 11.5,
+            fontWeight: FontWeight.w700,
+            color: AppTheme.textSecondary(context),
+          ),
+        ),
+        const SizedBox(height: 4),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: SizedBox(
+            height: 7,
+            child: Row(
+              children: [
+                Expanded(
+                  flex: laNina,
+                  child: Container(
+                    color: isHc ? Colors.black87 : const Color(0xFF0277BD),
+                  ),
+                ),
+                const SizedBox(width: 2),
+                Expanded(
+                  flex: neutral,
+                  child: Container(
+                    color: isHc ? Colors.black45 : const Color(0xFF00796B),
+                  ),
+                ),
+                const SizedBox(width: 2),
+                Expanded(
+                  flex: elNino,
+                  child: Container(
+                    color: isHc ? Colors.black : const Color(0xFFD84315),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 4),
         Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Expanded(
-              child: MetricTile(
-                icon: Icons.wb_twilight_rounded,
-                label: AppStrings.get('sunrise', _lang),
-                value: today != null ? _formatSunTime(today.sunrise) : '6:12 AM',
+            Flexible(
+              child: Text(
+                '${AppStrings.get('enso_phase_la_nina', _lang)} $laNina%',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textSecondary(context),
+                ),
               ),
             ),
-            const SizedBox(width: AppTheme.s8),
-            Expanded(
-              child: MetricTile(
-                icon: Icons.nights_stay_rounded,
-                label: AppStrings.get('sunset', _lang),
-                value: today != null ? _formatSunTime(today.sunset) : '6:04 PM',
+            Flexible(
+              child: Text(
+                '${AppStrings.get('enso_phase_neutral', _lang)} $neutral%',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textSecondary(context),
+                ),
+              ),
+            ),
+            Flexible(
+              child: Text(
+                '${AppStrings.get('enso_phase_el_nino', _lang)} $elNino%',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textSecondary(context),
+                ),
               ),
             ),
           ],
@@ -1927,59 +2854,465 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
     );
   }
 
-  /// e) One row "Best crops for your field now" with chevron to Crops
-  Widget _buildBestCropsRow(BuildContext context) {
+  /// 4) 30-DAY OUTLOOK CARD (restored, visible by default, not collapsed):
+  /// - Source: Horizon-3 (15-30 day seasonal) data in FarmRiskData
+  /// - Headline figure as a labelled gauge (e.g., "35% chance of below-normal rainfall") with animated progress bar
+  /// - Localized sentence + temperature outlook if present in data + "Multi-model forecast" source note
+  Widget _build30DayOutlookCard(BuildContext context, WeatherData weather) {
+    final h3Risks = _riskData?.horizon3.risks ?? const <DetectedRisk>[];
+    final DetectedRisk? rainRisk = h3Risks.isNotEmpty ? h3Risks.first : null;
+    final DetectedRisk? tempRisk = h3Risks.length > 1 ? h3Risks[1] : null;
+
+    final int rainProb = (rainRisk?.probability ?? 35.0).round().clamp(0, 100);
+    final headlineLabel = AppStrings.get(
+      'outlook_below_normal_rain_chance',
+      _lang,
+    ).replaceAll('{p}', '$rainProb');
+
+    final String sentence;
+    if (_lang == 'en') {
+      if (rainRisk?.accuracyStatementEn != null &&
+          rainRisk!.accuracyStatementEn!.trim().isNotEmpty) {
+        sentence = rainRisk.accuracyStatementEn!;
+      } else {
+        sentence = _seasonalOutlookSentence();
+      }
+    } else {
+      if (rainRisk?.accuracyStatementHi != null &&
+          rainRisk!.accuracyStatementHi!.trim().isNotEmpty) {
+        sentence = rainRisk.accuracyStatementHi!;
+      } else {
+        sentence = _seasonalOutlookSentence();
+      }
+    }
+
+    final disableAnimations =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
     final primaryCol = AppTheme.primaryActionColor(context);
+
     return AppSurface(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppTheme.s16,
-        vertical: AppTheme.s12,
-      ),
-      borderRadius: AppTheme.rInput,
-      onTap: () => setState(() => _currentTabIndex = 2),
-      child: Row(
+      borderRadius: AppTheme.rCard,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Icon(Icons.agriculture_rounded, color: primaryCol, size: 22),
-          const SizedBox(width: AppTheme.s12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  AppStrings.get('best_crops_now', _lang),
+          Row(
+            children: [
+              Icon(Icons.calendar_month_rounded, size: 18, color: primaryCol),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  AppStrings.get('outlook_30d_title', _lang),
                   style: TextStyle(
                     fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.textPrimary(context),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          // Headline labelled gauge + animated progress bar (400 ms easeOutCubic)
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  headlineLabel,
+                  style: TextStyle(
+                    fontSize: 13.5,
                     fontWeight: FontWeight.w700,
                     color: AppTheme.textPrimary(context),
                   ),
                 ),
-                Text(
-                  AppStrings.get('rabi_season', _lang),
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textSecondary(context),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '$rainProb%',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: primaryCol,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          TweenAnimationBuilder<double>(
+            tween: Tween<double>(
+              begin: disableAnimations ? (rainProb / 100.0) : 0.0,
+              end: rainProb / 100.0,
+            ),
+            duration: disableAnimations
+                ? Duration.zero
+                : const Duration(milliseconds: 400),
+            curve: Curves.easeOutCubic,
+            builder: (context, val, _) {
+              return ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: val,
+                  minHeight: 7,
+                  backgroundColor: primaryCol.withValues(alpha: 0.14),
+                  valueColor: AlwaysStoppedAnimation<Color>(primaryCol),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 10),
+          Text(
+            sentence,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: AppTheme.textSecondary(context),
+              height: 1.38,
+            ),
+          ),
+          // Additional temperature outlook row if present in Horizon-3 data
+          if (tempRisk != null) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(
+                  Icons.thermostat_rounded,
+                  size: 15,
+                  color: AppTheme.semanticWarningText(context),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    AppStrings.get('outlook_above_normal_temp_chance', _lang)
+                        .replaceAll('{p}', '${tempRisk.probability.round()}'),
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textPrimary(context),
+                    ),
                   ),
                 ),
               ],
             ),
-          ),
+          ],
+          const SizedBox(height: 8),
           Text(
-            _lang == 'hi' ? 'फसल सुझाव' : 'View',
+            AppStrings.get('outlook_source_multimodel', _lang),
             style: TextStyle(
-              fontSize: 13.5,
-              fontWeight: FontWeight.w700,
-              color: primaryCol,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textSecondary(context),
             ),
-          ),
-          const SizedBox(width: 4),
-          Icon(
-            Icons.chevron_right_rounded,
-            color: primaryCol,
           ),
         ],
       ),
     );
+  }
+
+  /// 5) CROP RECOMMENDATIONS ON HOME (restored):
+  /// - Section label "Best crops now" with Season badge (Rabi/Kharif) in section header
+  /// - Top 3 crops from shared cache/provider with CropRecommenderScreen
+  /// - Each row: rank, localized crop name, match % with thin animated bar, one trait chip (water need or duration)
+  /// - Footer link "See all 5 crops" navigates to Crops tab
+  /// - Small caption "Based on ICAR data - verify with your KVK"
+  Widget _buildBestCropsSection(BuildContext context, WeatherData weather) {
+    final seasonBadge = CropRecommenderScreen.resolveSeasonBadge(
+      lang: _lang,
+      weather: weather,
+      rawSeason: _topCrops.isNotEmpty ? _topCrops.first.season : 'rabi',
+    );
+    final primaryCol = AppTheme.primaryActionColor(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isHc = AppTheme.isHighContrast(context);
+    final dividerCol = isHc
+        ? Colors.black26
+        : (isDark ? const Color(0x1FFFFFFF) : const Color(0xFFCFD8DF));
+    final disableAnimations =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildSmallSectionLabel(
+          context,
+          AppStrings.get('section_best_crops', _lang),
+          trailing: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: primaryCol.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(AppTheme.rPill),
+            ),
+            child: Text(
+              seasonBadge,
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+                color: primaryCol,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: AppTheme.s8),
+        AppSurface(
+          borderRadius: AppTheme.rCard,
+          padding: const EdgeInsets.all(16),
+          child: _isCropsLoading && _topCrops.isEmpty
+              ? Column(
+                  children: const [
+                    SkeletonBox(height: 38),
+                    SizedBox(height: 10),
+                    SkeletonBox(height: 38),
+                    SizedBox(height: 10),
+                    SkeletonBox(height: 38),
+                  ],
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    ...List.generate(_topCrops.take(3).length, (idx) {
+                      final crop = _topCrops[idx];
+                      final cropName =
+                          _lang == 'en' ? crop.nameEn : crop.nameHi;
+                      final waterTrait = crop.waterNeedMm <= 300
+                          ? AppStrings.get('water_need_low', _lang)
+                          : (crop.waterNeedMm <= 480
+                              ? AppStrings.get('water_need_medium', _lang)
+                              : AppStrings.get('water_need_high', _lang));
+
+                      return Column(
+                        children: [
+                          if (idx > 0)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              child: Container(height: 1, color: dividerCol),
+                            ),
+                           InkWell(
+                            borderRadius: BorderRadius.circular(8),
+                            onTap: () => setState(() => _currentTabIndex = 2),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                // Rank badge
+                                Container(
+                                  width: 26,
+                                  height: 26,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color: primaryCol.withValues(alpha: 0.14),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Text(
+                                    '${crop.rank}',
+                                    style: TextStyle(
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w800,
+                                      color: primaryCol,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                // Crop name, trait chip, match %, and thin match bar
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              cropName,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                fontSize: 14.5,
+                                                fontWeight: FontWeight.w700,
+                                                color: AppTheme.textPrimary(
+                                                  context,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Flexible(
+                                            flex: 0,
+                                            child: ConstrainedBox(
+                                              constraints: const BoxConstraints(
+                                                maxWidth: 108,
+                                              ),
+                                              child: Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                  horizontal: 7,
+                                                  vertical: 2,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  color: AppTheme.textSecondary(
+                                                    context,
+                                                  ).withValues(alpha: 0.10),
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                    AppTheme.rPill,
+                                                  ),
+                                                ),
+                                                child: FittedBox(
+                                                  fit: BoxFit.scaleDown,
+                                                  child: Text(
+                                                    waterTrait,
+                                                    maxLines: 1,
+                                                    style: TextStyle(
+                                                      fontSize: 11,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                      color:
+                                                          AppTheme.textPrimary(
+                                                        context,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            '${crop.matchScore}%',
+                                            style: TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w800,
+                                              color: primaryCol,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 5),
+                                      TweenAnimationBuilder<double>(
+                                        tween: Tween<double>(
+                                          begin: disableAnimations
+                                              ? (crop.matchScore / 100.0)
+                                              : 0.0,
+                                          end: (crop.matchScore / 100.0)
+                                              .clamp(0.0, 1.0),
+                                        ),
+                                        duration: disableAnimations
+                                            ? Duration.zero
+                                            : const Duration(milliseconds: 400),
+                                        curve: Curves.easeOutCubic,
+                                        builder: (context, val, _) {
+                                          return ClipRRect(
+                                            borderRadius:
+                                                BorderRadius.circular(3),
+                                            child: LinearProgressIndicator(
+                                              value: val,
+                                              minHeight: 5,
+                                              backgroundColor:
+                                                  primaryCol.withValues(
+                                                alpha: 0.12,
+                                              ),
+                                              valueColor:
+                                                  AlwaysStoppedAnimation<Color>(
+                                                primaryCol,
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      );
+                    }),
+                    const SizedBox(height: 12),
+                    Container(height: 1, color: dividerCol),
+                    const SizedBox(height: 10),
+                    // Footer link "See all 5 crops" + ICAR/KVK caption
+                    InkWell(
+                      borderRadius: BorderRadius.circular(8),
+                      onTap: () => setState(() => _currentTabIndex = 2),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    AppStrings.get('see_all_5_crops', _lang),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 13.5,
+                                      fontWeight: FontWeight.w800,
+                                      color: primaryCol,
+                                    ),
+                                  ),
+                                ),
+                                Icon(
+                                  Icons.chevron_right_rounded,
+                                  size: 18,
+                                  color: primaryCol,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              AppStrings.get('icar_kvk_caption', _lang),
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w500,
+                                color: AppTheme.textSecondary(context),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+        ),
+      ],
+    );
+  }
+
+  IconData _hazardIconForType(String alertType, bool isRed) {
+    final t = alertType.toLowerCase();
+    if (t.contains('heat')) return Icons.wb_sunny_rounded;
+    if (t.contains('rain') || t.contains('flood')) {
+      return Icons.thunderstorm_rounded;
+    }
+    if (t.contains('frost') || t.contains('cold')) return Icons.ac_unit_rounded;
+    if (t.contains('wind')) return Icons.air_rounded;
+    return isRed ? Icons.warning_rounded : Icons.error_outline_rounded;
+  }
+
+  String _seasonalOutlookSentence() {
+    final rawLoc = _gpsLocationName ??
+        _currentFarm?.getVillage(_lang) ??
+        (_lang == 'hi' ? 'आपके क्षेत्र' : 'your area');
+    final activeLoc = _lang == 'en'
+        ? (rawLoc
+                .replaceAll(RegExp(r'[\u0900-\u097F]+'), '')
+                .replaceAll('()', '')
+                .trim()
+                .isNotEmpty
+            ? rawLoc
+                .replaceAll(RegExp(r'[\u0900-\u097F]+'), '')
+                .replaceAll('()', '')
+                .trim()
+            : 'Nagpur')
+        : rawLoc;
+    final temp = _weather?.current.temperature.toStringAsFixed(0) ?? '28';
+    final soilPct = ((_weather?.current.soilMoisture ?? 0.25) * 100).round();
+    if (_lang == 'en') {
+      return 'In $activeLoc ($temp°C, $soilPct% soil moisture), 30-day multi-model outlook indicates normal-to-mildly dry conditions; conserve topsoil moisture.';
+    }
+    return '$activeLoc ($temp°C, मिट्टी नमी $soilPct%) में अगले 30 दिनों के मौसमी पूर्वानुमान के अनुसार नमी संरक्षण व समय पर हल्की सिंचाई की सलाह है।';
   }
 
   void _showDebugOverrideSheet() {
@@ -1999,6 +3332,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                 label: const Text('Live Default'),
                 onPressed: () {
                   debugWeatherNotifier.value = null;
+                  _loadEnsoStatus();
                   Navigator.pop(ctx);
                 },
               ),
@@ -2011,6 +3345,11 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                       ambientState: st,
                       forceAllClear: prev?.forceAllClear,
                       forceActiveHazards: prev?.forceActiveHazards,
+                      forceMultipleHazards: prev?.forceMultipleHazards,
+                      forceEnsoUnavailable: prev?.forceEnsoUnavailable,
+                      forceOfflineCached: prev?.forceOfflineCached,
+                      forceEnsoPhase: prev?.forceEnsoPhase,
+                      forceEnsoCurrentOnly: prev?.forceEnsoCurrentOnly,
                       textScaleOverride: prev?.textScaleOverride,
                     );
                     Navigator.pop(ctx);
@@ -2025,6 +3364,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                     ambientState: prev?.ambientState,
                     forceAllClear: true,
                     forceActiveHazards: false,
+                    forceMultipleHazards: false,
                     textScaleOverride: prev?.textScaleOverride,
                   );
                   Navigator.pop(ctx);
@@ -2038,6 +3378,49 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                     ambientState: prev?.ambientState,
                     forceAllClear: false,
                     forceActiveHazards: true,
+                    forceMultipleHazards: false,
+                    textScaleOverride: prev?.textScaleOverride,
+                  );
+                  Navigator.pop(ctx);
+                },
+              ),
+              ActionChip(
+                label: const Text('Multiple Hazards (+1 more)'),
+                onPressed: () {
+                  final prev = debugWeatherNotifier.value;
+                  debugWeatherNotifier.value = DebugWeatherOverride(
+                    ambientState: prev?.ambientState,
+                    forceAllClear: false,
+                    forceActiveHazards: true,
+                    forceMultipleHazards: true,
+                    textScaleOverride: prev?.textScaleOverride,
+                  );
+                  Navigator.pop(ctx);
+                },
+              ),
+              ActionChip(
+                label: const Text('ENSO Unavailable'),
+                onPressed: () {
+                  final prev = debugWeatherNotifier.value;
+                  debugWeatherNotifier.value = DebugWeatherOverride(
+                    ambientState: prev?.ambientState,
+                    forceAllClear: prev?.forceAllClear,
+                    forceActiveHazards: prev?.forceActiveHazards,
+                    forceEnsoUnavailable: true,
+                    textScaleOverride: prev?.textScaleOverride,
+                  );
+                  Navigator.pop(ctx);
+                },
+              ),
+              ActionChip(
+                label: const Text('Offline Cached'),
+                onPressed: () {
+                  final prev = debugWeatherNotifier.value;
+                  debugWeatherNotifier.value = DebugWeatherOverride(
+                    ambientState: prev?.ambientState,
+                    forceAllClear: prev?.forceAllClear,
+                    forceActiveHazards: prev?.forceActiveHazards,
+                    forceOfflineCached: true,
                     textScaleOverride: prev?.textScaleOverride,
                   );
                   Navigator.pop(ctx);
@@ -2051,6 +3434,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                     ambientState: prev?.ambientState,
                     forceAllClear: prev?.forceAllClear,
                     forceActiveHazards: prev?.forceActiveHazards,
+                    forceMultipleHazards: prev?.forceMultipleHazards,
                     textScaleOverride: 1.3,
                   );
                   Navigator.pop(ctx);
@@ -2064,6 +3448,7 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                     ambientState: prev?.ambientState,
                     forceAllClear: prev?.forceAllClear,
                     forceActiveHazards: prev?.forceActiveHazards,
+                    forceMultipleHazards: prev?.forceMultipleHazards,
                     textScaleOverride: 1.0,
                   );
                   Navigator.pop(ctx);
@@ -2073,6 +3458,214 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
           ),
         );
       },
+    );
+  }
+}
+
+/// Pinned SliverPersistentHeaderDelegate that pins the Top Bar and the active Warning Bar.
+/// At scroll offset 0 (< 80dp), shows the expanded warning bar.
+/// After ~80dp of scroll, animates (<= 250 ms) to the compact 48dp one-line warning bar.
+class _PinnedHomeHeaderDelegate extends SliverPersistentHeaderDelegate {
+  final double topInset;
+  final double textScale;
+  final bool hasActiveHazard;
+  final bool isCompactScroll;
+  final Widget topBar;
+  final Widget? expandedWarning;
+  final Widget? compactWarning;
+
+  _PinnedHomeHeaderDelegate({
+    required this.topInset,
+    required this.textScale,
+    required this.hasActiveHazard,
+    required this.isCompactScroll,
+    required this.topBar,
+    this.expandedWarning,
+    this.compactWarning,
+  });
+
+  double get _topBarHeight => (58.0 * textScale.clamp(1.0, 1.25));
+
+  double get _expandedWarningHeight =>
+      textScale > 1.15 ? 156.0 : 114.0;
+
+  @override
+  double get maxExtent {
+    if (!hasActiveHazard) {
+      return topInset + _topBarHeight + 16.0;
+    }
+    return topInset + _topBarHeight + _expandedWarningHeight + 22.0;
+  }
+
+  @override
+  double get minExtent {
+    if (!hasActiveHazard) {
+      return topInset + _topBarHeight + 16.0;
+    }
+    return topInset + _topBarHeight + 48.0 + 20.0;
+  }
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    final ambient = AmbientScope.maybeOf(context);
+    final isDark =
+        ambient?.isDark ?? (Theme.of(context).brightness == Brightness.dark);
+    final isHc = ambient?.isHighContrast ?? AppTheme.isHighContrast(context);
+    final state = ambient?.state ?? AmbientWeatherState.clearDay;
+    final topBgColor = isHc
+        ? Colors.white
+        : AmbientBackground.paletteForState(
+            state,
+            isDark: isDark,
+            quiet: false,
+          ).first;
+
+    final showCompact = isCompactScroll || shrinkOffset >= 56.0;
+    final disableAnimations =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: (shrinkOffset > 4 || overlapsContent)
+            ? topBgColor.withValues(alpha: 0.96)
+            : Colors.transparent,
+      ),
+      padding: EdgeInsets.fromLTRB(
+        AppTheme.s16,
+        topInset + 6,
+        AppTheme.s16,
+        6,
+      ),
+      child: ClipRect(
+        child: OverflowBox(
+          alignment: Alignment.topCenter,
+          maxHeight: double.infinity,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              topBar,
+              if (hasActiveHazard &&
+                  expandedWarning != null &&
+                  compactWarning != null) ...[
+                const SizedBox(height: 6),
+                AnimatedSwitcher(
+                  duration: disableAnimations
+                      ? Duration.zero
+                      : const Duration(milliseconds: 220),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  child: showCompact
+                      ? KeyedSubtree(
+                          key: const ValueKey('warning_compact'),
+                          child: compactWarning!,
+                        )
+                      : KeyedSubtree(
+                          key: const ValueKey('warning_expanded'),
+                          child: expandedWarning!,
+                        ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant _PinnedHomeHeaderDelegate oldDelegate) {
+    return topInset != oldDelegate.topInset ||
+        textScale != oldDelegate.textScale ||
+        hasActiveHazard != oldDelegate.hasActiveHazard ||
+        isCompactScroll != oldDelegate.isCompactScroll ||
+        topBar != oldDelegate.topBar ||
+        expandedWarning != oldDelegate.expandedWarning ||
+        compactWarning != oldDelegate.compactWarning;
+  }
+}
+
+/// Staggered card entrance animation: fade + 8px rise staggered 40 ms on first load.
+/// Disabled when reduce-motion is on.
+class _StaggeredEntrance extends StatefulWidget {
+  final int index;
+  final Widget child;
+
+  const _StaggeredEntrance({
+    required this.index,
+    required this.child,
+  });
+
+  @override
+  State<_StaggeredEntrance> createState() => _StaggeredEntranceState();
+}
+
+class _StaggeredEntranceState extends State<_StaggeredEntrance>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _opacity;
+  late final Animation<Offset> _slide;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 280),
+    );
+    _opacity = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutCubic,
+    );
+    _slide = Tween<Offset>(
+      begin: const Offset(0, 8),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: Curves.easeOutCubic,
+      ),
+    );
+
+    final delayMs = (widget.index * 40).clamp(0, 240);
+    if (delayMs == 0) {
+      _controller.forward();
+    } else {
+      Future<void>.delayed(Duration(milliseconds: delayMs), () {
+        if (mounted) _controller.forward();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final disableAnimations =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    if (disableAnimations) {
+      return widget.child;
+    }
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Opacity(
+          opacity: _opacity.value,
+          child: Transform.translate(
+            offset: _slide.value,
+            child: child,
+          ),
+        );
+      },
+      child: widget.child,
     );
   }
 }

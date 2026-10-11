@@ -10,6 +10,7 @@ class DetectedRisk {
   final String actionHi;
   final String actionEn;
   final String? accuracyStatementHi;
+  final String? accuracyStatementEn;
 
   DetectedRisk({
     required this.alertType,
@@ -23,6 +24,7 @@ class DetectedRisk {
     required this.actionHi,
     required this.actionEn,
     this.accuracyStatementHi,
+    this.accuracyStatementEn,
   });
 
   factory DetectedRisk.fromJson(Map<String, dynamic> json) {
@@ -38,8 +40,24 @@ class DetectedRisk {
       actionHi: json['action_hi'] ?? '',
       actionEn: json['action_en'] ?? '',
       accuracyStatementHi: json['accuracy_compliant_statement_hi'],
+      accuracyStatementEn: json['accuracy_compliant_statement_en'],
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'alert_type': alertType,
+        'title_hi': titleHi,
+        'title_en': titleEn,
+        'severity': severity,
+        'probability': probability,
+        'confidence': confidence,
+        'expected_value': expectedValue,
+        'expected_date': expectedDate,
+        'action_hi': actionHi,
+        'action_en': actionEn,
+        'accuracy_compliant_statement_hi': accuracyStatementHi,
+        'accuracy_compliant_statement_en': accuracyStatementEn,
+      };
 }
 
 class RiskHorizon {
@@ -70,9 +88,19 @@ class RiskHorizon {
       confidenceHi: json['confidence_hi'] ?? json['confidence'] ?? '',
       source: json['source'] ?? '',
       updatedAt: json['updated_at'] ?? '',
-      risks: list.map((e) => DetectedRisk.fromJson(e)).toList(),
+      risks: list.map((e) => DetectedRisk.fromJson(Map<String, dynamic>.from(e as Map))).toList(),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'horizon_name': horizonName,
+        'horizon_name_hi': horizonNameHi,
+        'confidence': confidence,
+        'confidence_hi': confidenceHi,
+        'source': source,
+        'updated_at': updatedAt,
+        'risks_detected': risks.map((e) => e.toJson()).toList(),
+      };
 }
 
 class EnsoSummary {
@@ -86,6 +114,8 @@ class EnsoSummary {
   final Map<String, dynamic> probabilities;
   final String explanationHi;
   final String officialLink;
+  final bool hasForecastProbabilities;
+  final DateTime? cachedAt;
 
   EnsoSummary({
     required this.phase,
@@ -98,9 +128,34 @@ class EnsoSummary {
     required this.probabilities,
     required this.explanationHi,
     required this.officialLink,
+    this.hasForecastProbabilities = true,
+    this.cachedAt,
   });
 
+  EnsoSummary copyWith({
+    DateTime? cachedAt,
+    bool? hasForecastProbabilities,
+  }) {
+    return EnsoSummary(
+      phase: phase,
+      phaseHi: phaseHi,
+      status: status,
+      statusHi: statusHi,
+      oniValue: oniValue,
+      source: source,
+      updatedAt: updatedAt,
+      probabilities: probabilities,
+      explanationHi: explanationHi,
+      officialLink: officialLink,
+      hasForecastProbabilities: hasForecastProbabilities ?? this.hasForecastProbabilities,
+      cachedAt: cachedAt ?? this.cachedAt,
+    );
+  }
+
   factory EnsoSummary.fromJson(Map<String, dynamic> json) {
+    final probs = json['probabilities'] as Map<String, dynamic>? ?? {};
+    final hasProbs = json['has_forecast_probabilities'] as bool? ?? probs.isNotEmpty;
+    final cachedIso = json['_cached_at'] as String?;
     return EnsoSummary(
       phase: json['phase'] ?? 'Neutral',
       phaseHi: (json['phase_hi'] as String? ?? 'तटस्थ')
@@ -109,13 +164,30 @@ class EnsoSummary {
       status: json['status'] ?? '',
       statusHi: json['status_hi'] ?? '',
       oniValue: (json['oni_value'] as num?)?.toDouble() ?? 0.0,
-      source: json['source'] ?? '',
+      source: json['source'] ?? 'NOAA CPC / IRI',
       updatedAt: json['updated_at'] ?? '',
-      probabilities: json['probabilities'] as Map<String, dynamic>? ?? {},
+      probabilities: probs,
       explanationHi: json['monsoon_impact_explanation_hi'] ?? '',
       officialLink: json['official_imd_link'] ?? 'https://imdpune.gov.in',
+      hasForecastProbabilities: hasProbs,
+      cachedAt: cachedIso != null ? DateTime.tryParse(cachedIso) : null,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'phase': phase,
+        'phase_hi': phaseHi,
+        'status': status,
+        'status_hi': statusHi,
+        'oni_value': oniValue,
+        'source': source,
+        'updated_at': updatedAt,
+        'probabilities': probabilities,
+        'monsoon_impact_explanation_hi': explanationHi,
+        'official_imd_link': officialLink,
+        'has_forecast_probabilities': hasForecastProbabilities,
+        if (cachedAt != null) '_cached_at': cachedAt!.toIso8601String(),
+      };
 }
 
 class FarmRiskData {

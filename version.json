@@ -1,10 +1,10 @@
 {
-  "version": "1.7.0",
-  "versionCode": 21,
-  "releaseName": "Kisan Mausam v1.7.0 - Direct In-App Update Installer, El Niño (ENSO) & Multi-SIM SMS Edition",
-  "apkUrl": "https://github.com/kumarnikki/Kisan-Mausam/releases/download/v1.7.0/kisan-mausam-release.apk",
+  "version": "1.8.0",
+  "versionCode": 22,
+  "releaseName": "Kisan Mausam v1.8.0 - Pinned Hazard Warning, El Niño (ENSO) & 30-Day Seasonal Outlook Edition",
+  "apkUrl": "https://github.com/kumarnikki/Kisan-Mausam/releases/download/v1.8.0/kisan-mausam-release.apk",
   "githubReleaseUrl": "https://github.com/kumarnikki/Kisan-Mausam/releases/latest",
-  "changelog": "• Direct In-App Update & Package Installer: Download and install app updates directly inside KisanMausam with live MB/percentage progress bar—no browser redirection required\n• Restored El Niño / La Niña (ENSO) Prediction Card on Home screen below weather warning bars with live ONI gauge meter & seasonal probabilities\n• Multi-SIM Weather Hazard & SOS Emergency SMS delivery with automatic SIM number detection and high-priority system notifications",
+  "changelog": "• Pinned Weather Warning Header: Always-visible top bar and hazard warning that compacts on scroll and opens a floating multi-hazard overlay panel\n• Revised Home Screen: Saturated AA-compliant Weather Hero Card, 2×2 Field Conditions Grid, NOAA CPC / IRI El Niño (ENSO) Season Card, 30-Day Seasonal Outlook Card, and Inline Top 3 ICAR Crop Recommendations\n• Complete Hindi & English Localization across all hazard titles, time windows, and expected values + Direct In-App Update Installer",
   "minRequiredVersion": "1.0.0",
-  "publishedAt": "2026-10-11T05:55:00Z"
+  "publishedAt": "2026-10-11T07:30:00Z"
 }

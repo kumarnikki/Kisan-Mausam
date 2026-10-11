@@ -33,15 +33,15 @@ class AppUpdateInfo {
 }
 
 class UpdateService {
-  static const String currentVersion = '1.7.0';
-  static const int currentVersionCode = 21;
+  static const String currentVersion = '1.8.0';
+  static const int currentVersionCode = 22;
 
   static const String rawVersionJsonUrl =
       'https://raw.githubusercontent.com/kumarnikki/Kisan-Mausam/main/version.json';
   static const String githubApiLatestUrl =
       'https://api.github.com/repos/kumarnikki/Kisan-Mausam/releases/latest';
   static const String defaultFallbackApkUrl =
-      'https://github.com/kumarnikki/Kisan-Mausam/releases/download/v1.7.0/kisan-mausam-release.apk';
+      'https://github.com/kumarnikki/Kisan-Mausam/releases/download/v1.8.0/kisan-mausam-release.apk';
 
   static const MethodChannel _nativeChannel =
       MethodChannel('in.kishanmausam.kisan_mausam/native_alert');

@@ -89,6 +89,7 @@ class AppStrings {
       'last_updated': 'अपडेट',
       'updated_just_now': 'अभी अपडेट किया गया',
       'offline_badge': 'ऑफ़लाइन कैश डेटा',
+      'offline_cached': 'कैश किया गया',
       'pull_to_refresh': 'ताज़ा करने के लिए नीचे खींचें',
       'high_contrast': 'आउटडोर हाई कंट्रास्ट',
       'mic_tooltip': 'बोलकर पूछें',
@@ -178,7 +179,7 @@ class AppStrings {
       'settings_data_source': 'मौसम डेटा स्रोत',
       'settings_standards': 'जोखिम एवं कृषि मानक',
       'settings_standards_sub': 'भारतीय मौसम विज्ञान विभाग एवं कृषि अनुसंधान मानक',
-      'settings_footer': 'किसान मौसम • v1.2.0\nभारतीय किसानों के लिए निर्मित',
+      'settings_footer': 'किसान मौसम • v1.8.0\nभारतीय किसानों के लिए निर्मित',
       'settings_back': 'वापस जाएं',
       'server_dialog_title': 'क्लाउड सर्वर सेटिंग्स',
       'server_dialog_desc': 'अपने लाइव AWS EC2 या क्लाउड सर्वर का URL दर्ज करें:',
@@ -243,6 +244,38 @@ class AppStrings {
       'profile_section_field': 'खेत का विवरण',
       'farmer_name_label': 'किसान का नाम',
       'save_profile_btn': 'प्रोफाइल सहेजें',
+      'section_this_season': 'इस सीज़न',
+      'section_best_crops': 'अभी के लिए सर्वोत्तम फसलें',
+      'field_conditions_title': 'खेत की स्थिति',
+      'plus_n_more': '+{n} और',
+      'acres_short': 'एकड़',
+      'enso_current_phase_title': 'वर्तमान ENSO चरण',
+      'enso_seasonal_outlook_title': 'अल नीनो मौसमी पूर्वानुमान',
+      'enso_phase_el_nino': 'अल नीनो',
+      'enso_phase_la_nina': 'ला नीना',
+      'enso_phase_neutral': 'तटस्थ',
+      'enso_advice_el_nino': 'अल नीनो के दौरान भारत के कई हिस्सों में सामान्य से कम वर्षा की संभावना बढ़ सकती है — सिंचाई और जल उपयोग की योजना बनाएं।',
+      'enso_advice_la_nina': 'ला नीना की स्थिति में वर्षा और शीतलहर का जोखिम बढ़ सकता है — खेत में जल निकासी की तैयारी रखें।',
+      'enso_advice_neutral': 'वर्तमान में कोई मजबूत अल नीनो या ला नीना संकेत नहीं है — स्थानीय मौसम पूर्वानुमान के अनुसार खेती करें।',
+      'enso_check_imd': 'IMD सलाह अवश्य जांचें',
+      'enso_unavailable': 'ENSO डेटा उपलब्ध नहीं है',
+      'enso_retry': 'पुनः प्रयास करें',
+      'enso_as_of': '{month} तक',
+      'enso_source_noaa_iri': 'NOAA CPC / IRI',
+      'enso_coming_season_prob': 'आगामी सीज़न संभावना',
+      'outlook_30d_title': '30-दिन का मौसमी दृष्टिकोण',
+      'outlook_below_normal_rain_chance': 'सामान्य से कम वर्षा की {p}% संभावना',
+      'outlook_normal_above_rain_chance': 'सामान्य या अच्छी वर्षा की {p}% संभावना',
+      'outlook_above_normal_temp_chance': 'सामान्य से अधिक तापमान की {p}% संभावना',
+      'outlook_source_multimodel': 'बहु-मॉडल पूर्वानुमान (ECMWF SEAS5 / NOAA)',
+      'outlook_temp_heading': 'तापमान दृष्टिकोण',
+      'see_all_5_crops': 'सभी 5 फसलें देखें',
+      'icar_kvk_caption': 'ICAR डेटा पर आधारित - अपने KVK से पुष्टि करें',
+      'water_need_low': 'कम पानी',
+      'water_need_medium': 'मध्यम पानी',
+      'water_need_high': 'अधिक पानी',
+      'days_unit': 'दिन',
+      'cached_age_prefix': 'कैश किया गया',
     },
     'en': {
       'app_title': 'Kisan Mausam',
@@ -330,6 +363,7 @@ class AppStrings {
       'last_updated': 'Updated',
       'updated_just_now': 'Updated just now',
       'offline_badge': 'Offline cached data',
+      'offline_cached': 'Cached',
       'pull_to_refresh': 'Pull down to refresh',
       'high_contrast': 'Outdoor high contrast',
       'mic_tooltip': 'Voice Assistant',
@@ -419,7 +453,7 @@ class AppStrings {
       'settings_data_source': 'Weather Data Attribution',
       'settings_standards': 'Risk & Agronomy Standards',
       'settings_standards_sub': 'India Meteorological Department & ICAR scientific standards',
-      'settings_footer': 'Kisan Mausam • v1.2.0\nBuilt for Indian Farmers',
+      'settings_footer': 'Kisan Mausam • v1.8.0\nBuilt for Indian Farmers',
       'settings_back': 'Back',
       'server_dialog_title': 'Cloud Server (AWS EC2)',
       'server_dialog_desc': 'Enter your live AWS EC2 or cloud server URL:',
@@ -484,6 +518,38 @@ class AppStrings {
       'profile_section_field': 'Field Details',
       'farmer_name_label': 'Farmer Name',
       'save_profile_btn': 'Save Profile',
+      'section_this_season': 'This season',
+      'section_best_crops': 'Best crops now',
+      'field_conditions_title': 'Field conditions',
+      'plus_n_more': '+{n} more',
+      'acres_short': 'ac',
+      'enso_current_phase_title': 'Current ENSO phase',
+      'enso_seasonal_outlook_title': 'El Niño seasonal prediction',
+      'enso_phase_el_nino': 'El Niño',
+      'enso_phase_la_nina': 'La Niña',
+      'enso_phase_neutral': 'Neutral',
+      'enso_advice_el_nino': 'Below-normal rainfall is more likely in parts of India during El Niño — plan irrigation and water use carefully.',
+      'enso_advice_la_nina': 'Rainfall and cold-spell risks may rise during La Niña — keep field drainage and frost precautions ready.',
+      'enso_advice_neutral': 'No strong El Niño or La Niña signal at present — follow local weather forecasts for field operations.',
+      'enso_check_imd': 'Check IMD advisories',
+      'enso_unavailable': 'ENSO data unavailable',
+      'enso_retry': 'Retry',
+      'enso_as_of': 'as of {month}',
+      'enso_source_noaa_iri': 'NOAA CPC / IRI',
+      'enso_coming_season_prob': 'Coming season probability',
+      'outlook_30d_title': '30-day seasonal outlook',
+      'outlook_below_normal_rain_chance': '{p}% chance of below-normal rainfall',
+      'outlook_normal_above_rain_chance': '{p}% chance of normal to above-normal rainfall',
+      'outlook_above_normal_temp_chance': '{p}% chance of above-normal temperatures',
+      'outlook_source_multimodel': 'Multi-model forecast (ECMWF SEAS5 / NOAA)',
+      'outlook_temp_heading': 'Temperature outlook',
+      'see_all_5_crops': 'See all 5 crops',
+      'icar_kvk_caption': 'Based on ICAR data - verify with your KVK',
+      'water_need_low': 'Low water',
+      'water_need_medium': 'Medium water',
+      'water_need_high': 'High water',
+      'days_unit': 'days',
+      'cached_age_prefix': 'Cached',
     }
   };
 
@@ -528,8 +594,38 @@ class AppStrings {
     if (r.contains('24-72') || r.contains('24–72')) return get('time_24_72h', lang);
     if (r.contains('24-48') || r.contains('24–48')) return get('time_24_48h', lang);
     if (r.contains('कल सुबह') || r.toLowerCase().contains('tomorrow')) return get('time_tomorrow_morning', lang);
-    if (r.contains('4–10') || r.contains('4-10')) return get('time_days_4_10', lang);
-    if (r.contains('10–30') || r.contains('10-30')) return get('time_days_10_30', lang);
+    if (r.contains('4–10') || r.contains('4-10') || r.contains('दिन 4')) return get('time_days_4_10', lang);
+    if (r.contains('10–30') || r.contains('10-30') || r.contains('10–46') || r.contains('10-46') || r.contains('दिन 10')) return get('time_days_10_30', lang);
     return r;
+  }
+
+  /// Localizes expected value strings so Hindi and English never mix on a single line.
+  /// Fixes e.g. "28.1°C (अधिकतम 32°C / न्यूनतम 23°C)" -> "28.1°C (Max 32°C / Min 23°C)" in English.
+  static String localizeExpectedValue(String? raw, String lang) {
+    if (raw == null || raw.trim().isEmpty) return '--';
+    var v = raw.trim();
+    if (lang == 'en') {
+      v = v
+          .replaceAll('अधिकतम', 'Max')
+          .replaceAll('न्यूनतम', 'Min')
+          .replaceAll('किमी/घंटा', 'km/h')
+          .replaceAll('मिमी संभावित', 'mm expected')
+          .replaceAll('mm संभावित', 'mm expected')
+          .replaceAll('संभावित', 'expected')
+          .replaceAll('सामान्य से कम वर्षा संभावना', 'Below-normal rainfall chance')
+          .replaceAll('सामान्य या अच्छी वर्षा', 'Normal to above-normal rainfall')
+          .replaceAll('सामान्य से अधिक तापमान', 'Above-normal temperatures');
+    } else {
+      v = v
+          .replaceAll(RegExp(r'\bMax\b', caseSensitive: false), 'अधिकतम')
+          .replaceAll(RegExp(r'\bMin\b', caseSensitive: false), 'न्यूनतम')
+          .replaceAll('km/h', 'किमी/घंटा')
+          .replaceAll('mm expected', 'मिमी संभावित')
+          .replaceAll('expected', 'संभावित')
+          .replaceAll('Below-normal rainfall chance', 'सामान्य से कम वर्षा संभावना')
+          .replaceAll('Normal to above-normal rainfall', 'सामान्य या अच्छी वर्षा')
+          .replaceAll('Above-normal temperatures', 'सामान्य से अधिक तापमान');
+    }
+    return v;
   }
 }

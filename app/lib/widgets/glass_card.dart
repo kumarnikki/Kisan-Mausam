@@ -6,6 +6,7 @@ import '../theme/app_theme.dart';
 
 enum AmbientWeatherState {
   clearDay,
+  partlyCloudy,
   dawnDusk,
   clearNight,
   cloudy,
@@ -20,12 +21,22 @@ class DebugWeatherOverride {
   final AmbientWeatherState? ambientState;
   final bool? forceAllClear;
   final bool? forceActiveHazards;
+  final bool? forceMultipleHazards;
+  final bool? forceEnsoUnavailable;
+  final bool? forceOfflineCached;
+  final String? forceEnsoPhase; // 'El Nino' | 'La Nina' | 'Neutral'
+  final bool? forceEnsoCurrentOnly;
   final double? textScaleOverride;
 
   const DebugWeatherOverride({
     this.ambientState,
     this.forceAllClear,
     this.forceActiveHazards,
+    this.forceMultipleHazards,
+    this.forceEnsoUnavailable,
+    this.forceOfflineCached,
+    this.forceEnsoPhase,
+    this.forceEnsoCurrentOnly,
     this.textScaleOverride,
   });
 
@@ -36,8 +47,10 @@ class DebugWeatherOverride {
       case AmbientWeatherState.clearNight:
       case AmbientWeatherState.severeHeat:
         return 0;
-      case AmbientWeatherState.cloudy:
+      case AmbientWeatherState.partlyCloudy:
         return 2;
+      case AmbientWeatherState.cloudy:
+        return 3;
       case AmbientWeatherState.rain:
         return 63;
       case AmbientWeatherState.storm:
@@ -68,12 +81,14 @@ class AmbientScope extends InheritedWidget {
   final AmbientWeatherState state;
   final bool isDark;
   final bool isHighContrast;
+  final bool isQuiet;
 
   const AmbientScope({
     super.key,
     required this.state,
     required this.isDark,
     required this.isHighContrast,
+    this.isQuiet = false,
     required super.child,
   });
 
@@ -85,11 +100,12 @@ class AmbientScope extends InheritedWidget {
   bool updateShouldNotify(AmbientScope oldWidget) {
     return state != oldWidget.state ||
         isDark != oldWidget.isDark ||
-        isHighContrast != oldWidget.isHighContrast;
+        isHighContrast != oldWidget.isHighContrast ||
+        isQuiet != oldWidget.isQuiet;
   }
 }
 
-/// Replaces BackdropFilter blur with a solid semi-opaque fill and 1px hairline border.
+/// Replaces BackdropFilter blur with a solid fill and 1px hairline border.
 /// Keeps the GlassCard class name and API so all existing call sites compile cleanly.
 class GlassCard extends StatelessWidget {
   final Widget child;
@@ -102,7 +118,7 @@ class GlassCard extends StatelessWidget {
     required this.child,
     this.padding = const EdgeInsets.all(AppTheme.s16),
     this.borderRadius = AppTheme.rCard,
-    this.opacity = 0.92,
+    this.opacity = 1.0,
   });
 
   @override
@@ -115,7 +131,7 @@ class GlassCard extends StatelessWidget {
   }
 }
 
-/// Primary surface component: solid semi-opaque fill + 1px low-contrast hairline border (no blur, soft shadow on light).
+/// Primary surface component: solid 100% opaque fill + 1px outline border + soft elevation shadow on Home light.
 class AppSurface extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry padding;
@@ -163,15 +179,15 @@ class AppSurface extends StatelessWidget {
       bWidth = borderWidth ?? 2.0;
       effectiveShadows = null;
     } else if (ambient != null) {
-      // Inside AmbientBackground: match hero card surface family tokens unless caller provided overrides
-      fill = color ?? (isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight);
-      effectiveGradient = gradient ??
-          (color == null
-              ? AmbientBackground.cardGradientForState(ambient.state, isDark: isDark)
-              : null);
+      // Standard cards on Home: solid white in light, lifted #172338-class surface in dark at 100% opacity
+      fill = color ?? AmbientBackground.cardFillForState(ambient.state, isDark: isDark);
+      effectiveGradient = gradient;
       bColor = borderColor ?? AmbientBackground.cardBorderColor(isDark: isDark);
       bWidth = borderWidth ?? 1.0;
-      effectiveShadows = boxShadow ?? AmbientBackground.cardBoxShadow(isDark: isDark);
+      effectiveShadows = boxShadow ??
+          (ambient.isQuiet
+              ? null
+              : AmbientBackground.cardBoxShadow(isDark: isDark));
     } else {
       fill = color ?? AppTheme.surfaceFill(context);
       effectiveGradient = gradient;
@@ -261,7 +277,10 @@ class AmbientBackground extends StatelessWidget {
     if (weatherCode >= 51 && weatherCode <= 82) {
       return AmbientWeatherState.rain;
     }
-    if (weatherCode >= 1 && weatherCode <= 48) {
+    if (weatherCode == 1 || weatherCode == 2) {
+      return AmbientWeatherState.partlyCloudy;
+    }
+    if (weatherCode >= 3 && weatherCode <= 48) {
       return AmbientWeatherState.cloudy;
     }
     if (_isWithinDawnOrDusk(sunrise, sunset)) {
@@ -306,37 +325,41 @@ class AmbientBackground extends StatelessWidget {
 
     switch (state) {
       case AmbientWeatherState.clearDay:
-        top = isDark ? const Color(0xFF1C1A10) : const Color(0xFFFFF4D6);
-        bottom = isDark ? const Color(0xFF12110B) : const Color(0xFFFFFBF0);
+        top = isDark ? const Color(0xFF1C1A10) : const Color(0xFFFFE8A8);
+        bottom = isDark ? const Color(0xFF12110B) : const Color(0xFFFFF5D9);
+        break;
+      case AmbientWeatherState.partlyCloudy:
+        top = isDark ? const Color(0xFF131A22) : const Color(0xFFD6E6F3);
+        bottom = isDark ? const Color(0xFF0D1218) : const Color(0xFFEAF2F9);
         break;
       case AmbientWeatherState.dawnDusk:
-        top = isDark ? const Color(0xFF241710) : const Color(0xFFFFE6CC);
-        bottom = isDark ? const Color(0xFF140E0A) : const Color(0xFFFFF6EC);
+        top = isDark ? const Color(0xFF241710) : const Color(0xFFFFD9B8);
+        bottom = isDark ? const Color(0xFF140E0A) : const Color(0xFFFFEEDD);
         break;
       case AmbientWeatherState.clearNight:
-        top = isDark ? const Color(0xFF0B1220) : const Color(0xFFE6ECF8);
-        bottom = isDark ? const Color(0xFF111A2E) : const Color(0xFFF5F7FC);
+        top = isDark ? const Color(0xFF0B1220) : const Color(0xFFD5DDF0);
+        bottom = isDark ? const Color(0xFF111A2E) : const Color(0xFFE9EDF7);
         break;
       case AmbientWeatherState.cloudy:
-        top = isDark ? const Color(0xFF14181C) : const Color(0xFFECEFF1);
-        bottom = isDark ? const Color(0xFF0E1114) : const Color(0xFFF6F7F8);
+        top = isDark ? const Color(0xFF14181C) : const Color(0xFFD9DEE3);
+        bottom = isDark ? const Color(0xFF0E1114) : const Color(0xFFEBEEF1);
         break;
       case AmbientWeatherState.rain:
-        top = isDark ? const Color(0xFF0C1A24) : const Color(0xFFE1EEF6);
-        bottom = isDark ? const Color(0xFF08121A) : const Color(0xFFF3F8FB);
+        top = isDark ? const Color(0xFF0C1A24) : const Color(0xFFCFE3EE);
+        bottom = isDark ? const Color(0xFF08121A) : const Color(0xFFE6F1F7);
         break;
       case AmbientWeatherState.storm:
-        top = isDark ? const Color(0xFF151126) : const Color(0xFFE9E5F3);
-        bottom = isDark ? const Color(0xFF0D0A19) : const Color(0xFFF6F4FA);
+        top = isDark ? const Color(0xFF151126) : const Color(0xFFDDD6EE);
+        bottom = isDark ? const Color(0xFF0D0A19) : const Color(0xFFEFEBF7);
         break;
       case AmbientWeatherState.severeHeat:
-        top = isDark ? const Color(0xFF241109) : const Color(0xFFFDE6D6);
-        bottom = isDark ? const Color(0xFF150A05) : const Color(0xFFFFF6EE);
+        top = isDark ? const Color(0xFF241109) : const Color(0xFFFCD9C3);
+        bottom = isDark ? const Color(0xFF150A05) : const Color(0xFFFFEEE2);
         break;
     }
 
     if (quiet) {
-      final neutral = isDark ? const Color(0xFF121512) : const Color(0xFFF8F9F8);
+      final neutral = isDark ? const Color(0xFF121512) : const Color(0xFFF4F6F5);
       return [
         Color.lerp(top, neutral, 0.55)!,
         Color.lerp(bottom, neutral, 0.65)!,
@@ -345,86 +368,93 @@ class AmbientBackground extends StatelessWidget {
     return [top, bottom];
   }
 
-  /// Two-stop diagonal card tint gradient providing contrast against ambient background
-  /// in all 7 weather states in both Light and Dark themes.
+  /// Solid 100% opaque surface fill for standard cards on Home.
+  /// Light theme: solid white (#FFFFFF).
+  /// Dark theme: lifted #172338-class surface, one step lighter than the dark ambient background.
+  static Color cardFillForState(
+    AmbientWeatherState state, {
+    required bool isDark,
+  }) {
+    if (!isDark) return Colors.white;
+    switch (state) {
+      case AmbientWeatherState.clearDay:
+        return const Color(0xFF262318);
+      case AmbientWeatherState.partlyCloudy:
+        return const Color(0xFF1B2531);
+      case AmbientWeatherState.dawnDusk:
+        return const Color(0xFF302018);
+      case AmbientWeatherState.clearNight:
+        return const Color(0xFF172338);
+      case AmbientWeatherState.cloudy:
+        return const Color(0xFF20262B);
+      case AmbientWeatherState.rain:
+        return const Color(0xFF162836);
+      case AmbientWeatherState.storm:
+        return const Color(0xFF231D38);
+      case AmbientWeatherState.severeHeat:
+        return const Color(0xFF331B12);
+    }
+  }
+
+  /// Saturated weather hero gradient with WCAG AA-verified contrast (>= 5.25:1) for white text.
+  static LinearGradient heroGradientForState(AmbientWeatherState state) {
+    final List<Color> stops;
+    switch (state) {
+      case AmbientWeatherState.clearDay:
+        stops = const [Color(0xFF0E5A94), Color(0xFF1971B2)];
+        break;
+      case AmbientWeatherState.partlyCloudy:
+        stops = const [Color(0xFF1F4E70), Color(0xFF2C648A)];
+        break;
+      case AmbientWeatherState.cloudy:
+        stops = const [Color(0xFF2B3D4F), Color(0xFF3B5268)];
+        break;
+      case AmbientWeatherState.rain:
+        stops = const [Color(0xFF153E54), Color(0xFF215870)];
+        break;
+      case AmbientWeatherState.storm:
+        stops = const [Color(0xFF2A1F4A), Color(0xFF43336E)];
+        break;
+      case AmbientWeatherState.clearNight:
+        stops = const [Color(0xFF111D36), Color(0xFF1E3258)];
+        break;
+      case AmbientWeatherState.dawnDusk:
+        stops = const [Color(0xFF7A320C), Color(0xFF9E4412)];
+        break;
+      case AmbientWeatherState.severeHeat:
+        stops = const [Color(0xFF852909), Color(0xFFAC3B12)];
+        break;
+    }
+    return LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: stops,
+    );
+  }
+
+  /// Kept for backward compatibility with any external caller.
   static Gradient cardGradientForState(
     AmbientWeatherState state, {
     required bool isDark,
   }) {
-    final List<Color> colors;
-    if (isDark) {
-      // Dark theme: one step lighter than ambient gradient
-      switch (state) {
-        case AmbientWeatherState.clearDay:
-          colors = const [Color(0xFF282518), Color(0xFF1D1B11)];
-          break;
-        case AmbientWeatherState.dawnDusk:
-          colors = const [Color(0xFF332219), Color(0xFF241812)];
-          break;
-        case AmbientWeatherState.clearNight:
-          colors = const [Color(0xFF16213A), Color(0xFF0F1A30)];
-          break;
-        case AmbientWeatherState.cloudy:
-          colors = const [Color(0xFF20252A), Color(0xFF171B1F)];
-          break;
-        case AmbientWeatherState.rain:
-          colors = const [Color(0xFF152633), Color(0xFF0F1D27)];
-          break;
-        case AmbientWeatherState.storm:
-          colors = const [Color(0xFF221D38), Color(0xFF181429)];
-          break;
-        case AmbientWeatherState.severeHeat:
-          colors = const [Color(0xFF341C13), Color(0xFF26140D)];
-          break;
-      }
-    } else {
-      // Light theme: ~88-95% white with subtle 2-stop diagonal weather tint
-      switch (state) {
-        case AmbientWeatherState.clearDay:
-          colors = const [Color(0xFAFFFFFF), Color(0xF2FFFDF5)];
-          break;
-        case AmbientWeatherState.dawnDusk:
-          colors = const [Color(0xFAFFFFFF), Color(0xF2FFF9F2)];
-          break;
-        case AmbientWeatherState.clearNight:
-          colors = const [Color(0xFAFFFFFF), Color(0xF2F7FAFE)];
-          break;
-        case AmbientWeatherState.cloudy:
-          colors = const [Color(0xFFFFFFFF), Color(0xFAFBFDFF)];
-          break;
-        case AmbientWeatherState.rain:
-          colors = const [Color(0xFAFFFFFF), Color(0xF2F5FAFE)];
-          break;
-        case AmbientWeatherState.storm:
-          colors = const [Color(0xFAFFFFFF), Color(0xF2F9F7FE)];
-          break;
-        case AmbientWeatherState.severeHeat:
-          colors = const [Color(0xFAFFFFFF), Color(0xF2FFF8F4)];
-          break;
-      }
-    }
-
-    return LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: colors,
-    );
+    final fill = cardFillForState(state, isDark: isDark);
+    return LinearGradient(colors: [fill, fill]);
   }
 
   /// 1px border color for card surface family.
-  /// Dark: white at 11% opacity (10-12% target). Light: outlineLight (12% textPrimaryLight).
+  /// Light: outline #CFD8DF. Dark: white at 12% opacity (#1FFFFFFF).
   static Color cardBorderColor({required bool isDark}) {
-    return isDark ? const Color(0x1EFFFFFF) : AppTheme.outlineLight;
+    return isDark ? const Color(0x1FFFFFFF) : const Color(0xFFCFD8DF);
   }
 
-  /// Very soft shadow for light theme (blur 16, y 4, black at ~6%). None for dark theme.
+  /// Soft elevation shadow for light theme (blur 20, offset y 6, black at ~9%). None for dark theme.
   static List<BoxShadow>? cardBoxShadow({required bool isDark}) {
     if (isDark) return null;
     return const [
       BoxShadow(
-        color: Color(0x0F000000),
-        blurRadius: 16,
-        offset: Offset(0, 4),
+        color: Color(0x17000000),
+        blurRadius: 20,
+        offset: Offset(0, 6),
       ),
     ];
   }
@@ -442,6 +472,7 @@ class AmbientBackground extends StatelessWidget {
               state: AmbientWeatherState.clearDay,
               isDark: false,
               isHighContrast: true,
+              isQuiet: quiet,
               child: child,
             ),
           );
@@ -472,6 +503,7 @@ class AmbientBackground extends StatelessWidget {
             state: state,
             isDark: isDark,
             isHighContrast: false,
+            isQuiet: quiet,
             child: child,
           ),
         );
@@ -1466,8 +1498,8 @@ class SheetScaffold extends StatelessWidget {
   }
 }
 
-/// Subtle skeleton placeholder for loading weather/alerts.
-class SkeletonBox extends StatelessWidget {
+/// Subtle skeleton placeholder with shimmer sweep (disabled when reduce-motion is on).
+class SkeletonBox extends StatefulWidget {
   final double height;
   final double? width;
   final double borderRadius;
@@ -1480,17 +1512,71 @@ class SkeletonBox extends StatelessWidget {
   });
 
   @override
+  State<SkeletonBox> createState() => _SkeletonBoxState();
+}
+
+class _SkeletonBoxState extends State<SkeletonBox>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    );
+    final isTest = WidgetsBinding.instance.runtimeType.toString().contains('Test');
+    if (!isTest) {
+      _controller.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      height: height,
-      width: width,
-      decoration: BoxDecoration(
-        color: isDark
-            ? Colors.white.withValues(alpha: 0.08)
-            : Colors.black.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(borderRadius),
-      ),
+    final disableAnimations = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    final baseColor = isDark
+        ? Colors.white.withValues(alpha: 0.08)
+        : Colors.black.withValues(alpha: 0.06);
+    final highlightColor = isDark
+        ? Colors.white.withValues(alpha: 0.16)
+        : Colors.black.withValues(alpha: 0.12);
+
+    if (disableAnimations || !_controller.isAnimating) {
+      return Container(
+        height: widget.height,
+        width: widget.width,
+        decoration: BoxDecoration(
+          color: baseColor,
+          borderRadius: BorderRadius.circular(widget.borderRadius),
+        ),
+      );
+    }
+
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) {
+        final slide = (_controller.value * 2.0) - 0.5;
+        return Container(
+          height: widget.height,
+          width: widget.width,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(widget.borderRadius),
+            gradient: LinearGradient(
+              begin: Alignment(slide - 0.6, 0),
+              end: Alignment(slide + 0.6, 0),
+              colors: [baseColor, highlightColor, baseColor],
+            ),
+          ),
+        );
+      },
     );
   }
 }

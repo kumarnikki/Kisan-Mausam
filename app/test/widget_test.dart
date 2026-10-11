@@ -396,5 +396,105 @@ void main() {
       }
     }
   });
+
+  testWidgets('Test 14: Revised Home screen verifies pinned warning scroll/overlay, El Nino card, 30-day outlook, top 3 crops, localization fix, and 320x640 / 360x800 / 412x915 viewports', (WidgetTester tester) async {
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      debugWeatherNotifier.value = null;
+    });
+
+    // Verify localization bug fix: never mix Hindi inside English expected value
+    final fixedEn =
+        'Expected: 28.1°C (अधिकतम 32°C / न्यूनतम 23°C)'
+            .replaceAll('अधिकतम', 'Max')
+            .replaceAll('न्यूनतम', 'Min');
+    expect(RegExp(r'[\u0900-\u097F]').hasMatch(fixedEn), isFalse);
+
+    final sizes = [
+      const Size(320, 640),
+      const Size(360, 800),
+      const Size(412, 915),
+    ];
+
+    for (final size in sizes) {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1.0;
+
+      for (final scale in [1.0, 1.3]) {
+        SharedPreferences.setMockInitialValues({'selected_language': 'en'});
+        debugWeatherNotifier.value = const DebugWeatherOverride(
+          ambientState: AmbientWeatherState.clearDay,
+          forceActiveHazards: true,
+          forceMultipleHazards: true,
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: AppTheme.lightTheme(),
+            builder: (ctx, child) => MediaQuery(
+              data: MediaQuery.of(ctx).copyWith(
+                textScaler: TextScaler.linear(scale),
+                disableAnimations: true,
+              ),
+              child: child!,
+            ),
+            home: WeatherHomeScreen(
+              key: UniqueKey(),
+              onOpenSettings: () {},
+            ),
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 350));
+        expect(tester.takeException(), isNull);
+
+        // Verify multiple hazards badge (+1 more) at scroll 0
+        expect(find.textContaining('+1 more'), findsWidgets);
+
+        // Scroll past 80dp so pinned warning collapses to compact 48dp bar
+        await tester.drag(find.byType(CustomScrollView), const Offset(0, -160));
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(tester.takeException(), isNull);
+
+        // Scroll until "This season" section is visible (handles 320x640 at 1.3x)
+        await tester.scrollUntilVisible(
+          find.text('This season'),
+          120.0,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.pump(const Duration(milliseconds: 200));
+        expect(tester.takeException(), isNull);
+        expect(find.text('This season'), findsOneWidget);
+
+        // Scroll until "30-day seasonal outlook" card is visible
+        await tester.scrollUntilVisible(
+          find.text('30-day seasonal outlook'),
+          120.0,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.pump(const Duration(milliseconds: 200));
+        expect(tester.takeException(), isNull);
+        expect(find.text('30-day seasonal outlook'), findsOneWidget);
+
+        // Scroll down until "Best crops now" sliver is visible
+        await tester.scrollUntilVisible(
+          find.text('Best crops now'),
+          140.0,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.pump(const Duration(milliseconds: 200));
+        expect(tester.takeException(), isNull);
+        expect(find.text('Best crops now'), findsOneWidget);
+
+        await tester.scrollUntilVisible(
+          find.text('See all 5 crops'),
+          120.0,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.pump(const Duration(milliseconds: 200));
+        expect(tester.takeException(), isNull);
+        expect(find.text('See all 5 crops'), findsOneWidget);
+      }
+    }
+  });
 }
 

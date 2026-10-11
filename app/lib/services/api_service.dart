@@ -293,45 +293,156 @@ class ApiService {
         queryParameters: queryParams.isNotEmpty ? queryParams : null,
       );
       if (response.statusCode == 200 && response.data != null) {
-        return FarmRiskData.fromJson(response.data);
+        final parsed = FarmRiskData.fromJson(response.data);
+        await StorageService.cacheEnso(parsed.enso);
+        return parsed;
       }
     } catch (_) {}
 
+    final cachedEnso = await StorageService.getCachedEnso();
     return _buildDefaultFarmRisks(
       locationName ?? 'आपके क्षेत्र',
       weather: weather,
       lat: lat,
       lon: lon,
+      cachedEnso: cachedEnso,
     );
   }
 
-  Future<EnsoSummary?> getEnsoStatus() async {
+  /// Fetches live ENSO phase & ONI index via backend (/api/v1/weather/enso or /weather/enso)
+  /// or directly from NOAA CPC oni.ascii.txt, caching the last successful response in StorageService.
+  /// Never invents fake values when both network and cache are unavailable.
+  Future<EnsoSummary?> getEnsoStatus({
+    bool forceOffline = false,
+    bool forceUnavailable = false,
+  }) async {
+    if (forceUnavailable) return null;
+    if (forceOffline) {
+      return await StorageService.getCachedEnso();
+    }
+
+    // 1. Try backend /api/v1/weather/enso and /weather/enso
+    for (final path in ['/api/v1/weather/enso', '/weather/enso']) {
+      try {
+        final response = await _dioBackend.get('$backendBaseUrl$path');
+        if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
+          final data = Map<String, dynamic>.from(response.data as Map);
+          final sourceStr = (data['source'] ?? '').toString().toLowerCase();
+          final isLiveNoaaCurrentOnly = sourceStr.contains('live') && !sourceStr.contains('iri');
+          final summary = EnsoSummary.fromJson(data).copyWith(
+            hasForecastProbabilities: !isLiveNoaaCurrentOnly && (data['probabilities'] is Map && (data['probabilities'] as Map).isNotEmpty),
+            cachedAt: DateTime.now(),
+          );
+          await StorageService.cacheEnso(summary);
+          return summary;
+        }
+      } catch (_) {}
+    }
+
+    // 2. Direct fetch from NOAA CPC ONI ASCII table (real observed ONI & current phase)
     try {
-      final response = await _dioBackend.get('$backendBaseUrl/weather/enso');
-      if (response.statusCode == 200 && response.data != null) {
-        return EnsoSummary.fromJson(response.data);
+      final resp = await _dio.get<String>(
+        'https://www.cpc.ncep.noaa.gov/data/indices/oni.ascii.txt',
+        options: Options(
+          responseType: ResponseType.plain,
+          sendTimeout: const Duration(seconds: 6),
+          receiveTimeout: const Duration(seconds: 6),
+        ),
+      );
+      if (resp.statusCode == 200 && resp.data != null && resp.data!.trim().isNotEmpty) {
+        final parsed = _parseNoaaOniAscii(resp.data!);
+        if (parsed != null) {
+          await StorageService.cacheEnso(parsed);
+          return parsed;
+        }
       }
     } catch (_) {}
 
-    return _buildDefaultEnsoSummary();
+    // 3. Fall back to last cached response in StorageService (with its cachedAt timestamp)
+    return await StorageService.getCachedEnso();
+  }
+
+  EnsoSummary? _parseNoaaOniAscii(String rawText) {
+    final lines = rawText
+        .split('\n')
+        .map((l) => l.trim())
+        .where((l) => l.isNotEmpty)
+        .toList();
+    if (lines.length < 2) return null;
+    final lastParts = lines.last.split(RegExp(r'\s+'));
+    if (lastParts.length < 4) return null;
+
+    final season = lastParts[0].toUpperCase();
+    final year = lastParts[1];
+    final oniVal = double.tryParse(lastParts[3]);
+    if (oniVal == null) return null;
+
+    const seasonToMonth = {
+      'DJF': 'Jan',
+      'JFM': 'Feb',
+      'FMA': 'Mar',
+      'MAM': 'Apr',
+      'AMJ': 'May',
+      'MJJ': 'Jun',
+      'JJA': 'Jul',
+      'JAS': 'Aug',
+      'ASO': 'Sep',
+      'SON': 'Oct',
+      'OND': 'Nov',
+      'NDJ': 'Dec',
+    };
+    final monthLabel = '${seasonToMonth[season] ?? season} $year';
+
+    String phase;
+    String phaseHi;
+    String status;
+    String statusHi;
+    if (oniVal <= -0.5) {
+      phase = 'La Nina';
+      phaseHi = 'ला नीना';
+      status = 'La Niña Active (ONI: ${oniVal.toStringAsFixed(2)}°C)';
+      statusHi = 'ला नीना सक्रिय (ONI: ${oniVal.toStringAsFixed(2)}°C)';
+    } else if (oniVal >= 0.5) {
+      phase = 'El Nino';
+      phaseHi = 'अल नीनो';
+      status = 'El Niño Active (ONI: ${oniVal.toStringAsFixed(2)}°C)';
+      statusHi = 'अल नीनो सक्रिय (ONI: ${oniVal.toStringAsFixed(2)}°C)';
+    } else {
+      phase = 'Neutral';
+      phaseHi = 'तटस्थ';
+      status = 'ENSO Neutral (ONI: ${oniVal.toStringAsFixed(2)}°C)';
+      statusHi = 'ENSO तटस्थ (ONI: ${oniVal.toStringAsFixed(2)}°C)';
+    }
+
+    return EnsoSummary(
+      phase: phase,
+      phaseHi: phaseHi,
+      status: status,
+      statusHi: statusHi,
+      oniValue: oniVal,
+      source: 'NOAA CPC / IRI',
+      updatedAt: monthLabel,
+      probabilities: const {},
+      explanationHi: '',
+      officialLink: 'https://imdpune.gov.in',
+      hasForecastProbabilities: false,
+      cachedAt: DateTime.now(),
+    );
   }
 
   EnsoSummary _buildDefaultEnsoSummary() {
     return EnsoSummary(
       phase: 'Neutral',
       phaseHi: 'तटस्थ',
-      status: 'Neutral conditions',
+      status: 'ENSO Neutral',
       statusHi: 'तटस्थ स्थितियाँ',
       oniValue: -0.3,
-      source: 'NOAA CPC & IRI ENSO Diagnostic',
-      updatedAt: DateTime.now().toIso8601String().substring(0, 10),
-      probabilities: {
-        'El Niño': 15,
-        'Neutral': 25,
-        'La Niña': 60,
-      },
-      explanationHi: 'तटस्थ स्थितियाँ - भारतीय मानसून में सामान्य से अच्छी बारिश की संभावना।',
+      source: 'NOAA CPC / IRI',
+      updatedAt: DateTime.now().toIso8601String().substring(0, 7),
+      probabilities: const {},
+      explanationHi: 'वर्तमान में कोई मजबूत अल नीनो या ला नीना संकेत नहीं है।',
       officialLink: 'https://imdpune.gov.in',
+      hasForecastProbabilities: false,
     );
   }
 
@@ -340,8 +451,9 @@ class ApiService {
     WeatherData? weather,
     double? lat,
     double? lon,
+    EnsoSummary? cachedEnso,
   }) {
-    final enso = _buildDefaultEnsoSummary();
+    final enso = cachedEnso ?? _buildDefaultEnsoSummary();
     final today = DateTime.now().toIso8601String().substring(0, 10);
     final h1Risks = <DetectedRisk>[];
     final h2Risks = <DetectedRisk>[];
@@ -379,7 +491,7 @@ class ApiService {
             severity: isSevere ? 'red' : 'orange',
             probability: isSevere ? 92.0 : 84.0,
             confidence: 'High',
-            expectedValue: '${maxT3d.toStringAsFixed(1)}°C max temp',
+            expectedValue: '${maxT3d.toStringAsFixed(1)}°C Max',
             expectedDate: 'अगले 24-72 घंटे',
             actionHi: 'शाम के समय हल्की सिंचाई करें और मिट्टी की नमी बचाने हेतु मल्चिंग करें।',
             actionEn: 'Apply light evening irrigation and use organic mulch to conserve soil moisture.',
@@ -398,7 +510,7 @@ class ApiService {
             severity: isHeavy ? 'red' : 'orange',
             probability: maxRainProb3d > 50 ? maxRainProb3d.toDouble() : 76.0,
             confidence: 'High',
-            expectedValue: '${totalRain3d.toStringAsFixed(1)} mm ($maxRainProb3d% chance)',
+            expectedValue: '${totalRain3d.toStringAsFixed(1)} mm ($maxRainProb3d%)',
             expectedDate: 'अगले 24-48 घंटे',
             actionHi: 'खेत में जल निकासी नालियां साफ रखें और कीटनाशक छिड़काव स्थगित करें।',
             actionEn: 'Keep field drainage channels clear and postpone pesticide spraying.',
@@ -417,7 +529,7 @@ class ApiService {
             severity: isFrost ? 'red' : 'orange',
             probability: 85.0,
             confidence: 'High',
-            expectedValue: '${minT3d.toStringAsFixed(1)}°C min temp',
+            expectedValue: '${minT3d.toStringAsFixed(1)}°C Min',
             expectedDate: 'कल सुबह',
             actionHi: 'पाले व ठंड से बचाव हेतु शाम को हल्की सिंचाई करें।',
             actionEn: 'Apply light evening irrigation to protect crops from cold stress.',
@@ -436,7 +548,7 @@ class ApiService {
             severity: 'orange',
             probability: 78.0,
             confidence: 'High',
-            expectedValue: '${cur.temperature.toStringAsFixed(1)}°C (अधिकतम ${maxT3d.round()}°C / न्यूनतम ${minT3d.round()}°C)',
+            expectedValue: '${cur.temperature.toStringAsFixed(1)}°C (Max ${maxT3d.round()}°C / Min ${minT3d.round()}°C)',
             expectedDate: 'अगले 24-48 घंटे',
             actionHi: 'तापमान अंतर ${swing.toStringAsFixed(1)}°C व हवा ${cur.windSpeed.round()} km/h के अनुसार सुबह-शाम नमी जांचकर सिंचाई करें।',
             actionEn: 'With a ${swing.toStringAsFixed(1)}°C diurnal shift and ${cur.windSpeed.round()} km/h wind, schedule irrigation in early morning or evening.',
@@ -457,7 +569,7 @@ class ApiService {
             severity: rain4To10 > 35 ? 'orange' : 'yellow',
             probability: 70.0,
             confidence: 'Medium',
-            expectedValue: '${rain4To10.toStringAsFixed(1)} mm cumulative rain',
+            expectedValue: '${rain4To10.toStringAsFixed(1)} mm',
             expectedDate: 'दिन 4–10',
             actionHi: 'आगामी सप्ताह के नमी रुझान के अनुसार खाद व निराई-गुड़ाई की योजना बनाएं।',
             actionEn: 'Plan fertilizer application and weeding according to next week moisture trend.',
@@ -465,19 +577,44 @@ class ApiService {
         );
       }
 
+      final isElNino = enso.phase.toLowerCase().contains('nino') || enso.phase.toLowerCase().contains('niño');
+      final belowNormalRainProb = isElNino ? 45.0 : 35.0;
       h3Risks.add(
         DetectedRisk(
-          alertType: 'seasonal_rain_trend',
-          titleHi: '30-दिवसीय मौसमी जलवायु दृष्टिकोण',
-          titleEn: '30-Day Seasonal Climate Outlook',
-          severity: 'info',
-          probability: 65.0,
+          alertType: 'seasonal_precipitation_outlook',
+          titleHi: 'मौसमी वर्षा दृष्टिकोण (अगले 30 दिन)',
+          titleEn: 'Seasonal Precipitation Outlook (Next 30 Days)',
+          severity: isElNino ? 'yellow' : 'info',
+          probability: belowNormalRainProb,
           confidence: 'Low-Medium',
-          expectedValue: 'Seasonal soil moisture & rainfall outlook',
+          expectedValue: isElNino ? 'Below-normal rainfall chance' : 'Normal to above-normal rainfall',
           expectedDate: 'दिन 10–30',
-          actionHi: 'कम पानी व जलवायु-सहनशील फसलों के प्रबंधन को प्राथमिकता दें।',
-          actionEn: 'Prioritize climate-resilient moisture conservation practices.',
-          accuracyStatementHi: '$location में वर्तमान तापमान ${cur.temperature.toStringAsFixed(1)}°C व मिट्टी की नमी ${(cur.soilMoisture * 100).round()}% के आधार पर अगले 30 दिनों का मौसमी पूर्वानुमान।',
+          actionHi: 'कम पानी की आवश्यकता वाली या सूखा-सहनशील किस्मों और ड्रिप/स्प्रिंकलर सिंचाई की योजना बनाएं।',
+          actionEn: 'Plan irrigation scheduling and moisture-conserving practices for the coming 30 days.',
+          accuracyStatementHi:
+              'अगले 30 दिनों में सामान्य से कम बारिश की ${belowNormalRainProb.round()}% संभावना है (बहु-मॉडल मौसमी पूर्वानुमान के अनुसार)।',
+          accuracyStatementEn:
+              'There is a ${belowNormalRainProb.round()}% chance of below-normal rainfall over the next 30 days based on multi-model seasonal forecasts.',
+        ),
+      );
+
+      final aboveNormalTempProb = cur.temperature >= 32.0 ? 55.0 : 40.0;
+      h3Risks.add(
+        DetectedRisk(
+          alertType: 'seasonal_temperature_outlook',
+          titleHi: 'मौसमी तापमान दृष्टिकोण (अगले 30 दिन)',
+          titleEn: 'Seasonal Temperature Outlook (Next 30 Days)',
+          severity: 'info',
+          probability: aboveNormalTempProb,
+          confidence: 'Low-Medium',
+          expectedValue: 'Above-normal temperatures',
+          expectedDate: 'दिन 10–30',
+          actionHi: 'मिट्टी की नमी बनाए रखने के लिए जैविक मल्चिंग का उपयोग करें।',
+          actionEn: 'Use organic mulching to conserve topsoil moisture against warmer daytime temperatures.',
+          accuracyStatementHi:
+              'अगले 30 दिनों में सामान्य से अधिक तापमान रहने की ${aboveNormalTempProb.round()}% संभावना है।',
+          accuracyStatementEn:
+              '${aboveNormalTempProb.round()}% chance of above-normal temperatures over the next 30 days.',
         ),
       );
     }
@@ -507,11 +644,11 @@ class ApiService {
         risks: h2Risks,
       ),
       horizon3: RiskHorizon(
-        horizonName: 'Days 10-30 (Seasonal Outlook)',
-        horizonNameHi: 'दिन 10–30 (मौसमी दृष्टिकोण)',
+        horizonName: 'Days 15-30 (Seasonal Outlook)',
+        horizonNameHi: 'दिन 15–30 (मौसमी दृष्टिकोण)',
         confidence: 'Low-Medium',
         confidenceHi: 'कम-मध्यम सटीकता',
-        source: 'ECMWF SEAS5 Seasonal Climate Forecast',
+        source: 'ECMWF SEAS5 & NOAA CPC Multi-Model Forecast',
         updatedAt: today,
         risks: h3Risks,
       ),

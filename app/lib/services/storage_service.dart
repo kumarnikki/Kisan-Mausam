@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/farm_profile.dart';
+import '../models/risk_models.dart';
 import '../models/weather_models.dart';
 
 class StorageService {
@@ -13,6 +14,10 @@ class StorageService {
   static const String _keyActiveFarmId = 'active_farm_id';
   static const String _keyWeatherCache = 'weather_cache_';
   static const String _keyWeatherTimestamp = 'weather_ts_';
+  static const String _keyEnsoCache = 'enso_cache_v1';
+  static const String _keyEnsoTimestamp = 'enso_ts_v1';
+  static const String _keyCropsCache = 'crops_cache_';
+  static const String _keyCropsTimestamp = 'crops_ts_';
 
   static Future<String> getLanguage() async {
     final prefs = await SharedPreferences.getInstance();
@@ -269,5 +274,65 @@ class StorageService {
   static Future<String?> getCustomBackendUrl() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(_keyBackendUrl);
+  }
+
+  // ── ENSO Offline Cache ────────────────────────────────────────────────────
+  static Future<void> cacheEnso(EnsoSummary enso) async {
+    final prefs = await SharedPreferences.getInstance();
+    final now = DateTime.now();
+    final payload = enso.copyWith(cachedAt: now).toJson();
+    await prefs.setString(_keyEnsoCache, jsonEncode(payload));
+    await prefs.setInt(_keyEnsoTimestamp, now.millisecondsSinceEpoch);
+  }
+
+  static Future<EnsoSummary?> getCachedEnso() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_keyEnsoCache);
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw) as Map<String, dynamic>;
+      final ts = prefs.getInt(_keyEnsoTimestamp);
+      final summary = EnsoSummary.fromJson(decoded);
+      if (summary.cachedAt == null && ts != null) {
+        return summary.copyWith(cachedAt: DateTime.fromMillisecondsSinceEpoch(ts));
+      }
+      return summary;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<DateTime?> getEnsoCachedTime() async {
+    final prefs = await SharedPreferences.getInstance();
+    final ts = prefs.getInt(_keyEnsoTimestamp);
+    if (ts == null) return null;
+    return DateTime.fromMillisecondsSinceEpoch(ts);
+  }
+
+  // ── Crop Recommendations Offline Cache ────────────────────────────────────
+  static Future<void> cacheCropRecommendations(
+    String key,
+    List<Map<String, dynamic>> crops, {
+    String? season,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final payload = {
+      'season': season ?? '',
+      'crops': crops,
+      'cachedAt': DateTime.now().toIso8601String(),
+    };
+    await prefs.setString('$_keyCropsCache$key', jsonEncode(payload));
+    await prefs.setInt('$_keyCropsTimestamp$key', DateTime.now().millisecondsSinceEpoch);
+  }
+
+  static Future<Map<String, dynamic>?> getCachedCropRecommendations(String key) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString('$_keyCropsCache$key');
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      return jsonDecode(raw) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
   }
 }
