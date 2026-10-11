@@ -77,13 +77,13 @@ async def root():
 @app.get("/api/v1/app/version", tags=["App Updates"])
 async def get_app_version():
     return {
-        "version": "1.6.0",
-        "versionCode": 20,
-        "releaseName": "Kisan Mausam v1.6.0 - Direct In-App Update Installer, El Niño (ENSO) & Multi-SIM SMS Edition",
-        "apkUrl": "https://github.com/kumarnikki/Kisan-Mausam/releases/download/v1.6.0/kisan-mausam-release.apk",
+        "version": "1.7.0",
+        "versionCode": 21,
+        "releaseName": "Kisan Mausam v1.7.0 - Direct In-App Update Installer, El Niño (ENSO) & Multi-SIM SMS Edition",
+        "apkUrl": "https://github.com/kumarnikki/Kisan-Mausam/releases/download/v1.7.0/kisan-mausam-release.apk",
         "githubReleaseUrl": "https://github.com/kumarnikki/Kisan-Mausam/releases/latest",
         "changelog": "• Direct In-App Update & Package Installer: Download and install app updates directly inside KisanMausam with live MB/percentage progress bar—no browser redirection required\n• Restored El Niño / La Niña (ENSO) Prediction Card on Home screen below weather warning bars with live ONI gauge meter & seasonal probabilities\n• Multi-SIM Weather Hazard & SOS Emergency SMS delivery with automatic SIM number detection and high-priority system notifications",
         "minRequiredVersion": "1.0.0",
-        "publishedAt": "2026-10-11T05:40:00Z"
+        "publishedAt": "2026-10-11T05:55:00Z"
     }
 
