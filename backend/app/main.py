@@ -77,13 +77,13 @@ async def root():
 @app.get("/api/v1/app/version", tags=["App Updates"])
 async def get_app_version():
     return {
-        "version": "1.9.0",
-        "versionCode": 23,
-        "releaseName": "Kisan Mausam v1.9.0 - Account Phone Security, Pinned Hazard Warning & El Niño Outlook Edition",
-        "apkUrl": "https://github.com/kumarnikki/Kisan-Mausam/releases/download/v1.9.0/kisan-mausam-release.apk",
+        "version": "2.0.0",
+        "versionCode": 24,
+        "releaseName": "Kisan Mausam v2.0.0 - Clean Home UI, Account Phone Security & El Niño Outlook Edition",
+        "apkUrl": "https://github.com/kumarnikki/Kisan-Mausam/releases/download/v2.0.0/kisan-mausam-release.apk",
         "githubReleaseUrl": "https://github.com/kumarnikki/Kisan-Mausam/releases/latest",
-        "changelog": "• Registered Account Phone Security: Locked mobile number against editing or overwriting in Settings once an account is created\n• Pinned Weather Warning Header: Always-visible top bar and hazard warning that compacts on scroll and opens a floating multi-hazard overlay panel\n• Revised Home Screen: Saturated AA-compliant Weather Hero Card, 2×2 Field Conditions Grid, NOAA CPC / IRI El Niño (ENSO) Season Card, 30-Day Seasonal Outlook Card, and Inline Top 3 ICAR Crop Recommendations",
+        "changelog": "• Clean Home Layout: Removed footer attribution text for a distraction-free bottom layout\n• Registered Account Phone Security: Locked mobile number against editing or overwriting in Settings once an account is created\n• Pinned Weather Warning Header, Saturated Weather Hero Card, 2×2 Field Conditions Grid, NOAA CPC / IRI El Niño (ENSO) Season Card, 30-Day Seasonal Outlook Card, and Top 3 ICAR Crop Recommendations",
         "minRequiredVersion": "1.0.0",
-        "publishedAt": "2026-10-11T09:25:00Z"
+        "publishedAt": "2026-10-11T10:15:00Z"
     }
 

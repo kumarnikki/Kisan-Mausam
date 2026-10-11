@@ -1513,28 +1513,8 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
                         ),
                       ),
 
-                      // 2e) Footer: Open-Meteo CC BY 4.0 attribution with bottom padding above nav bar
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(
-                            AppTheme.s16,
-                            AppTheme.s24,
-                            AppTheme.s16,
-                            AppTheme.s32,
-                          ),
-                          child: GestureDetector(
-                            onLongPress:
-                                kDebugMode ? _showDebugOverrideSheet : null,
-                            child: Text(
-                              AppStrings.get('attribution', _lang),
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 12.5,
-                                color: AppTheme.textSecondary(context),
-                              ),
-                            ),
-                          ),
-                        ),
+                      const SliverToBoxAdapter(
+                        child: SizedBox(height: AppTheme.s24),
                       ),
                     ],
                   ],
@@ -1730,10 +1710,13 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
           ),
           const SizedBox(width: AppTheme.s8),
           // Fixed-size Settings Gear IconAction (48x48dp)
-          IconAction(
-            icon: Icons.settings_rounded,
-            semanticLabel: AppStrings.get('settings', _lang),
-            onPressed: widget.onOpenSettings,
+          GestureDetector(
+            onLongPress: kDebugMode ? _showDebugOverrideSheet : null,
+            child: IconAction(
+              icon: Icons.settings_rounded,
+              semanticLabel: AppStrings.get('settings', _lang),
+              onPressed: widget.onOpenSettings,
+            ),
           ),
         ],
       ),
