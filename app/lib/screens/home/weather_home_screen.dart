@@ -11,6 +11,7 @@ import '../../services/alert_service.dart';
 import '../../services/update_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/glass_card.dart';
+import '../../widgets/oni_gauge_meter.dart';
 import '../../widgets/realistic_weather_visual.dart';
 import '../crops/crop_recommender_screen.dart';
 import '../chat/krishi_sahayak_screen.dart';
@@ -110,11 +111,11 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
       }
     });
 
+    await _initSmsPhoneAndPermission();
+    if (!mounted) return;
+
     await _fetchWeather(initialLat, initialLon, locationName: initialName);
     await _autoFetchGPSLocation();
-
-    if (!mounted) return;
-    await _initSmsPhoneAndPermission();
   }
 
   Future<void> _initSmsPhoneAndPermission() async {
@@ -227,7 +228,10 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
 
     if (redRisks.isNotEmpty) {
       final r = redRisks.first;
-      _autoSendRiskSms(r);
+      if (locKey == null || _lastWeatherSmsLocationKey != locKey) {
+        _lastWeatherSmsLocationKey = locKey;
+        _autoSendRiskSms(r);
+      }
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           AlertService.showHazardAlert(
@@ -271,7 +275,10 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
       });
     } else if (orangeRisks.isNotEmpty) {
       final r = orangeRisks.first;
-      _autoSendRiskSms(r);
+      if (locKey == null || _lastWeatherSmsLocationKey != locKey) {
+        _lastWeatherSmsLocationKey = locKey;
+        _autoSendRiskSms(r);
+      }
     } else if (weather != null &&
         locKey != null &&
         _lastWeatherSmsLocationKey != locKey) {
@@ -289,7 +296,6 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
         if (mounted) setState(() => _userPhone = savedPhone);
       }
     }
-    if (savedPhone == null || savedPhone.isEmpty) return;
 
     final locEn = _gpsLocationName ?? _currentFarm?.getVillage('en') ?? 'Farm';
     final temp = weather.current.temperature.round();
@@ -300,11 +306,11 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
         'KisanMausam Weather ($locEn): Temp ${temp}C, $condEn, Wind ${wind}km/h, Humidity $hum%. Farm weather is currently safe.';
 
     final sent = await _apiService.sendWeatherOrSosSms(
-      phone: savedPhone,
+      phone: savedPhone ?? '',
       alertType: 'weather_change',
       message: msg,
     );
-    if (sent && mounted) {
+    if (sent && mounted && savedPhone != null && savedPhone.isNotEmpty) {
       final isHi = _lang == 'hi';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -329,7 +335,6 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
         if (mounted) setState(() => _userPhone = savedPhone);
       }
     }
-    if (savedPhone == null || savedPhone.isEmpty) return;
     final loc = _gpsLocationName ?? _currentFarm?.getVillage('en') ?? 'Farm';
     final isHi = _lang == 'hi';
     final alertNameDisplay = AppStrings.hazardTitle(
@@ -347,11 +352,11 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
     final msg =
         'KisanMausam Alert ($loc): $alertNameAscii (${r.expectedValue}, ${r.probability.round()}% risk). Action: $actionAscii';
     final sent = await _apiService.sendWeatherOrSosSms(
-      phone: savedPhone,
+      phone: savedPhone ?? '',
       alertType: r.alertType,
       message: msg,
     );
-    if (sent && mounted) {
+    if (sent && mounted && savedPhone != null && savedPhone.isNotEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           behavior: SnackBarBehavior.floating,
@@ -492,6 +497,22 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
       lat: _gpsLat ?? _currentFarm?.latitude,
       lon: _gpsLon ?? _currentFarm?.longitude,
       onSendSms: () async {
+        final res = await _apiService.simulateAlert(
+          _currentFarm?.id ?? 1,
+          'sos',
+          phoneNumber: cleanPhone.isNotEmpty ? cleanPhone : null,
+          locationName: loc,
+        );
+        final logsCount = res?['dispatched_logs_count'] ?? 0;
+        return res?['sms_sent'] == true || logsCount > 0;
+      },
+      onSendSmsWithPhone: (newPhone) async {
+        final digits = newPhone.replaceAll(RegExp(r'\D'), '');
+        if (digits.length >= 10) {
+          cleanPhone = digits.substring(digits.length - 10);
+          await StorageService.saveUserPhone(cleanPhone);
+          if (mounted) setState(() => _userPhone = cleanPhone);
+        }
         final res = await _apiService.simulateAlert(
           _currentFarm?.id ?? 1,
           'sos',
@@ -1379,10 +1400,16 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
             );
           }),
 
+        // El Niño / La Niña (ENSO) Prediction Card directly after weather warning bars
+        Padding(
+          padding: EdgeInsets.only(top: h1Risks.isEmpty ? AppTheme.s8 : 0),
+          child: _buildEnsoPredictionCard(context),
+        ),
+
         // 30-day seasonal outlook as 1 collapsed row (max 1 level of container)
         if (h3Risks.isNotEmpty)
           Padding(
-            padding: const EdgeInsets.only(top: AppTheme.s4),
+            padding: const EdgeInsets.only(top: AppTheme.s8),
             child: AppSurface(
               padding: const EdgeInsets.symmetric(
                 horizontal: AppTheme.s12,
@@ -1446,6 +1473,175 @@ class _WeatherHomeScreenState extends State<WeatherHomeScreen> {
             ),
           ),
       ],
+    );
+  }
+
+  Widget _buildEnsoPredictionCard(BuildContext context) {
+    final isHi = _lang == 'hi';
+    final enso = _riskData?.enso;
+    final oniVal = enso?.oniValue ?? -0.3;
+    final rawPhase = enso?.phase ?? 'Neutral';
+    final phaseText = isHi
+        ? (enso != null && enso.phaseHi.isNotEmpty ? enso.phaseHi : 'तटस्थ')
+        : rawPhase;
+
+    final probs = enso?.probabilities ?? const {'El Niño': 15, 'Neutral': 25, 'La Niña': 60};
+    final elNinoProb = (probs['El Niño'] ?? probs['El Nino'] ?? 15);
+    final neutralProb = (probs['Neutral'] ?? 25);
+    final laNinaProb = (probs['La Niña'] ?? probs['La Nina'] ?? 60);
+
+    final impactText = isHi
+        ? (enso != null && enso.explanationHi.isNotEmpty
+            ? enso.explanationHi
+                .replaceAll(RegExp(r'\s*\([A-Za-z\s-ñÑíÍ/]+\)'), '')
+                .trim()
+            : 'तटस्थ स्थितियाँ (ONI ${oniVal >= 0 ? "+" : ""}${oniVal.toStringAsFixed(1)}°C) — भारतीय मानसून व रबी सीजन में सामान्य से अच्छी नमी रहने की संभावना।')
+        : 'ENSO is in $rawPhase phase (ONI ${oniVal >= 0 ? "+" : ""}${oniVal.toStringAsFixed(1)}°C) with $laNinaProb% La Niña likelihood — favorable for normal-to-above-normal seasonal rainfall and soil moisture.';
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final dividerColor = AppTheme.isHighContrast(context)
+        ? Colors.black26
+        : (isDark ? Colors.white12 : AppTheme.outlineLight);
+
+    return AppSurface(
+      padding: const EdgeInsets.all(14),
+      borderRadius: AppTheme.rInput,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.public_rounded,
+                size: 20,
+                color: AppTheme.primaryActionColor(context),
+              ),
+              const SizedBox(width: AppTheme.s8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      AppStrings.get('enso_title', _lang),
+                      style: TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.textPrimary(context),
+                        height: 1.3,
+                      ),
+                    ),
+                    Text(
+                      'ONI: ${oniVal >= 0 ? "+" : ""}${oniVal.toStringAsFixed(1)}°C • ${AppStrings.get('enso_source', _lang)}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textSecondary(context),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: AppTheme.s8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryButtonFill(context),
+                  borderRadius: BorderRadius.circular(AppTheme.rPill),
+                ),
+                child: Text(
+                  phaseText,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          OniGaugeMeter(oniValue: oniVal, lang: _lang),
+          const SizedBox(height: 10),
+          IntrinsicHeight(
+            child: Row(
+              children: [
+                Expanded(
+                  child: _buildEnsoProbColumn(
+                    context,
+                    label: isHi ? 'ला नीना' : 'La Niña',
+                    value: '$laNinaProb%',
+                  ),
+                ),
+                Container(width: 1, color: dividerColor),
+                Expanded(
+                  child: _buildEnsoProbColumn(
+                    context,
+                    label: isHi ? 'तटस्थ' : 'Neutral',
+                    value: '$neutralProb%',
+                  ),
+                ),
+                Container(width: 1, color: dividerColor),
+                Expanded(
+                  child: _buildEnsoProbColumn(
+                    context,
+                    label: isHi ? 'अल नीनो' : 'El Niño',
+                    value: '$elNinoProb%',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            impactText,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: AppTheme.textSecondary(context),
+              height: 1.38,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEnsoProbColumn(
+    BuildContext context, {
+    required String label,
+    required String value,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              value,
+              style: TextStyle(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w800,
+                color: AppTheme.textPrimary(context),
+              ),
+            ),
+          ),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              label,
+              maxLines: 1,
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textSecondary(context),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

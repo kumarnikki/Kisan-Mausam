@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../l10n/app_strings.dart';
 import '../../models/farm_profile.dart';
+import '../../services/alert_service.dart';
 import '../../services/location_service.dart';
 import '../../services/storage_service.dart';
 import '../../theme/app_theme.dart';
@@ -24,6 +25,7 @@ class FarmSetupScreen extends StatefulWidget {
 
 class _FarmSetupScreenState extends State<FarmSetupScreen> {
   final _farmerNameController = TextEditingController();
+  final _phoneController = TextEditingController();
   final _nameController = TextEditingController();
   final _villageController = TextEditingController();
   final _districtController = TextEditingController();
@@ -75,12 +77,22 @@ class _FarmSetupScreenState extends State<FarmSetupScreen> {
   Future<void> _loadExistingProfile() async {
     final l = await StorageService.getLanguage();
     final savedUserName = await StorageService.getUserName();
+    var savedPhone = await StorageService.getUserPhone();
+    if (savedPhone == null || savedPhone.isEmpty) {
+      savedPhone = await AlertService.detectSimPhoneNumber();
+      if (savedPhone != null && savedPhone.isNotEmpty) {
+        await StorageService.saveUserPhone(savedPhone);
+      }
+    }
     final profileConfigured = await StorageService.isProfileConfigured();
     final farms = await StorageService.getFarms();
 
     if (!mounted) return;
     setState(() {
       _lang = l;
+      if (savedPhone != null && savedPhone.isNotEmpty) {
+        _phoneController.text = savedPhone;
+      }
       if (savedUserName != null &&
           savedUserName.isNotEmpty &&
           !savedUserName.startsWith('किसान (+91') &&
@@ -129,6 +141,7 @@ class _FarmSetupScreenState extends State<FarmSetupScreen> {
   @override
   void dispose() {
     _farmerNameController.dispose();
+    _phoneController.dispose();
     _nameController.dispose();
     _villageController.dispose();
     _districtController.dispose();
@@ -207,6 +220,11 @@ class _FarmSetupScreenState extends State<FarmSetupScreen> {
     final farmerName = _farmerNameController.text.trim();
     if (farmerName.isNotEmpty) {
       await StorageService.saveUserName(farmerName);
+    }
+    final rawPhone = _phoneController.text.replaceAll(RegExp(r'\D'), '');
+    if (rawPhone.length >= 10) {
+      final ten = rawPhone.substring(rawPhone.length - 10);
+      await StorageService.saveUserPhone(ten);
     }
 
     final cropText = _resolvedCropText().isEmpty
@@ -374,6 +392,22 @@ class _FarmSetupScreenState extends State<FarmSetupScreen> {
                                 labelText: AppStrings.get('farmer_name_label', _lang),
                                 hintText: isEn ? 'Enter your name' : 'अपना नाम लिखें',
                                 prefixIcon: const Icon(Icons.person_outline_rounded),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: _phoneController,
+                              keyboardType: TextInputType.phone,
+                              maxLength: 10,
+                              textInputAction: TextInputAction.next,
+                              decoration: InputDecoration(
+                                labelText: isEn
+                                    ? 'Mobile Number (for Weather & SOS SMS)'
+                                    : 'मोबाइल नंबर (मौसम व SOS SMS अलर्ट हेतु)',
+                                hintText: isEn ? '10-digit mobile number' : '10 अंकों का मोबाइल नंबर',
+                                prefixText: '+91 ',
+                                counterText: '',
+                                prefixIcon: const Icon(Icons.phone_android_rounded),
                               ),
                             ),
                             const SizedBox(height: 12),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 
 /// Interactive oceanic ONI Climate Index Gauge meter (-2.0°C La Niña to +2.0°C El Niño)
 class OniGaugeMeter extends StatelessWidget {
@@ -13,9 +14,20 @@ class OniGaugeMeter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isHc = AppTheme.isHighContrast(context);
+
     // ONI ranges roughly from -2.5 to +2.5
     final clamped = oniValue.clamp(-2.5, 2.5);
     final normalized = ((clamped - (-2.5)) / 5.0).clamp(0.0, 1.0);
+
+    final laNinaColor = isHc
+        ? Colors.black
+        : (isDark ? const Color(0xFF4FC3F7) : const Color(0xFF0277BD));
+    final neutralColor = AppTheme.textSecondary(context);
+    final elNinoColor = isHc
+        ? Colors.black
+        : (isDark ? const Color(0xFFFF8A65) : const Color(0xFFBF360C));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -45,13 +57,6 @@ class OniGaugeMeter extends StatelessWidget {
                         Color(0xFFE65100), // El Niño (Warm Coral/Red)
                       ],
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.1),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
                   ),
                 ),
 
@@ -68,26 +73,21 @@ class OniGaugeMeter extends StatelessWidget {
                 // Active Pointer Needle Pin
                 Positioned(
                   left: pinX - 8,
-                  top: -5,
+                  top: -4,
                   child: Container(
                     width: 16,
-                    height: 20,
+                    height: 18,
                     decoration: BoxDecoration(
                       color: Colors.white,
                       shape: BoxShape.circle,
                       border: Border.all(
                         color: oniValue > 0.5
                             ? const Color(0xFFE65100)
-                            : (oniValue < -0.5 ? const Color(0xFF0288D1) : const Color(0xFF00897B)),
+                            : (oniValue < -0.5
+                                ? const Color(0xFF0288D1)
+                                : const Color(0xFF00897B)),
                         width: 3,
                       ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.25),
-                          blurRadius: 6,
-                          offset: const Offset(0, 3),
-                        ),
-                      ],
                     ),
                   ),
                 ),
@@ -95,22 +95,54 @@ class OniGaugeMeter extends StatelessWidget {
             );
           },
         ),
-        const SizedBox(height: 8),
-        // Scale labels
+        const SizedBox(height: 6),
+        // Scale labels (scale-safe at 320dp and 1.3x textScaler)
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              lang == 'en' ? '❄️ La Niña (-2°C)' : '❄️ ला नीना (-2°C)',
-              style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF0277BD)),
+            Flexible(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  lang == 'en' ? '❄️ La Niña (-2°C)' : '❄️ ला नीना (-2°C)',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: laNinaColor,
+                  ),
+                ),
+              ),
             ),
-            Text(
-              lang == 'en' ? 'Neutral (0°C)' : 'तटस्थ (0°C)',
-              style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.black54),
+            const SizedBox(width: 4),
+            Flexible(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.center,
+                child: Text(
+                  lang == 'en' ? 'Neutral (0°C)' : 'तटस्थ (0°C)',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: neutralColor,
+                  ),
+                ),
+              ),
             ),
-            Text(
-              lang == 'en' ? '☀️ El Niño (+2°C)' : '☀️ एल नीनो (+2°C)',
-              style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFFD84315)),
+            const SizedBox(width: 4),
+            Flexible(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerRight,
+                child: Text(
+                  lang == 'en' ? '☀️ El Niño (+2°C)' : '☀️ अल नीनो (+2°C)',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: elNinoColor,
+                  ),
+                ),
+              ),
             ),
           ],
         ),

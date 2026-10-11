@@ -674,13 +674,28 @@ class ApiService {
     required String alertType,
     required String message,
   }) async {
-    final mobile = _normalizeIndianMobile(phone);
-    if (mobile.length < 10) return false;
+    var mobile = _normalizeIndianMobile(phone);
+    if (mobile.length < 10) {
+      final stored = await StorageService.getUserPhone();
+      if (stored != null && stored.isNotEmpty) {
+        mobile = _normalizeIndianMobile(stored);
+      }
+    }
+    if (mobile.length < 10) {
+      final simPhone = await AlertService.detectSimPhoneNumber();
+      if (simPhone != null && simPhone.isNotEmpty) {
+        mobile = _normalizeIndianMobile(simPhone);
+        if (mobile.length >= 10) {
+          await StorageService.saveUserPhone(mobile);
+        }
+      }
+    }
 
     final titleMap = {
       'sos': 'KisanMausam SOS Emergency Alert',
       'heat_wave': 'KisanMausam Severe Heat Wave Alert',
       'heavy_rain': 'KisanMausam Heavy Rainfall Alert',
+      'cold_wave_frost': 'KisanMausam Ground Frost Alert',
       'frost': 'KisanMausam Ground Frost Alert',
       'weather_change': 'KisanMausam Weather Change Alert',
       'account_active': 'KisanMausam Weather Alert Activated',
@@ -688,8 +703,7 @@ class ApiService {
     };
     final alertTitle = titleMap[alertType] ?? 'KisanMausam Weather & Climate Alert';
 
-    // Dispatch real custom SMS with the exact weather/SOS alert text directly via Android SmsManager.
-    // Never fall back to MessageCentral VerifyNow here, because VerifyNow sends an OTP instead of custom alert text.
+    // Always invoke native channel: posts high-priority notification immediately and sends real SMS via SmsManager.
     return await AlertService.sendNativeDirectSms(
       phone: mobile,
       title: alertTitle,
@@ -703,10 +717,40 @@ class ApiService {
     String? phoneNumber,
     String? locationName,
   }) async {
-    final savedPhone = phoneNumber ?? await StorageService.getUserPhone();
+    var savedPhone = phoneNumber ?? await StorageService.getUserPhone();
+    if (savedPhone == null || savedPhone.trim().isEmpty) {
+      final sim = await AlertService.detectSimPhoneNumber();
+      if (sim != null && sim.isNotEmpty) {
+        savedPhone = sim;
+        await StorageService.saveUserPhone(sim);
+      }
+    }
     final loc = (locationName != null && locationName.trim().isNotEmpty) ? locationName.trim() : 'Your Farm';
-    Map<String, dynamic>? backendResult;
 
+    final msgMap = {
+      'frost':
+          'KisanMausam Alert ($loc): Ground Frost Warning (1.2C, 85% risk). Action: Light evening irrigation. Helpline: 1800-180-1551',
+      'cold_wave_frost':
+          'KisanMausam Alert ($loc): Ground Frost Warning (1.2C, 85% risk). Action: Light evening irrigation. Helpline: 1800-180-1551',
+      'heavy_rain':
+          'KisanMausam Alert ($loc): Heavy Rain Warning (145mm, 90% risk). Action: Clear field drainage channels. Helpline: 1800-180-1551',
+      'heat_wave':
+          'KisanMausam Alert ($loc): Severe Heat Wave (44.5C, 88% risk). Action: Evening irrigation & straw mulch. Helpline: 1800-180-1551',
+      'sos':
+          'KisanMausam SOS ($loc): Severe Farm Weather Emergency! Immediate protection needed. Emergency: 112 | Helpline: 1800-180-1551',
+      'weather_change':
+          'KisanMausam Alert ($loc): Sudden Weather Shift (82% risk). Action: Cover harvested crops & check soil moisture.',
+    };
+
+    // 1. Dispatch Native SMS & High-Priority Notification immediately without waiting on backend timeout
+    final bool smsSentDirect = await sendWeatherOrSosSms(
+      phone: savedPhone ?? '',
+      alertType: scenario,
+      message: msgMap[scenario] ?? msgMap['weather_change']!,
+    );
+
+    // 2. Also notify backend asynchronously / with fast timeout
+    Map<String, dynamic>? backendResult;
     try {
       final queryParams = <String, dynamic>{'hazard_scenario': scenario};
       if (savedPhone != null && savedPhone.isNotEmpty) {
@@ -720,27 +764,6 @@ class ApiService {
         backendResult = response.data as Map<String, dynamic>;
       }
     } catch (_) {}
-
-    bool smsSentDirect = false;
-    if (savedPhone != null && savedPhone.isNotEmpty) {
-      final msgMap = {
-        'frost':
-            'KisanMausam Alert ($loc): Ground Frost Warning (1.2C, 85% risk). Action: Light evening irrigation. Helpline: 1800-180-1551',
-        'heavy_rain':
-            'KisanMausam Alert ($loc): Heavy Rain Warning (145mm, 90% risk). Action: Clear field drainage channels. Helpline: 1800-180-1551',
-        'heat_wave':
-            'KisanMausam Alert ($loc): Severe Heat Wave (44.5C, 88% risk). Action: Evening irrigation & straw mulch. Helpline: 1800-180-1551',
-        'sos':
-            'KisanMausam SOS ($loc): Severe Farm Weather Emergency! Immediate protection needed. Emergency: 112 | Helpline: 1800-180-1551',
-        'weather_change':
-            'KisanMausam Alert ($loc): Sudden Weather Shift (82% risk). Action: Cover harvested crops & check soil moisture.',
-      };
-      smsSentDirect = await sendWeatherOrSosSms(
-        phone: savedPhone,
-        alertType: scenario,
-        message: msgMap[scenario] ?? msgMap['weather_change']!,
-      );
-    }
 
     if (backendResult != null) {
       backendResult['sms_sent'] = smsSentDirect;

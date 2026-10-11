@@ -2,7 +2,7 @@ name: kisan_mausam
 description: "KisanMausam: Hindi-first weather and crop-protection mobile app for Indian farmers."
 publish_to: 'none'
 
-version: 1.4.0+18
+version: 1.5.0+19
 
 environment:
   sdk: ^3.13.5

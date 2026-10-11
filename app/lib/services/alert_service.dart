@@ -191,6 +191,7 @@ class AlertService {
     double? lat,
     double? lon,
     required Future<bool> Function() onSendSms,
+    Future<bool> Function(String newPhone)? onSendSmsWithPhone,
   }) async {
     final isHi = lang == 'hi';
     final spokenWarning = isHi
@@ -204,6 +205,9 @@ class AlertService {
     bool sirenActive = true;
     bool smsSending = true;
     bool smsSent = false;
+    bool dispatchInFlight = false;
+    String currentPhone = (phoneNumber ?? '').trim();
+    final phoneInputCtrl = TextEditingController(text: currentPhone);
 
     await showModalBottomSheet<void>(
       context: context,
@@ -214,10 +218,13 @@ class AlertService {
       builder: (sheetCtx) {
         return StatefulBuilder(
           builder: (ctx, setSheetState) {
-            // Trigger initial SMS send once
-            if (smsSending && !smsSent) {
+            if (smsSending && !dispatchInFlight) {
+              dispatchInFlight = true;
               Future.microtask(() async {
-                final ok = await onSendSms();
+                final ok = (currentPhone.length >= 10 && onSendSmsWithPhone != null)
+                    ? await onSendSmsWithPhone(currentPhone)
+                    : await onSendSms();
+                dispatchInFlight = false;
                 if (ctx.mounted) {
                   setSheetState(() {
                     smsSending = false;
@@ -227,8 +234,9 @@ class AlertService {
               });
             }
 
-            final displayPhone = (phoneNumber != null && phoneNumber.trim().isNotEmpty)
-                ? '+91 ${phoneNumber.trim()}'
+            final hasValidPhone = currentPhone.replaceAll(RegExp(r'\D'), '').length >= 10;
+            final displayPhone = hasValidPhone
+                ? '+91 ${currentPhone.replaceAll(RegExp(r'\D'), '')}'
                 : (isHi ? 'पंजीकृत मोबाइल नंबर' : 'registered mobile number');
 
             String smsStatusText;
@@ -236,10 +244,14 @@ class AlertService {
               smsStatusText = isHi
                   ? '$displayPhone पर स्थान ($locationName) सहित SMS भेजा जा रहा है...'
                   : 'Sending SMS with location ($locationName) to $displayPhone...';
-            } else if (smsSent) {
+            } else if (smsSent && hasValidPhone) {
               smsStatusText = isHi
                   ? '$displayPhone पर आपातकालीन SMS भेज दिया गया है ($locationName)'
                   : 'SMS sent to $displayPhone ($locationName)';
+            } else if (!hasValidPhone) {
+              smsStatusText = isHi
+                  ? 'आपातकालीन अलर्ट सक्रिय ($locationName)। SMS पाने हेतु नीचे 10 अंकों का मोबाइल नंबर दर्ज करें:'
+                  : 'Emergency alert active ($locationName). Enter 10-digit mobile number below to receive SMS:';
             } else {
               smsStatusText = isHi
                   ? '$displayPhone पर SMS लंबित है (पुनः प्रयास करें या SMS अनुमति दें)'
@@ -251,112 +263,166 @@ class AlertService {
               onPopInvokedWithResult: (didPop, _) {
                 stopAlertSound();
               },
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Theme.of(ctx).scaffoldBackgroundColor,
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(AppTheme.rSheet),
-                  ),
+              child: Padding(
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.viewInsetsOf(ctx).bottom,
                 ),
-                child: SafeArea(
-                  top: false,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // Red header with "SOS active"
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: AppTheme.s24,
-                          vertical: AppTheme.s24,
-                        ),
-                        decoration: const BoxDecoration(
-                          color: AppTheme.danger,
-                          borderRadius: BorderRadius.vertical(
-                            top: Radius.circular(AppTheme.rSheet),
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(
-                              Icons.shield_rounded,
-                              color: Colors.white,
-                              size: 32,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Theme.of(ctx).scaffoldBackgroundColor,
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(AppTheme.rSheet),
+                    ),
+                  ),
+                  child: SafeArea(
+                    top: false,
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // Red header with "SOS active"
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: AppTheme.s24,
+                              vertical: AppTheme.s24,
                             ),
-                            const SizedBox(width: AppTheme.s12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    AppStrings.get('sos_active_title', lang),
-                                    style: AppTheme.titleStyle.copyWith(
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    locationName,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
+                            decoration: const BoxDecoration(
+                              color: AppTheme.danger,
+                              borderRadius: BorderRadius.vertical(
+                                top: Radius.circular(AppTheme.rSheet),
                               ),
                             ),
-                          ],
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.all(AppTheme.s24),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            // SMS Status Surface
-                            AppSurface(
-                              padding: const EdgeInsets.all(AppTheme.s16),
-                              borderRadius: AppTheme.rInput,
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    smsSending
-                                        ? Icons.schedule_send_rounded
-                                        : (smsSent
-                                            ? Icons.check_circle_rounded
-                                            : Icons.error_outline_rounded),
-                                    color: smsSent
-                                        ? AppTheme.semanticSuccessText(ctx)
-                                        : AppTheme.semanticWarningText(ctx),
-                                    size: 24,
-                                  ),
-                                  const SizedBox(width: AppTheme.s12),
-                                  Expanded(
-                                    child: Text(
-                                      smsStatusText,
-                                      style: TextStyle(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w600,
-                                        color: AppTheme.textPrimary(ctx),
-                                        height: 1.4,
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.shield_rounded,
+                                  color: Colors.white,
+                                  size: 32,
+                                ),
+                                const SizedBox(width: AppTheme.s12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        AppStrings.get('sos_active_title', lang),
+                                        style: AppTheme.titleStyle.copyWith(
+                                          color: Colors.white,
+                                        ),
                                       ),
-                                    ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        locationName,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                  if (!smsSending && !smsSent)
-                                    TextButton(
-                                      onPressed: () {
-                                        setSheetState(() {
-                                          smsSending = true;
-                                        });
-                                      },
-                                      child: Text(isHi ? 'पुनः भेजें' : 'Retry'),
-                                    ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: AppTheme.s24),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.all(AppTheme.s24),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                // SMS Status Surface
+                                AppSurface(
+                                  padding: const EdgeInsets.all(AppTheme.s16),
+                                  borderRadius: AppTheme.rInput,
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    children: [
+                                      Row(
+                                        crossAxisAlignment: CrossAxisAlignment.center,
+                                        children: [
+                                          Icon(
+                                            smsSending
+                                                ? Icons.schedule_send_rounded
+                                                : (smsSent && hasValidPhone
+                                                    ? Icons.check_circle_rounded
+                                                    : Icons.sms_rounded),
+                                            color: (smsSent && hasValidPhone)
+                                                ? AppTheme.semanticSuccessText(ctx)
+                                                : AppTheme.semanticWarningText(ctx),
+                                            size: 24,
+                                          ),
+                                          const SizedBox(width: AppTheme.s12),
+                                          Expanded(
+                                            child: Text(
+                                              smsStatusText,
+                                              style: TextStyle(
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.w600,
+                                                color: AppTheme.textPrimary(ctx),
+                                                height: 1.4,
+                                              ),
+                                            ),
+                                          ),
+                                          if (!smsSending && hasValidPhone)
+                                            TextButton(
+                                              onPressed: () {
+                                                setSheetState(() {
+                                                  smsSent = false;
+                                                  smsSending = true;
+                                                });
+                                              },
+                                              child: Text(isHi ? 'पुनः भेजें' : 'Resend'),
+                                            ),
+                                        ],
+                                      ),
+                                      if (!hasValidPhone) ...[
+                                        const SizedBox(height: AppTheme.s12),
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: TextField(
+                                                controller: phoneInputCtrl,
+                                                keyboardType: TextInputType.phone,
+                                                maxLength: 10,
+                                                decoration: InputDecoration(
+                                                  hintText: isHi
+                                                      ? '10 अंकों का मोबाइल नंबर'
+                                                      : '10-digit mobile number',
+                                                  prefixText: '+91 ',
+                                                  counterText: '',
+                                                  isDense: true,
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: AppTheme.s8),
+                                            ElevatedButton(
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: AppTheme.primaryButtonFill(ctx),
+                                                foregroundColor: Colors.white,
+                                                minimumSize: const Size(88, 44),
+                                              ),
+                                              onPressed: () {
+                                                final digits = phoneInputCtrl.text
+                                                    .replaceAll(RegExp(r'\D'), '');
+                                                if (digits.length >= 10) {
+                                                  final ten = digits.substring(digits.length - 10);
+                                                  setSheetState(() {
+                                                    currentPhone = ten;
+                                                    smsSent = false;
+                                                    smsSending = true;
+                                                  });
+                                                }
+                                              },
+                                              child: Text(isHi ? 'SMS भेजें' : 'Send SMS'),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: AppTheme.s24),
 
                             // 1. Dominant Primary Action at top: Stop Siren
                             DangerButton(
@@ -419,6 +485,8 @@ class AlertService {
                       ),
                     ],
                   ),
+                    ),
+                  ),
                 ),
               ),
             );
@@ -426,6 +494,7 @@ class AlertService {
         );
       },
     ).whenComplete(() {
+      phoneInputCtrl.dispose();
       stopAlertSound();
     });
   }
