@@ -13,12 +13,14 @@ import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.media.RingtoneManager
 import android.media.ToneGenerator
+import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.provider.Settings
 import android.telephony.SmsManager
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
@@ -26,9 +28,11 @@ import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.io.File
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "in.kishanmausam.kisan_mausam/native_alert"
@@ -42,6 +46,7 @@ class MainActivity : FlutterActivity() {
     private var isSirenActive = false
     private var previousMusicVolume: Int? = null
     private var previousAlarmVolume: Int? = null
+    private var pendingInstallApkPath: String? = null
 
     private data class PendingAlert(
         val phone: String,
@@ -86,6 +91,24 @@ class MainActivity : FlutterActivity() {
                     val title = call.argument<String>("title") ?: "Kisan Mausam Weather Alert"
                     val sent = sendDirectSmsAndNotify(phone, title, message)
                     result.success(sent)
+                }
+                "getUpdateApkPath" -> {
+                    val dir = externalCacheDir ?: cacheDir
+                    val apkFile = File(dir, "kisan-mausam-update.apk")
+                    result.success(apkFile.absolutePath)
+                }
+                "canInstallPackages" -> {
+                    val allowed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        packageManager.canRequestPackageInstalls()
+                    } else {
+                        true
+                    }
+                    result.success(allowed)
+                }
+                "installApk" -> {
+                    val filePath = call.argument<String>("filePath") ?: ""
+                    val launched = installApkFile(filePath)
+                    result.success(launched)
                 }
                 else -> result.notImplemented()
             }
@@ -601,6 +624,73 @@ class MainActivity : FlutterActivity() {
             }
             nm.notify((System.currentTimeMillis() % 100000).toInt(), builder.build())
         } catch (_: Exception) {}
+    }
+
+    private fun installApkFile(filePath: String): Boolean {
+        try {
+            if (filePath.isBlank()) return false
+            val apkFile = File(filePath)
+            if (!apkFile.exists() || apkFile.length() <= 0L) return false
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
+                pendingInstallApkPath = filePath
+                Toast.makeText(
+                    this,
+                    "कृपया ऐप अपडेट इंस्टॉल करने के लिए अनुमति दें (Allow from this source)",
+                    Toast.LENGTH_LONG
+                ).show()
+                val settingsIntent = Intent(
+                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:$packageName")
+                ).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                startActivity(settingsIntent)
+                return true
+            }
+
+            return launchPackageInstaller(apkFile)
+        } catch (_: Exception) {
+            return false
+        }
+    }
+
+    private fun launchPackageInstaller(apkFile: File): Boolean {
+        return try {
+            val apkUri = FileProvider.getUriForFile(
+                this,
+                "$packageName.fileprovider",
+                apkFile
+            )
+            val installIntent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(apkUri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(installIntent)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val pendingPath = pendingInstallApkPath
+        if (!pendingPath.isNullOrBlank()) {
+            val canInstall = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                packageManager.canRequestPackageInstalls()
+            } else {
+                true
+            }
+            if (canInstall) {
+                pendingInstallApkPath = null
+                val apkFile = File(pendingPath)
+                if (apkFile.exists() && apkFile.length() > 0L) {
+                    launchPackageInstaller(apkFile)
+                }
+            }
+        }
     }
 
     override fun onDestroy() {
