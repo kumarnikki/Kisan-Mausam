@@ -1022,149 +1022,185 @@ class _CropRecommenderScreenState extends State<CropRecommenderScreen> {
         : '$locLabel • ${_gpsTemp.toStringAsFixed(0)}°C • मिट्टी नमी $soilPct% • 10-दिन वर्षा ${_gpsRain10d.toStringAsFixed(0)} मिमी • $_seasonTitle';
 
     return Scaffold(
-      body: AmbientBackground(
-        quiet: true,
-        weatherCode: _activeWeather?.current.weatherCode ?? 0,
-        isDay: _activeWeather?.current.isDay ?? true,
-        temperature: _gpsTemp,
-        child: SafeArea(
-          child: Column(
-            children: [
-              // 1. Header
-              Container(
-                constraints: const BoxConstraints(minHeight: 56),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppTheme.s16,
-                  vertical: AppTheme.s8,
-                ),
-                child: Row(
-                  children: [
-                    Semantics(
-                      button: true,
-                      label: isEn ? 'Back' : 'वापस जाएं',
-                      child: IconButton(
+      backgroundColor: Colors.transparent,
+      body: AppBackdrop(
+        child: AmbientBackground(
+          quiet: true,
+          weatherCode: _activeWeather?.current.weatherCode ?? 0,
+          isDay: _activeWeather?.current.isDay ?? true,
+          temperature: _gpsTemp,
+          child: SafeArea(
+            bottom: false,
+            child: Column(
+              children: [
+                // 1. Header
+                Container(
+                  constraints: const BoxConstraints(minHeight: 56),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppTheme.s16,
+                    vertical: AppTheme.s8,
+                  ),
+                  child: Row(
+                    children: [
+                      Semantics(
+                        button: true,
+                        label: isEn ? 'Back' : 'वापस जाएं',
+                        child: IconButton(
+                          icon: Icon(
+                            Icons.arrow_back,
+                            color: AppTheme.textPrimary(context),
+                          ),
+                          onPressed: () {
+                            if (widget.onBack != null) {
+                              widget.onBack!();
+                            } else {
+                              Navigator.of(context).maybePop();
+                            }
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: AppTheme.s4),
+                      Expanded(
+                        child: Text(
+                          isEn
+                              ? 'Crop Advisory & Recommendations'
+                              : 'फसल चयन व सिफारिशें',
+                          style: AppTheme.sectionStyle.copyWith(
+                            color: AppTheme.textPrimary(context),
+                          ),
+                        ),
+                      ),
+                      TextButton.icon(
+                        onPressed: _callKvk,
                         icon: Icon(
-                          Icons.arrow_back,
-                          color: AppTheme.textPrimary(context),
-                        ),
-                        onPressed: () {
-                          if (widget.onBack != null) {
-                            widget.onBack!();
-                          } else {
-                            Navigator.of(context).maybePop();
-                          }
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: AppTheme.s4),
-                    Expanded(
-                      child: Text(
-                        isEn ? 'Crop Advisory & Recommendations' : 'फसल चयन व सिफारिशें',
-                        style: AppTheme.sectionStyle.copyWith(
-                          color: AppTheme.textPrimary(context),
-                        ),
-                      ),
-                    ),
-                    TextButton.icon(
-                      onPressed: _callKvk,
-                      icon: Icon(
-                        Icons.phone_in_talk_rounded,
-                        size: 18,
-                        color: AppTheme.primaryActionColor(context),
-                      ),
-                      label: Text(
-                        isEn ? 'Call Now' : 'कॉल करें',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
+                          Icons.phone_in_talk_rounded,
+                          size: 18,
                           color: AppTheme.primaryActionColor(context),
                         ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              Expanded(
-                child: _isLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : ListView(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: AppTheme.s16,
-                          vertical: AppTheme.s8,
+                        label: Text(
+                          isEn ? 'Call Now' : 'कॉल करें',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.primaryActionColor(context),
+                          ),
                         ),
-                        children: [
-                          // 2. Condensed 1-line GPS Summary Banner
-                          AppSurface(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: AppTheme.s12,
-                              vertical: 10,
-                            ),
-                            borderRadius: AppTheme.rInput,
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.my_location_rounded,
-                                  size: 18,
-                                  color: AppTheme.primaryActionColor(context),
-                                ),
-                                const SizedBox(width: AppTheme.s8),
-                                Expanded(
-                                  child: Text(
-                                    gpsSummaryLine,
-                                    style: TextStyle(
-                                      fontSize: 13.5,
-                                      fontWeight: FontWeight.w600,
-                                      color: AppTheme.textPrimary(context),
-                                      height: 1.35,
+                      ),
+                    ],
+                  ),
+                ),
+
+                Expanded(
+                  child: _isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : ListView(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppTheme.s16,
+                            vertical: AppTheme.s8,
+                          ),
+                          children: [
+                            // 2. Condensed 1-line GPS Summary Banner (SolidCard)
+                            SolidCard(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: AppTheme.s12,
+                                vertical: 10,
+                              ),
+                              radius: AppTheme.rInput,
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.my_location_rounded,
+                                    size: 18,
+                                    color: AppTheme.primaryActionColor(context),
+                                  ),
+                                  const SizedBox(width: AppTheme.s8),
+                                  Expanded(
+                                    child: Text(
+                                      gpsSummaryLine,
+                                      style: TextStyle(
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppTheme.textPrimary(context),
+                                        height: 1.35,
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: AppTheme.s8),
-
-                          // 3. 1-line ICAR/KVK Expert-Review Notice with Info Icon
-                          InfoBanner(
-                            icon: Icons.verified_user_rounded,
-                            iconColor: AppTheme.semanticWarningText(context),
-                            text: isEn
-                                ? 'Expert Review Required: Verify final seed choice with KVK'
-                                : 'विशेषज्ञ समीक्षा आवश्यक: अंतिम निर्णय से पूर्व KVK से संपर्क करें',
-                            onTap: _showIcarExpertNoticeSheet,
-                            trailing: Icon(
-                              Icons.info_outline_rounded,
-                              size: 20,
-                              color: AppTheme.textSecondary(context),
-                            ),
-                          ),
-                          const SizedBox(height: AppTheme.s16),
-
-                          SectionHeader(
-                            title: isEn
-                                ? 'Top 5 Recommended Crops'
-                                : 'शीर्ष 5 अनुशंसित फसलें',
-                          ),
-
-                          // 4. Rank #1 Expanded Card
-                          if (_recommendations.isNotEmpty)
-                            _buildRankOneCard(_recommendations.first, isEn),
-
-                          const SizedBox(height: AppTheme.s12),
-
-                          // 5. Ranks #2-#5 Compact Expandable Rows
-                          ..._recommendations.skip(1).map(
-                                (item) => Padding(
-                                  padding: const EdgeInsets.only(bottom: AppTheme.s8),
-                                  child: _buildCompactCropRow(item, isEn),
-                                ),
+                                ],
                               ),
+                            ),
+                            const SizedBox(height: AppTheme.s8),
 
-                          const SizedBox(height: AppTheme.s24),
-                        ],
-                      ),
-              ),
-            ],
+                            // 3. 1-line ICAR/KVK Expert-Review Notice (GlassCard, tint amber 30%)
+                            GlassCard(
+                              radius: 20,
+                              tint: const Color(0x4DFFB74D),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: AppTheme.s12,
+                                vertical: 10,
+                              ),
+                              onTap: _showIcarExpertNoticeSheet,
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.verified_user_rounded,
+                                    size: 20,
+                                    color: AppTheme.semanticWarningText(
+                                      context,
+                                    ),
+                                  ),
+                                  const SizedBox(width: AppTheme.s8),
+                                  Expanded(
+                                    child: Text(
+                                      isEn
+                                          ? 'Expert Review Required: Verify final seed choice with KVK'
+                                          : 'विशेषज्ञ समीक्षा आवश्यक: अंतिम निर्णय से पूर्व KVK से संपर्क करें',
+                                      style: TextStyle(
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppTheme.textPrimary(context),
+                                        height: 1.35,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: AppTheme.s8),
+                                  Icon(
+                                    Icons.info_outline_rounded,
+                                    size: 20,
+                                    color: AppTheme.textPrimary(context),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: AppTheme.s16),
+
+                            SectionHeader(
+                              title: isEn
+                                  ? 'Top 5 Recommended Crops'
+                                  : 'शीर्ष 5 अनुशंसित फसलें',
+                            ),
+
+                            // 4. Rank #1 Expanded Card (GlassCard, tint white 50%, radius 28)
+                            if (_recommendations.isNotEmpty)
+                              _buildRankOneCard(_recommendations.first, isEn),
+
+                            const SizedBox(height: AppTheme.s12),
+
+                            // 5. Ranks #2-#5 Compact Expandable Rows (SolidCard)
+                            ..._recommendations.skip(1).map(
+                                  (item) => Padding(
+                                    padding: const EdgeInsets.only(
+                                      bottom: AppTheme.s8,
+                                    ),
+                                    child: _buildCompactCropRow(item, isEn),
+                                  ),
+                                ),
+
+                            // ~100px bottom padding for floating glass bottom nav bar
+                            const SizedBox(height: 108),
+                          ],
+                        ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -1173,12 +1209,23 @@ class _CropRecommenderScreenState extends State<CropRecommenderScreen> {
 
   Widget _buildRankOneCard(CropRecommendationItem item, bool isEn) {
     final cropTitle = isEn ? item.nameEn : item.nameHi;
+    final isHc = AppTheme.isHighContrast(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryCol = AppTheme.primaryActionColor(context);
-    final fillCol = AppTheme.primaryButtonFill(context);
+    final badgeFillCol = isHc ? const Color(0xFF004D20) : AppTheme.brandGreen;
+    final pctChipBg = isHc
+        ? Colors.white
+        : (isDark
+            ? primaryCol.withValues(alpha: 0.18)
+            : const Color(0xFFE3EFE6));
+    final pctChipText = isHc
+        ? Colors.black
+        : (isDark ? primaryCol : AppTheme.brandGreen);
 
-    return AppSurface(
+    return GlassCard(
+      radius: 28,
+      tint: Colors.white.withValues(alpha: 0.50),
       padding: const EdgeInsets.all(AppTheme.s16),
-      borderColor: primaryCol,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1188,13 +1235,14 @@ class _CropRecommenderScreenState extends State<CropRecommenderScreen> {
             alignment: WrapAlignment.spaceBetween,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
+              // Solid brandGreen "#1" badge
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: AppTheme.s12,
                   vertical: 4,
                 ),
                 decoration: BoxDecoration(
-                  color: fillCol,
+                  color: badgeFillCol,
                   borderRadius: BorderRadius.circular(AppTheme.rPill),
                 ),
                 child: Text(
@@ -1206,19 +1254,21 @@ class _CropRecommenderScreenState extends State<CropRecommenderScreen> {
                   ),
                 ),
               ),
+              // Solid light-green (#E3EFE6) % chip with brandGreen text
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: AppTheme.s12,
                   vertical: 4,
                 ),
                 decoration: BoxDecoration(
-                  color: fillCol.withValues(alpha: 0.14),
+                  color: pctChipBg,
                   borderRadius: BorderRadius.circular(AppTheme.rPill),
+                  border: isHc ? Border.all(color: Colors.black, width: 1.5) : null,
                 ),
                 child: Text(
                   '${item.matchScore}% ${isEn ? "match" : "उपयुक्त"}',
                   style: TextStyle(
-                    color: primaryCol,
+                    color: pctChipText,
                     fontSize: 14,
                     fontWeight: FontWeight.w800,
                   ),
@@ -1301,6 +1351,7 @@ class _CropRecommenderScreenState extends State<CropRecommenderScreen> {
             '${isEn ? "Source" : "स्रोत"}: ${item.sourceCitation}',
             style: TextStyle(
               fontSize: 12,
+              fontWeight: FontWeight.w600,
               color: AppTheme.textSecondary(context),
             ),
           ),
@@ -1318,15 +1369,26 @@ class _CropRecommenderScreenState extends State<CropRecommenderScreen> {
   Widget _buildCompactCropRow(CropRecommendationItem item, bool isEn) {
     final isExpanded = _expandedRanks.contains(item.rank);
     final cropTitle = isEn ? item.nameEn : item.nameHi;
+    final isHc = AppTheme.isHighContrast(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryCol = AppTheme.primaryActionColor(context);
-    final disableAnimations = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    final pctChipBg = isHc
+        ? Colors.white
+        : (isDark
+            ? primaryCol.withValues(alpha: 0.18)
+            : const Color(0xFFE3EFE6));
+    final pctChipText = isHc
+        ? Colors.black
+        : (isDark ? primaryCol : AppTheme.brandGreen);
+    final disableAnimations =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
 
-    return AppSurface(
+    return SolidCard(
       padding: const EdgeInsets.symmetric(
         horizontal: AppTheme.s16,
         vertical: AppTheme.s12,
       ),
-      borderRadius: AppTheme.rInput,
+      radius: AppTheme.rInput,
       onTap: () {
         setState(() {
           if (isExpanded) {
@@ -1346,7 +1408,7 @@ class _CropRecommenderScreenState extends State<CropRecommenderScreen> {
                 height: 32,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: primaryCol.withValues(alpha: 0.12),
+                  color: pctChipBg,
                   borderRadius: BorderRadius.circular(AppTheme.s8),
                 ),
                 child: Text(
@@ -1354,7 +1416,7 @@ class _CropRecommenderScreenState extends State<CropRecommenderScreen> {
                   style: TextStyle(
                     fontSize: 13.5,
                     fontWeight: FontWeight.w800,
-                    color: primaryCol,
+                    color: pctChipText,
                   ),
                 ),
               ),
@@ -1387,15 +1449,16 @@ class _CropRecommenderScreenState extends State<CropRecommenderScreen> {
                   vertical: 4,
                 ),
                 decoration: BoxDecoration(
-                  color: primaryCol.withValues(alpha: 0.12),
+                  color: pctChipBg,
                   borderRadius: BorderRadius.circular(AppTheme.rPill),
+                  border: isHc ? Border.all(color: Colors.black, width: 1.5) : null,
                 ),
                 child: Text(
                   '${item.matchScore}%',
                   style: TextStyle(
                     fontSize: 13.5,
                     fontWeight: FontWeight.w800,
-                    color: primaryCol,
+                    color: pctChipText,
                   ),
                 ),
               ),

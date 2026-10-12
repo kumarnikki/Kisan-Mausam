@@ -3,15 +3,39 @@ import 'package:flutter/material.dart';
 class AppTheme {
   // Primary & Action Colors (WCAG AA verified >= 4.5:1 for body, >= 3:1 for large/UI)
   static const Color primaryGreen = Color(0xFF1B5E20); // 7.85:1 on white
+  static const Color brandGreen = primaryGreen; // #1B5E20
   static const Color darkActionTint = Color(0xFF66BB6A); // 8.12:1 on dark bg
   static const Color darkButtonFill = Color(0xFF2E7D32); // 5.13:1 with white text
 
+  // Glassmorphism Design Tokens
+  static const Color scaffoldBg = Color(0xFFEAF1EC); // #EAF1EC
+  static const Color warnOrange = Color(0xFFB34700); // #B34700
+  static const Color amberChip = Color(0xFFF59E0B); // #F59E0B
+  static const Color amberChipText = Color(0xFF2E1B00); // #2E1B00
+  static const Color sosRed = Color(0xFFC62828); // #C62828
+  static const double blurSigma = 18.0; // Shared glass blur sigma constant
+  static const Color glassBorderColor = Color(0xBFFFFFFF); // 1px white at 75% opacity
+  static const Color glassTopHighlight = Color(0xE6FFFFFF); // 1px white at 90% opacity
+  static const Color glassShadowColor = Color(0x241B5E20); // rgba(27, 94, 32, 0.14)
+  static const BoxShadow glassBoxShadow = BoxShadow(
+    color: glassShadowColor,
+    offset: Offset(0, 10),
+    blurRadius: 28,
+  );
+  static const Color solidCardBorderColor = Color(0x0F14301F); // rgba(20, 48, 31, 0.06)
+  static const Color solidCardShadowColor = Color(0x0F14301F); // rgba(20, 48, 31, 0.06)
+  static const BoxShadow solidCardBoxShadow = BoxShadow(
+    color: solidCardShadowColor,
+    offset: Offset(0, 2),
+    blurRadius: 8,
+  );
+
   // Semantic Colors
-  static const Color danger = Color(0xFFC62828); // 5.62:1 on white
+  static const Color danger = sosRed; // 5.62:1 on white
   static const Color dangerDark = Color(0xFFFF8A80); // 8.40:1 on dark surface
-  static const Color warningText = Color(0xFFBF360C); // 5.32:1 on white
+  static const Color warningText = warnOrange; // #B34700
   static const Color warningDark = Color(0xFFFFAB91); // 9.10:1 on dark surface
-  static const Color cautionAmber = Color(0xFFF9A825); // Fill only, dark text #141A14 (9.38:1)
+  static const Color cautionAmber = amberChip; // Fill only, dark text #2E1B00
   static const Color success = Color(0xFF2E7D32); // 5.13:1 on white
   static const Color successDark = Color(0xFF81C784); // 8.60:1 on dark surface
   static const Color info = Color(0xFF0277BD); // 4.86:1 on white
@@ -24,17 +48,17 @@ class AppTheme {
   static const Color dangerRed = danger;
   static const Color successGreen = success;
   static const Color infoBlue = info;
-  static const Color cautionAmberFill = cautionAmber;
-  static const Color cautionAmberText = textPrimaryLight;
+  static const Color cautionAmberFill = amberChip;
+  static const Color cautionAmberText = amberChipText;
   static const Color primaryGreenDarkFill = darkButtonFill;
 
   // Neutrals — Light
-  static const Color textPrimaryLight = Color(0xFF141A14);
-  static const Color textSecondaryLight = Color(0xFF424B43);
-  static const Color surfaceLight = Color(0xEBFFFFFF);
+  static const Color textPrimaryLight = Color(0xFF14301F); // #14301F
+  static const Color textSecondaryLight = Color(0xFF4C6355); // #4C6355
+  static const Color surfaceLight = Color(0xFFFFFFFF);
   static const Color surfaceSolidLight = Color(0xFFFFFFFF);
-  static const Color outlineLight = Color(0x1F141A14);
-  static const Color bgLight = Color(0xFFF6F7F8);
+  static const Color outlineLight = solidCardBorderColor;
+  static const Color bgLight = scaffoldBg;
 
   // Neutrals — Dark
   static const Color darkBg = Color(0xFF12110B);
@@ -262,6 +286,9 @@ class AppTheme {
           );
         }),
       ),
+      extensions: const <ThemeExtension<dynamic>>[
+        GlassTheme.light,
+      ],
     );
   }
 
@@ -348,6 +375,9 @@ class AppTheme {
           );
         }),
       ),
+      extensions: const <ThemeExtension<dynamic>>[
+        GlassTheme.dark,
+      ],
     );
   }
 
@@ -432,6 +462,167 @@ class AppTheme {
           );
         }),
       ),
+      extensions: const <ThemeExtension<dynamic>>[
+        GlassTheme.highContrast,
+      ],
+    );
+  }
+}
+
+@immutable
+class GlassTheme extends ThemeExtension<GlassTheme> {
+  final Color scaffoldBg;
+  final Color textPrimary;
+  final Color textSecondary;
+  final Color brandGreen;
+  final Color warnOrange;
+  final Color amberChip;
+  final Color amberChipText;
+  final Color sosRed;
+  final double blurSigma;
+  final Color glassBorderColor;
+  final Color glassTopHighlight;
+  final BoxShadow glassShadow;
+  final Color solidCardColor;
+  final Color solidCardBorderColor;
+  final BoxShadow solidCardShadow;
+
+  const GlassTheme({
+    required this.scaffoldBg,
+    required this.textPrimary,
+    required this.textSecondary,
+    required this.brandGreen,
+    required this.warnOrange,
+    required this.amberChip,
+    required this.amberChipText,
+    required this.sosRed,
+    required this.blurSigma,
+    required this.glassBorderColor,
+    required this.glassTopHighlight,
+    required this.glassShadow,
+    required this.solidCardColor,
+    required this.solidCardBorderColor,
+    required this.solidCardShadow,
+  });
+
+  static const GlassTheme light = GlassTheme(
+    scaffoldBg: AppTheme.scaffoldBg,
+    textPrimary: AppTheme.textPrimaryLight,
+    textSecondary: AppTheme.textSecondaryLight,
+    brandGreen: AppTheme.brandGreen,
+    warnOrange: AppTheme.warnOrange,
+    amberChip: AppTheme.amberChip,
+    amberChipText: AppTheme.amberChipText,
+    sosRed: AppTheme.sosRed,
+    blurSigma: AppTheme.blurSigma,
+    glassBorderColor: AppTheme.glassBorderColor,
+    glassTopHighlight: AppTheme.glassTopHighlight,
+    glassShadow: AppTheme.glassBoxShadow,
+    solidCardColor: Colors.white,
+    solidCardBorderColor: AppTheme.solidCardBorderColor,
+    solidCardShadow: AppTheme.solidCardBoxShadow,
+  );
+
+  static const GlassTheme dark = GlassTheme(
+    scaffoldBg: AppTheme.darkBg,
+    textPrimary: AppTheme.textPrimaryDark,
+    textSecondary: AppTheme.textSecondaryDark,
+    brandGreen: AppTheme.darkActionTint,
+    warnOrange: AppTheme.warningDark,
+    amberChip: AppTheme.amberChip,
+    amberChipText: AppTheme.amberChipText,
+    sosRed: AppTheme.sosRed,
+    blurSigma: AppTheme.blurSigma,
+    glassBorderColor: Color(0x3DFFFFFF),
+    glassTopHighlight: Color(0x59FFFFFF),
+    glassShadow: BoxShadow(
+      color: Color(0x47000000),
+      offset: Offset(0, 10),
+      blurRadius: 28,
+    ),
+    solidCardColor: AppTheme.surfaceCard,
+    solidCardBorderColor: AppTheme.outlineDark,
+    solidCardShadow: BoxShadow(
+      color: Color(0x3D000000),
+      offset: Offset(0, 2),
+      blurRadius: 8,
+    ),
+  );
+
+  static const GlassTheme highContrast = GlassTheme(
+    scaffoldBg: Colors.white,
+    textPrimary: Colors.black,
+    textSecondary: Color(0xFF1F1F1F),
+    brandGreen: Color(0xFF004D20),
+    warnOrange: Color(0xFF870000),
+    amberChip: AppTheme.amberChip,
+    amberChipText: Colors.black,
+    sosRed: Color(0xFFB71C1C),
+    blurSigma: 0.0,
+    glassBorderColor: Colors.black,
+    glassTopHighlight: Colors.transparent,
+    glassShadow: BoxShadow(color: Colors.transparent),
+    solidCardColor: Colors.white,
+    solidCardBorderColor: Colors.black,
+    solidCardShadow: BoxShadow(color: Colors.transparent),
+  );
+
+  @override
+  GlassTheme copyWith({
+    Color? scaffoldBg,
+    Color? textPrimary,
+    Color? textSecondary,
+    Color? brandGreen,
+    Color? warnOrange,
+    Color? amberChip,
+    Color? amberChipText,
+    Color? sosRed,
+    double? blurSigma,
+    Color? glassBorderColor,
+    Color? glassTopHighlight,
+    BoxShadow? glassShadow,
+    Color? solidCardColor,
+    Color? solidCardBorderColor,
+    BoxShadow? solidCardShadow,
+  }) {
+    return GlassTheme(
+      scaffoldBg: scaffoldBg ?? this.scaffoldBg,
+      textPrimary: textPrimary ?? this.textPrimary,
+      textSecondary: textSecondary ?? this.textSecondary,
+      brandGreen: brandGreen ?? this.brandGreen,
+      warnOrange: warnOrange ?? this.warnOrange,
+      amberChip: amberChip ?? this.amberChip,
+      amberChipText: amberChipText ?? this.amberChipText,
+      sosRed: sosRed ?? this.sosRed,
+      blurSigma: blurSigma ?? this.blurSigma,
+      glassBorderColor: glassBorderColor ?? this.glassBorderColor,
+      glassTopHighlight: glassTopHighlight ?? this.glassTopHighlight,
+      glassShadow: glassShadow ?? this.glassShadow,
+      solidCardColor: solidCardColor ?? this.solidCardColor,
+      solidCardBorderColor: solidCardBorderColor ?? this.solidCardBorderColor,
+      solidCardShadow: solidCardShadow ?? this.solidCardShadow,
+    );
+  }
+
+  @override
+  GlassTheme lerp(ThemeExtension<GlassTheme>? other, double t) {
+    if (other is! GlassTheme) return this;
+    return GlassTheme(
+      scaffoldBg: Color.lerp(scaffoldBg, other.scaffoldBg, t) ?? scaffoldBg,
+      textPrimary: Color.lerp(textPrimary, other.textPrimary, t) ?? textPrimary,
+      textSecondary: Color.lerp(textSecondary, other.textSecondary, t) ?? textSecondary,
+      brandGreen: Color.lerp(brandGreen, other.brandGreen, t) ?? brandGreen,
+      warnOrange: Color.lerp(warnOrange, other.warnOrange, t) ?? warnOrange,
+      amberChip: Color.lerp(amberChip, other.amberChip, t) ?? amberChip,
+      amberChipText: Color.lerp(amberChipText, other.amberChipText, t) ?? amberChipText,
+      sosRed: Color.lerp(sosRed, other.sosRed, t) ?? sosRed,
+      blurSigma: t < 0.5 ? blurSigma : other.blurSigma,
+      glassBorderColor: Color.lerp(glassBorderColor, other.glassBorderColor, t) ?? glassBorderColor,
+      glassTopHighlight: Color.lerp(glassTopHighlight, other.glassTopHighlight, t) ?? glassTopHighlight,
+      glassShadow: BoxShadow.lerp(glassShadow, other.glassShadow, t) ?? glassShadow,
+      solidCardColor: Color.lerp(solidCardColor, other.solidCardColor, t) ?? solidCardColor,
+      solidCardBorderColor: Color.lerp(solidCardBorderColor, other.solidCardBorderColor, t) ?? solidCardBorderColor,
+      solidCardShadow: BoxShadow.lerp(solidCardShadow, other.solidCardShadow, t) ?? solidCardShadow,
     );
   }
 }

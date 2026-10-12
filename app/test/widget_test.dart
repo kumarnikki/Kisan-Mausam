@@ -138,14 +138,16 @@ void main() {
     expect(created, isTrue);
   });
 
-  testWidgets('Test 6: WeatherHomeScreen displays top farm chip, HoldToConfirm SOS, Settings gear, and 3-tab NavigationBar', (WidgetTester tester) async {
+  testWidgets('Test 6: WeatherHomeScreen displays top farm chip, HoldToConfirm SOS, Settings gear, and 3-tab floating GlassCard nav bar', (WidgetTester tester) async {
     await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.lightTheme(),
       home: WeatherHomeScreen(onOpenSettings: () {}),
     ));
     await tester.pump(const Duration(milliseconds: 300));
 
-    // Verify persistent 3-tab NavigationBar (Weather, Ask mic, Crops)
-    expect(find.byType(NavigationBar), findsOneWidget);
+    // Verify persistent 3-tab floating GlassCard bottom nav (Weather, Ask mic, Crops)
+    expect(find.byType(GlassCard), findsWidgets);
+    expect(find.byType(BackdropFilter), findsAtLeastNWidgets(1));
     expect(find.byType(HoldToConfirmButton), findsOneWidget);
     expect(find.byIcon(Icons.settings_rounded), findsOneWidget);
 
@@ -154,6 +156,14 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.byIcon(Icons.my_location_rounded), findsWidgets);
     expect(find.byIcon(Icons.search_rounded), findsWidgets);
+
+    // Verify High-Contrast mode shows solid cards with no BackdropFilter blur
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.highContrastTheme(),
+      home: WeatherHomeScreen(onOpenSettings: () {}),
+    ));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(BackdropFilter), findsNothing);
   });
 
   testWidgets('Test 7: KrishiSahayakScreen renders slim header, single KVK compliance line, centered mic, and 4 starter chips', (WidgetTester tester) async {

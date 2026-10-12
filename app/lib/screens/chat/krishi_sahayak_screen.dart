@@ -498,224 +498,228 @@ class _KrishiSahayakScreenState extends State<KrishiSahayakScreen>
     final showBack = widget.onBack != null || Navigator.of(context).canPop();
 
     return Scaffold(
-      body: AmbientBackground(
-        quiet: true,
-        weatherCode: widget.weather?.current.weatherCode ?? 0,
-        isDay: widget.weather?.current.isDay ?? true,
-        temperature: widget.weather?.current.temperature ?? 28.0,
-        sunrise: widget.weather?.daily.isNotEmpty == true
-            ? widget.weather!.daily.first.sunrise
-            : null,
-        sunset: widget.weather?.daily.isNotEmpty == true
-            ? widget.weather!.daily.first.sunset
-            : null,
-        child: SafeArea(
-          child: Column(
-            children: [
-              // 1. Slim 1-line Header with overflow "..." menu for Gemini API key
-              Container(
-                constraints: const BoxConstraints(minHeight: 56),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppTheme.s16,
-                  vertical: AppTheme.s8,
-                ),
-                child: Row(
-                  children: [
-                    if (showBack) ...[
-                      Semantics(
-                        button: true,
-                        label: isEn ? 'Back' : 'वापस जाएं',
-                        child: IconButton(
-                          icon: Icon(
-                            Icons.arrow_back_rounded,
-                            color: AppTheme.textPrimary(context),
-                          ),
-                          onPressed: () {
-                            if (widget.onBack != null) {
-                              widget.onBack!();
-                            } else {
-                              Navigator.of(context).maybePop();
-                            }
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: AppTheme.s4),
-                    ],
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            isEn ? 'Krishi Sahayak' : 'किसान मौसम कृषि सहायक',
-                            style: AppTheme.sectionStyle.copyWith(
+      backgroundColor: Colors.transparent,
+      body: AppBackdrop(
+        child: AmbientBackground(
+          quiet: true,
+          weatherCode: widget.weather?.current.weatherCode ?? 0,
+          isDay: widget.weather?.current.isDay ?? true,
+          temperature: widget.weather?.current.temperature ?? 28.0,
+          sunrise: widget.weather?.daily.isNotEmpty == true
+              ? widget.weather!.daily.first.sunrise
+              : null,
+          sunset: widget.weather?.daily.isNotEmpty == true
+              ? widget.weather!.daily.first.sunset
+              : null,
+          child: SafeArea(
+            child: Column(
+              children: [
+                // 1. Slim 1-line Header with overflow "..." menu for Gemini API key
+                Container(
+                  constraints: const BoxConstraints(minHeight: 56),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppTheme.s16,
+                    vertical: AppTheme.s8,
+                  ),
+                  child: Row(
+                    children: [
+                      if (showBack) ...[
+                        Semantics(
+                          button: true,
+                          label: isEn ? 'Back' : 'वापस जाएं',
+                          child: IconButton(
+                            icon: Icon(
+                              Icons.arrow_back_rounded,
                               color: AppTheme.textPrimary(context),
                             ),
+                            onPressed: () {
+                              if (widget.onBack != null) {
+                                widget.onBack!();
+                              } else {
+                                Navigator.of(context).maybePop();
+                              }
+                            },
                           ),
-                          Text(
-                            '$locText - $cropText',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                              color: AppTheme.textSecondary(context),
+                        ),
+                        const SizedBox(width: AppTheme.s4),
+                      ],
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              isEn ? 'Krishi Sahayak' : 'किसान मौसम कृषि सहायक',
+                              style: AppTheme.sectionStyle.copyWith(
+                                color: AppTheme.textPrimary(context),
+                              ),
+                            ),
+                            Text(
+                              '$locText - $cropText',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                                color: AppTheme.textSecondary(context),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      PopupMenuButton<String>(
+                        icon: Icon(
+                          Icons.more_vert_rounded,
+                          color: AppTheme.textPrimary(context),
+                        ),
+                        tooltip: isEn ? 'More options' : 'अधिक विकल्प',
+                        onSelected: (val) {
+                          if (val == 'api_key') {
+                            _showApiKeyDialog();
+                          }
+                        },
+                        itemBuilder: (ctx) => [
+                          PopupMenuItem<String>(
+                            value: 'api_key',
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.key_rounded,
+                                  size: 20,
+                                  color: _hasCustomApiKey
+                                      ? AppTheme.primaryActionColor(ctx)
+                                      : AppTheme.textSecondary(ctx),
+                                ),
+                                const SizedBox(width: AppTheme.s8),
+                                Text(
+                                  isEn ? 'Gemini API key' : 'Gemini API कुंजी',
+                                ),
+                              ],
                             ),
                           ),
                         ],
                       ),
+                    ],
+                  ),
+                ),
+
+                // 2. Single Slim ICAR / KVK Compliance Line (Only KVK reference on the screen)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: AppTheme.s16),
+                  child: GlassCard(
+                    radius: 16,
+                    tint: const Color(0x4DFFB74D),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppTheme.s12,
+                      vertical: 6,
                     ),
-                    PopupMenuButton<String>(
-                      icon: Icon(
-                        Icons.more_vert_rounded,
-                        color: AppTheme.textPrimary(context),
-                      ),
-                      tooltip: isEn ? 'More options' : 'अधिक विकल्प',
-                      onSelected: (val) {
-                        if (val == 'api_key') {
-                          _showApiKeyDialog();
-                        }
-                      },
-                      itemBuilder: (ctx) => [
-                        PopupMenuItem<String>(
-                          value: 'api_key',
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.key_rounded,
-                                size: 20,
-                                color: _hasCustomApiKey
-                                    ? AppTheme.primaryActionColor(ctx)
-                                    : AppTheme.textSecondary(ctx),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.verified_user_rounded,
+                          size: 16,
+                          color: AppTheme.semanticWarningText(context),
+                        ),
+                        const SizedBox(width: AppTheme.s8),
+                        Expanded(
+                          child: Text(
+                            isEn
+                                ? 'Verify chemical doses with your KVK (1800-180-1551)'
+                                : 'ICAR मानक: रासायनिक मात्रा अपने KVK (1800-180-1551) से सत्यापित करें',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textPrimary(context),
+                              height: 1.35,
+                            ),
+                          ),
+                        ),
+                        Semantics(
+                          button: true,
+                          label: isEn
+                              ? 'Call KVK 1800-180-1551'
+                              : 'KVK 1800-180-1551 पर कॉल करें',
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(AppTheme.rInput),
+                            onTap: () => _callKvk('1800-180-1551'),
+                            child: SizedBox(
+                              width: 48,
+                              height: 40,
+                              child: Icon(
+                                Icons.call_rounded,
+                                size: 18,
+                                color: AppTheme.primaryActionColor(context),
                               ),
-                              const SizedBox(width: AppTheme.s8),
-                              Text(
-                                isEn ? 'Gemini API key' : 'Gemini API कुंजी',
-                              ),
-                            ],
+                            ),
                           ),
                         ),
                       ],
                     ),
-                  ],
-                ),
-              ),
-
-              // 2. Single Slim ICAR / KVK Compliance Line (Only KVK reference on the screen)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: AppTheme.s16),
-                child: AppSurface(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppTheme.s12,
-                    vertical: 6,
-                  ),
-                  borderRadius: AppTheme.rInput,
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.verified_user_rounded,
-                        size: 16,
-                        color: AppTheme.primaryActionColor(context),
-                      ),
-                      const SizedBox(width: AppTheme.s8),
-                      Expanded(
-                        child: Text(
-                          isEn
-                              ? 'Verify chemical doses with your KVK (1800-180-1551)'
-                              : 'ICAR मानक: रासायनिक मात्रा अपने KVK (1800-180-1551) से सत्यापित करें',
-                          style: TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.textSecondary(context),
-                            height: 1.35,
-                          ),
-                        ),
-                      ),
-                      Semantics(
-                        button: true,
-                        label: isEn
-                            ? 'Call KVK 1800-180-1551'
-                            : 'KVK 1800-180-1551 पर कॉल करें',
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(AppTheme.rInput),
-                          onTap: () => _callKvk('1800-180-1551'),
-                          child: SizedBox(
-                            width: 48,
-                            height: 40,
-                            child: Icon(
-                              Icons.call_rounded,
-                              size: 18,
-                              color: AppTheme.primaryActionColor(context),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              if (_micPermissionDenied)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    AppTheme.s16,
-                    AppTheme.s8,
-                    AppTheme.s16,
-                    0,
-                  ),
-                  child: InfoBanner(
-                    icon: Icons.mic_off_rounded,
-                    iconColor: AppTheme.semanticWarningText(context),
-                    text: isEn
-                        ? 'Microphone permission denied. Please enable mic access or type below.'
-                        : 'माइक्रोफ़ोन अनुमति उपलब्ध नहीं है। कृपया अनुमति दें या नीचे टाइप करें।',
                   ),
                 ),
 
-              // 3. Body: Empty state OR Chat message list
-              Expanded(
-                child: !hasUserMessages && _messages.isEmpty
-                    ? _buildEmptyState(isEn)
-                    : ListView.builder(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: AppTheme.s16,
-                          vertical: AppTheme.s12,
-                        ),
-                        itemCount: _messages.length + (_isLoading ? 1 : 0),
-                        itemBuilder: (context, index) {
-                          if (index == _messages.length) {
-                            return _buildTypingIndicator(isEn);
-                          }
-                          final msg = _messages[index];
-                          return _buildAnimatedMessage(msg, index);
-                        },
-                      ),
-              ),
-
-              // 4. After first message, starter chips become one horizontal scroll row above input
-              if (hasUserMessages || _messages.isNotEmpty)
-                SizedBox(
-                  height: 52,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppTheme.s16,
-                      vertical: 4,
+                if (_micPermissionDenied)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      AppTheme.s16,
+                      AppTheme.s8,
+                      AppTheme.s16,
+                      0,
                     ),
-                    itemCount: _starterChips.length,
-                    separatorBuilder: (_, index) => const SizedBox(width: AppTheme.s8),
-                    itemBuilder: (context, index) {
-                      final chip = _starterChips[index];
-                      return _buildStarterChip(
-                        chip['label'] as String,
-                        chip['icon'] as IconData,
-                      );
-                    },
+                    child: InfoBanner(
+                      icon: Icons.mic_off_rounded,
+                      iconColor: AppTheme.semanticWarningText(context),
+                      text: isEn
+                          ? 'Microphone permission denied. Please enable mic access or type below.'
+                          : 'माइक्रोफ़ोन अनुमति उपलब्ध नहीं है। कृपया अनुमति दें या नीचे टाइप करें।',
+                    ),
                   ),
+
+                // 3. Body: Empty state OR Chat message list
+                Expanded(
+                  child: !hasUserMessages && _messages.isEmpty
+                      ? _buildEmptyState(isEn)
+                      : ListView.builder(
+                          controller: _scrollController,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppTheme.s16,
+                            vertical: AppTheme.s12,
+                          ),
+                          itemCount: _messages.length + (_isLoading ? 1 : 0),
+                          itemBuilder: (context, index) {
+                            if (index == _messages.length) {
+                              return _buildTypingIndicator(isEn);
+                            }
+                            final msg = _messages[index];
+                            return _buildAnimatedMessage(msg, index);
+                          },
+                        ),
                 ),
 
-              // 5. Unified Input Bar: TextField + 56dp circular Mic/Send button
-              _buildInputBar(isEn),
-            ],
+                // 4. After first message, starter chips become one horizontal scroll row above input
+                if (hasUserMessages || _messages.isNotEmpty)
+                  SizedBox(
+                    height: 52,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppTheme.s16,
+                        vertical: 4,
+                      ),
+                      itemCount: _starterChips.length,
+                      separatorBuilder: (_, index) => const SizedBox(width: AppTheme.s8),
+                      itemBuilder: (context, index) {
+                        final chip = _starterChips[index];
+                        return _buildStarterChip(
+                          chip['label'] as String,
+                          chip['icon'] as IconData,
+                        );
+                      },
+                    ),
+                  ),
+
+                // 5. Unified Input Bar: TextField + 56dp circular Mic/Send button
+                _buildInputBar(isEn),
+              ],
+            ),
           ),
         ),
       ),
@@ -729,7 +733,8 @@ class _KrishiSahayakScreenState extends State<KrishiSahayakScreen>
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           const SizedBox(height: AppTheme.s16),
-          AppSurface(
+          SolidCard(
+            radius: AppTheme.rCard,
             padding: const EdgeInsets.all(AppTheme.s16),
             child: Text(
               _greetingText,
@@ -937,9 +942,9 @@ class _KrishiSahayakScreenState extends State<KrishiSahayakScreen>
 
     return Container(
       margin: const EdgeInsets.only(top: AppTheme.s8, bottom: AppTheme.s8, right: 24),
-      child: AppSurface(
+      child: SolidCard(
         padding: const EdgeInsets.all(AppTheme.s16),
-        borderRadius: AppTheme.rCard,
+        radius: AppTheme.rCard,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1103,12 +1108,12 @@ class _KrishiSahayakScreenState extends State<KrishiSahayakScreen>
       alignment: Alignment.centerLeft,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: AppTheme.s8),
-        child: AppSurface(
+        child: SolidCard(
           padding: const EdgeInsets.symmetric(
             horizontal: AppTheme.s16,
             vertical: AppTheme.s12,
           ),
-          borderRadius: AppTheme.rCard,
+          radius: AppTheme.rCard,
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [

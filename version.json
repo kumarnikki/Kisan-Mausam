@@ -1,10 +1,10 @@
 {
-  "version": "2.2.0",
-  "versionCode": 26,
-  "releaseName": "Kisan Mausam v2.2.0 - Restored Home Layout, Account Phone Security & El Niño Outlook Edition",
-  "apkUrl": "https://github.com/kumarnikki/Kisan-Mausam/releases/download/v2.2.0/kisan-mausam-release.apk",
+  "version": "2.3.0",
+  "versionCode": 27,
+  "releaseName": "Kisan Mausam v2.3.0 - Subtle Glassmorphism UI & Sunlight-Readable Edition",
+  "apkUrl": "https://github.com/kumarnikki/Kisan-Mausam/releases/download/v2.3.0/kisan-mausam-release.apk",
   "githubReleaseUrl": "https://github.com/kumarnikki/Kisan-Mausam/releases/latest",
-  "changelog": "• Restored Home Order: Weather Hero Card → 2×2 Field Conditions → 'This season' (El Niño + 30-Day Outlook) → 'Best crops now'\n• Clean Home Layout: Removed footer attribution text for a distraction-free bottom layout\n• Registered Account Phone Security: Locked mobile number against editing or overwriting in Settings once an account is created",
+  "changelog": "• Subtle Glassmorphism UI: Frosted GlassCard hero weather card, amber hazard/KVK notice banners, and floating glass bottom navigation pill\n• Static Blurred AppBackdrop: Soft green, amber, and lime ambient color spheres behind glass surfaces\n• High-Contrast & Performance: Automatic solid-card fallback in High-Contrast mode and ≤3 BackdropFilter layers per screen",
   "minRequiredVersion": "1.0.0",
-  "publishedAt": "2026-10-11T14:05:00Z"
+  "publishedAt": "2026-10-12T13:05:00Z"
 }

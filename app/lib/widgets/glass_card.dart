@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -105,28 +106,314 @@ class AmbientScope extends InheritedWidget {
   }
 }
 
-/// Replaces BackdropFilter blur with a solid fill and 1px hairline border.
-/// Keeps the GlassCard class name and API so all existing call sites compile cleanly.
+/// Subtle glassmorphism hero surface:
+/// RepaintBoundary -> ClipRRect -> BackdropFilter(ImageFilter.blur) -> Container
+/// with tint color (default white 50%), 1px white 75% border, top 1px white 90% inner highlight,
+/// and soft green elevation shadow.
+/// Automatically falls back to a solid white card with a visible border (no blur) in high-contrast mode.
 class GlassCard extends StatelessWidget {
   final Widget child;
-  final EdgeInsetsGeometry padding;
+  final double? radius;
   final double borderRadius;
+  final Color? tint;
+  final double? blur;
+  final EdgeInsetsGeometry padding;
+  final EdgeInsetsGeometry? margin;
   final double opacity;
+  final VoidCallback? onTap;
 
   const GlassCard({
     super.key,
     required this.child,
-    this.padding = const EdgeInsets.all(AppTheme.s16),
+    this.radius,
     this.borderRadius = AppTheme.rCard,
+    this.tint,
+    this.blur,
+    this.padding = const EdgeInsets.all(AppTheme.s16),
+    this.margin,
     this.opacity = 1.0,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return AppSurface(
+    final effectiveRadius = radius ?? borderRadius;
+    final highContrast = AppTheme.isHighContrast(context);
+    if (highContrast) {
+      return SolidCard(
+        radius: effectiveRadius,
+        padding: padding,
+        margin: margin,
+        onTap: onTap,
+        child: child,
+      );
+    }
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final glassTheme = Theme.of(context).extension<GlassTheme>() ??
+        (isDark ? GlassTheme.dark : GlassTheme.light);
+    final effectiveBlur = blur ?? glassTheme.blurSigma;
+
+    final Color defaultTint = isDark
+        ? const Color(0x991A241E)
+        : Colors.white.withValues(alpha: opacity != 1.0 ? opacity : 0.50);
+    final Color effectiveTint;
+    if (tint != null) {
+      if (isDark && (tint!.r > 0.9 && tint!.g > 0.9 && tint!.b > 0.9)) {
+        effectiveTint = const Color(0xAD1A241E);
+      } else {
+        effectiveTint = tint!;
+      }
+    } else {
+      effectiveTint = defaultTint;
+    }
+
+    Widget innerContent = Padding(
       padding: padding,
-      borderRadius: borderRadius,
       child: child,
+    );
+
+    if (onTap != null) {
+      innerContent = Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(effectiveRadius),
+          onTap: onTap,
+          child: innerContent,
+        ),
+      );
+    } else {
+      innerContent = Material(
+        color: Colors.transparent,
+        child: innerContent,
+      );
+    }
+
+    return RepaintBoundary(
+      child: Padding(
+        padding: margin ?? EdgeInsets.zero,
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(effectiveRadius),
+            boxShadow: [glassTheme.glassShadow],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(effectiveRadius),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(
+                sigmaX: effectiveBlur,
+                sigmaY: effectiveBlur,
+              ),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: effectiveTint,
+                  borderRadius: BorderRadius.circular(effectiveRadius),
+                  border: Border.all(
+                    color: glassTheme.glassBorderColor,
+                    width: 1.0,
+                  ),
+                ),
+                child: Stack(
+                  children: [
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      child: IgnorePointer(
+                        child: Container(
+                          height: 1.0,
+                          color: glassTheme.glassTopHighlight,
+                        ),
+                      ),
+                    ),
+                    innerContent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Standard non-glass card:
+/// Solid white fill, 1px border rgba(20,48,31,0.06), shadow offset (0,2) blur 8 rgba(20,48,31,0.06).
+/// In high-contrast mode, renders solid white with a 2px black border and no shadow.
+class SolidCard extends StatelessWidget {
+  final Widget child;
+  final double? radius;
+  final double borderRadius;
+  final EdgeInsetsGeometry padding;
+  final EdgeInsetsGeometry? margin;
+  final Color? color;
+  final Color? borderColor;
+  final double? borderWidth;
+  final VoidCallback? onTap;
+
+  const SolidCard({
+    super.key,
+    required this.child,
+    this.radius,
+    this.borderRadius = AppTheme.rCard,
+    this.padding = const EdgeInsets.all(AppTheme.s16),
+    this.margin,
+    this.color,
+    this.borderColor,
+    this.borderWidth,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final effectiveRadius = radius ?? borderRadius;
+    final highContrast = AppTheme.isHighContrast(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final glassTheme = Theme.of(context).extension<GlassTheme>() ??
+        (highContrast
+            ? GlassTheme.highContrast
+            : (isDark ? GlassTheme.dark : GlassTheme.light));
+
+    final Color fill = highContrast
+        ? (color ?? Colors.white)
+        : (color ?? glassTheme.solidCardColor);
+    final Color bColor = highContrast
+        ? (borderColor ?? Colors.black)
+        : (borderColor ?? glassTheme.solidCardBorderColor);
+    final double bWidth = borderWidth ?? (highContrast ? 2.0 : 1.0);
+    final List<BoxShadow>? shadows =
+        highContrast ? null : [glassTheme.solidCardShadow];
+
+    Widget content = Padding(
+      padding: padding,
+      child: child,
+    );
+
+    if (onTap != null) {
+      content = InkWell(
+        borderRadius: BorderRadius.circular(effectiveRadius),
+        onTap: onTap,
+        child: content,
+      );
+    }
+
+    return Padding(
+      padding: margin ?? EdgeInsets.zero,
+      child: Container(
+        decoration: BoxDecoration(
+          color: fill,
+          borderRadius: BorderRadius.circular(effectiveRadius),
+          border: Border.all(color: bColor, width: bWidth),
+          boxShadow: shadows,
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(
+            (effectiveRadius - bWidth).clamp(0.0, effectiveRadius),
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: content,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Static backdrop with #EAF1EC scaffoldBg and 3 static blurred color circles behind content:
+/// - green #5DBB7E at 60% opacity, ~300px, left edge, around 30% down the screen
+/// - amber #FFB74D at 50% opacity, ~190px, right edge, near the top (behind warning card)
+/// - lime #7BC043 at 45% opacity, ~240px, bottom right
+/// Implemented with Positioned circles blurred using ImageFiltered inside a RepaintBoundary. No animation.
+class AppBackdrop extends StatelessWidget {
+  final Widget child;
+
+  const AppBackdrop({
+    super.key,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final highContrast = AppTheme.isHighContrast(context);
+    if (highContrast) {
+      return ColoredBox(
+        color: Colors.white,
+        child: child,
+      );
+    }
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgColor = isDark ? AppTheme.darkBg : AppTheme.scaffoldBg;
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        RepaintBoundary(
+          child: ColoredBox(
+            color: bgColor,
+            child: ImageFiltered(
+              imageFilter: ImageFilter.blur(
+                sigmaX: 48.0,
+                sigmaY: 48.0,
+                tileMode: TileMode.decal,
+              ),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  // Green #5DBB7E at 60% opacity, ~300px, left edge, around 30% down the screen
+                  Positioned(
+                    left: -85,
+                    top: 210,
+                    child: Container(
+                      width: 300,
+                      height: 300,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: const Color(0xFF5DBB7E).withValues(
+                          alpha: isDark ? 0.22 : 0.60,
+                        ),
+                      ),
+                    ),
+                  ),
+                  // Amber #FFB74D at 50% opacity, ~190px, right edge, near the top (behind warning card)
+                  Positioned(
+                    right: -35,
+                    top: 44,
+                    child: Container(
+                      width: 190,
+                      height: 190,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: const Color(0xFFFFB74D).withValues(
+                          alpha: isDark ? 0.18 : 0.50,
+                        ),
+                      ),
+                    ),
+                  ),
+                  // Lime #7BC043 at 45% opacity, ~240px, bottom right
+                  Positioned(
+                    right: -45,
+                    bottom: 80,
+                    child: Container(
+                      width: 240,
+                      height: 240,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: const Color(0xFF7BC043).withValues(
+                          alpha: isDark ? 0.18 : 0.45,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        child,
+      ],
     );
   }
 }
@@ -179,21 +466,17 @@ class AppSurface extends StatelessWidget {
       bWidth = borderWidth ?? 2.0;
       effectiveShadows = null;
     } else if (ambient != null) {
-      // Standard cards on Home: solid white in light, lifted #172338-class surface in dark at 100% opacity
       fill = color ?? AmbientBackground.cardFillForState(ambient.state, isDark: isDark);
       effectiveGradient = gradient;
       bColor = borderColor ?? AmbientBackground.cardBorderColor(isDark: isDark);
       bWidth = borderWidth ?? 1.0;
-      effectiveShadows = boxShadow ??
-          (ambient.isQuiet
-              ? null
-              : AmbientBackground.cardBoxShadow(isDark: isDark));
+      effectiveShadows = boxShadow ?? AmbientBackground.cardBoxShadow(isDark: isDark);
     } else {
-      fill = color ?? AppTheme.surfaceFill(context);
+      fill = color ?? (isDark ? AppTheme.surfaceCard : Colors.white);
       effectiveGradient = gradient;
-      bColor = borderColor ?? AppTheme.borderColor(context);
+      bColor = borderColor ?? (isDark ? AppTheme.outlineDark : AppTheme.solidCardBorderColor);
       bWidth = borderWidth ?? AppTheme.borderWidth(context);
-      effectiveShadows = boxShadow;
+      effectiveShadows = boxShadow ?? (isDark ? null : const [AppTheme.solidCardBoxShadow]);
     }
 
     Widget content = Padding(
@@ -442,20 +725,16 @@ class AmbientBackground extends StatelessWidget {
   }
 
   /// 1px border color for card surface family.
-  /// Light: outline #CFD8DF. Dark: white at 12% opacity (#1FFFFFFF).
+  /// Light: rgba(20, 48, 31, 0.06). Dark: white at 12% opacity (#1FFFFFFF).
   static Color cardBorderColor({required bool isDark}) {
-    return isDark ? const Color(0x1FFFFFFF) : const Color(0xFFCFD8DF);
+    return isDark ? const Color(0x1FFFFFFF) : AppTheme.solidCardBorderColor;
   }
 
-  /// Soft elevation shadow for light theme (blur 20, offset y 6, black at ~9%). None for dark theme.
+  /// Soft elevation shadow for light theme (offset (0,2), blur 8, rgba(20,48,31,0.06)). None for dark theme.
   static List<BoxShadow>? cardBoxShadow({required bool isDark}) {
     if (isDark) return null;
     return const [
-      BoxShadow(
-        color: Color(0x17000000),
-        blurRadius: 20,
-        offset: Offset(0, 6),
-      ),
+      AppTheme.solidCardBoxShadow,
     ];
   }
 
@@ -486,26 +765,13 @@ class AmbientBackground extends StatelessWidget {
           sunrise: sunrise,
           sunset: sunset,
         );
-        final colors = paletteForState(state, isDark: isDark, quiet: quiet);
-        final disableAnimations = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
 
-        return AnimatedContainer(
-          duration: disableAnimations ? Duration.zero : const Duration(milliseconds: 600),
-          curve: Curves.easeOutCubic,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: colors,
-            ),
-          ),
-          child: AmbientScope(
-            state: state,
-            isDark: isDark,
-            isHighContrast: false,
-            isQuiet: quiet,
-            child: child,
-          ),
+        return AmbientScope(
+          state: state,
+          isDark: isDark,
+          isHighContrast: false,
+          isQuiet: quiet,
+          child: child,
         );
       },
     );
